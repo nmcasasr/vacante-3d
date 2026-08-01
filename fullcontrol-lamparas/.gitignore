@@ -1,0 +1,13 @@
+# G-code generado
+output/
+*.gcode
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Entornos virtuales
+venv/
+.venv/
+env/
