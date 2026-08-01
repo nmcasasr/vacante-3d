@@ -10,31 +10,39 @@ vaso (spiral) con capas de 0.4 mm.
 
 ## ⚠️ AVISO IMPORTANTE ANTES DE IMPRIMIR
 
-**El G-code que genera este repo NO es imprimible tal cual.**
+El G-code que sale de acá **ya incluye start y end gcode para la A1**
+(`lamparas/impresoras.py`), así que es imprimible tal cual. Pero esa secuencia
+**la escribí a mano con comandos estándar, NO es el start gcode de fábrica de
+Bambu Studio.**
 
-FullControl emite únicamente los movimientos de la pieza. Con el perfil
-`generic` que usamos, el archivo **no incluye**:
+Qué **sí** hace:
 
+- calentar cama y boquilla, y esperar
 - homing (`G28`)
-- nivelación de cama / mesh bed leveling
-- carga de filamento ni purga (usamos `primer: 'no_primer'`)
-- el resto del *start gcode* propio de la A1 (AMS, calibración de flujo, etc.)
-- el *end gcode* (retracción final, bajar cama, apagar temperaturas y motores)
+- nivelación de cama (`G29`) — se puede desactivar con `--sin-nivelacion`
+- dos líneas de purga en el borde frontal de la cama, con retracción y salto de Z
+- ventilador de capa
+- al terminar: retraer, separar la boquilla, adelantar la cama, apagar todo
 
-Lo único que sí emite son los `M104/M140/M109/M190` de temperatura, el `M106`
-de ventilador y `M83` (extrusión relativa).
+Qué **no** hace (y sí hace Bambu Studio):
 
-**Qué hacer antes de mandar a imprimir:**
+- nada de AMS / cambio de filamento
+- calibración de flujo, de linear advance ni compensación de vibraciones
+- la rutina de limpieza de boquilla propia de la A1
 
-1. Abrí Bambu Studio / Orca, poné el mismo filamento y boquilla, y copiá el
-   *Machine start G-code* y el *Machine end G-code* del perfil de la A1.
-2. Pegá el start gcode **al principio** del `.gcode` generado y el end gcode
-   **al final**.
-3. Revisá que no queden temperaturas duplicadas o en conflicto entre el start
-   gcode de Bambu y las líneas que genera FullControl (si el start gcode de
-   Bambu ya fija las temperaturas, borrá las de FullControl).
-4. Previsualizá el resultado antes de imprimir (`--plot`, o un visor de gcode
-   tipo [gcode.ws](https://gcode.ws)) y **quedate mirando la primera capa**.
+**Lo más seguro es usar el start/end gcode real de tu A1.** Se saca de Bambu
+Studio (*Ajustes de impresora → Machine G-code → Machine start/end G-code*), se
+guarda en un archivo y se pasa así:
+
+```bash
+python -m lamparas.twist --start-gcode a1_start.gcode --end-gcode a1_end.gcode
+```
+
+En ese caso las temperaturas las fija tu start gcode, no el nuestro.
+
+**Siempre**, uses el bloque que uses: previsualizá el `.gcode` antes de
+imprimir (ver más abajo, o un visor tipo [gcode.ws](https://gcode.ws)) y
+**quedate mirando la primera capa**.
 
 Las coordenadas se centran por defecto en `(128, 128)`, el centro de la cama de
 256×256 mm de la A1. Si cambiás de impresora, ajustá `Perfil.centro` y
@@ -88,12 +96,44 @@ python -m lamparas.twist --radio-base 55 --altura 120 --n-ondas 8 \
 
 # ver todas las opciones
 python -m lamparas.twist --help
-
-# previsualización interactiva en el navegador (requiere plotly)
-python -m lamparas.twist --plot
 ```
 
 El `.gcode` queda en `output/` (esa carpeta está en `.gitignore`).
+
+---
+
+## Cómo ver cómo quedaría
+
+```bash
+# genera el .gcode Y un HTML 3D interactivo en output/
+python -m lamparas.twist --preview
+
+# solo la previsualización, sin exportar gcode (para iterar rápido)
+python -m lamparas.twist --solo-preview --n-ondas 12 --amplitud 8 --vueltas-twist 4
+
+# visor propio de FullControl: simula el ancho y alto real de cada línea
+python -m lamparas.twist --plot
+```
+
+`--preview` deja un `output/<nombre>.html` autocontenido (plotly embebido, no
+necesita internet) que se abre con doble clic en cualquier navegador y se puede
+rotar y hacer zoom. Dibuja también el contorno de la cama, así se ve de una si
+la pieza entra. Funciona sin entorno gráfico, así que sirve por SSH o en un
+contenedor.
+
+`--plot` abre el visor de FullControl, que es más fiel (simula el grosor real
+de la línea extruida) pero mucho más pesado y necesita un navegador en la misma
+máquina.
+
+Desde código:
+
+```python
+from lamparas.preview import guardar_html
+from lamparas.twist import pasos_lampara_twist
+
+pasos = pasos_lampara_twist(n_ondas=12, amplitud=8)
+print(guardar_html(pasos, "prueba_12_lobulos"))
+```
 
 También se puede usar como librería:
 
@@ -120,9 +160,11 @@ gcode = generar_lampara_twist(
 
 ```
 lamparas/
-  comun.py      # setup de impresora, generador de espiral, exportación de gcode
-  twist.py      # lámpara ondulada con twist progresivo
-output/         # .gcode generados (gitignored)
+  comun.py       # Perfil de impresión, generador de espiral, exportación de gcode
+  impresoras.py  # start/end gcode de la A1 (o el tuyo, desde un archivo)
+  preview.py     # previsualización HTML 3D
+  twist.py       # lámpara ondulada con twist progresivo
+output/          # .gcode y .html generados (gitignored)
 requirements.txt
 ```
 

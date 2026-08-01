@@ -8,7 +8,7 @@ exportación del .gcode -- viva acá y no se duplique.
 """
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional, Tuple
 
@@ -33,6 +33,7 @@ class Perfil:
 
     diametro_boquilla: float = 0.8      # mm - ancho de extrusión
     altura_capa: float = 0.4            # mm - capa gruesa, líneas marcadas
+    diametro_filamento: float = 1.75    # mm
     velocidad_impresion: int = 1200     # mm/min
     velocidad_viaje: int = 6000         # mm/min
     temp_boquilla: int = 200            # °C (PLA)
@@ -44,14 +45,33 @@ class Perfil:
     centro: Tuple[float, float] = (128.0, 128.0)
     tamano_cama: Tuple[float, float] = (256.0, 256.0)
 
-    # Perfil de impresora de FullControl. 'generic' NO emite homing ni start
-    # gcode de Bambu: ver el aviso del README.
+    # Incluir G29 (nivelación de cama) en el start gcode.
+    nivelar: bool = True
+
+    # Start/end gcode. Si quedan en None se usan las secuencias para A1 de
+    # `impresoras.py`. Para usar las de Bambu Studio:
+    #     Perfil(start_gcode=cargar_gcode("mi_start.gcode"))
+    start_gcode: Optional[str] = None
+    end_gcode: Optional[str] = None
+
+    # Perfil de impresora de FullControl. 'generic' es solo el vehículo: no
+    # aporta start gcode propio, lo aporta `start_gcode` de acá.
     nombre_impresora: str = "generic"
 
     @property
     def area_extrusion(self) -> float:
         """mm² de sección de cada línea extruida (modelo rectangular)."""
         return self.diametro_boquilla * self.altura_capa
+
+    def start(self) -> str:
+        from .impresoras import start_a1
+
+        return self.start_gcode if self.start_gcode is not None else start_a1(self)
+
+    def end(self) -> str:
+        from .impresoras import end_a1
+
+        return self.end_gcode if self.end_gcode is not None else end_a1(self)
 
 
 def pasos_iniciales(perfil: Perfil) -> list:
@@ -162,24 +182,28 @@ def generar_lampara(
 
 
 def a_gcode(pasos: list, perfil: Optional[Perfil] = None) -> str:
-    """Convierte los pasos en una cadena de gcode (sin escribir ningún archivo)."""
+    """
+    Convierte los pasos en una cadena de gcode lista para imprimir, con el
+    start/end gcode de la impresora incluido. No escribe ningún archivo.
+    """
     perfil = perfil or Perfil()
+    # El start/end gcode se inyecta como texto crudo alrededor del diseño.
+    # Las temperaturas y el ventilador viven ahí, no en initialization_data,
+    # para que no queden comandos duplicados.
+    completos = [fc.ManualGcode(text=perfil.start())] + pasos + [fc.ManualGcode(text=perfil.end())]
     return fc.transform(
-        pasos,
+        completos,
         "gcode",
         fc.GcodeControls(
             printer_name=perfil.nombre_impresora,
             initialization_data={
-                # El A1 ya tiene su propia rutina de purga en el start gcode que
-                # vas a pegar a mano, así que acá no generamos ninguna.
+                # La purga ya la hace el start gcode de arriba.
                 "primer": "no_primer",
                 "print_speed": perfil.velocidad_impresion,
                 "travel_speed": perfil.velocidad_viaje,
                 "extrusion_width": perfil.diametro_boquilla,
                 "extrusion_height": perfil.altura_capa,
-                "nozzle_temp": perfil.temp_boquilla,
-                "bed_temp": perfil.temp_cama,
-                "fan_percent": perfil.ventilador,
+                "dia_feed": perfil.diametro_filamento,
             },
         ),
         show_tips=False,
@@ -192,13 +216,3 @@ def guardar_gcode(gcode: str, nombre: str) -> Path:
     ruta = DIR_OUTPUT / f"{nombre}.gcode"
     ruta.write_text(gcode)
     return ruta
-
-
-def previsualizar(pasos: list) -> None:
-    """Abre el plot interactivo de FullControl (requiere plotly)."""
-    fc.transform(
-        pasos,
-        "plot",
-        fc.PlotControls(style="line", color_type="z_gradient"),
-        show_tips=False,
-    )

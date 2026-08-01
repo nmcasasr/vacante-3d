@@ -19,7 +19,9 @@ import argparse
 import math
 from typing import Optional
 
-from .comun import Perfil, a_gcode, generar_lampara, guardar_gcode, previsualizar
+from .comun import Perfil, a_gcode, generar_lampara, guardar_gcode
+from .impresoras import cargar_gcode
+from .preview import guardar_html, previsualizar
 
 
 def pasos_lampara_twist(
@@ -107,10 +109,21 @@ def _cli() -> None:
     p.add_argument("--altura-capa", type=float, default=0.4, help="altura de capa en mm")
     p.add_argument("--sin-espiral", action="store_true", help="capas planas en vez de modo vaso")
     p.add_argument("--nombre", default="lampara_twist", help="nombre del .gcode en output/")
-    p.add_argument("--plot", action="store_true", help="previsualizar en vez de exportar")
+    p.add_argument("--sin-nivelacion", action="store_true", help="no incluir G29 en el start gcode")
+    p.add_argument("--start-gcode", help="archivo con el start gcode a usar (p.ej. el de Bambu Studio)")
+    p.add_argument("--end-gcode", help="archivo con el end gcode a usar")
+    p.add_argument("--preview", action="store_true", help="además del gcode, generar un HTML 3D en output/")
+    p.add_argument("--solo-preview", action="store_true", help="generar solo el HTML, sin exportar gcode")
+    p.add_argument("--plot", action="store_true", help="abrir el visor interactivo de FullControl")
     args = p.parse_args()
 
-    perfil = Perfil(diametro_boquilla=args.boquilla, altura_capa=args.altura_capa)
+    perfil = Perfil(
+        diametro_boquilla=args.boquilla,
+        altura_capa=args.altura_capa,
+        nivelar=not args.sin_nivelacion,
+        start_gcode=cargar_gcode(args.start_gcode) if args.start_gcode else None,
+        end_gcode=cargar_gcode(args.end_gcode) if args.end_gcode else None,
+    )
     comunes = dict(
         radio_base=args.radio_base,
         altura=args.altura,
@@ -122,10 +135,19 @@ def _cli() -> None:
         espiral=not args.sin_espiral,
     )
 
+    pasos = pasos_lampara_twist(**comunes)
+
     if args.plot:
-        previsualizar(pasos_lampara_twist(**comunes))
-    else:
-        generar_lampara_twist(nombre=args.nombre, **comunes)
+        previsualizar(pasos)
+        return
+
+    if args.preview or args.solo_preview:
+        print(f"Preview: {guardar_html(pasos, nombre=args.nombre, perfil=perfil)}")
+
+    if not args.solo_preview:
+        gcode = a_gcode(pasos, perfil)
+        ruta = guardar_gcode(gcode, args.nombre)
+        print(f"Generado: {ruta} ({len(pasos)} pasos, {len(gcode.splitlines())} líneas de gcode)")
 
 
 if __name__ == "__main__":
