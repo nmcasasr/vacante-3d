@@ -8,6 +8,7 @@ modo vaso, exportación) y se diferencian solo en el patrón:
 - `malla`   -> malla fina de rombos
 - `celosia` -> calado real, con agujeros pasantes
 - `tramado` -> entramado diagonal, una tira pasa por encima de la otra
+- `rizos`   -> bucles que sobresalen, tipo candelero "Dream of Glow"
 
 Ninguno de los cuatro se puede hacer con un slicer: los tres primeros porque el
 patrón cambia dentro de cada vuelta y de una vuelta a la otra, y la celosía
@@ -17,7 +18,7 @@ porque además mueve la Z dentro de la capa.
 from typing import Optional
 
 from ..comun import Perfil, a_gcode, generar_pieza, guardar_gcode
-from . import celosia, cesta, malla, siluetas, tramado
+from . import celosia, cesta, malla, rizos, siluetas, tramado
 from .siluetas import SILUETAS
 
 DISENOS = {
@@ -25,6 +26,7 @@ DISENOS = {
     "malla": malla,
     "celosia": celosia,
     "tramado": tramado,
+    "rizos": rizos,
 }
 
 
@@ -60,9 +62,13 @@ def pasos_bowl(
         raise ValueError(f"silueta desconocida: {silueta!r}. Opciones: {sorted(SILUETAS)}")
 
     fn_silueta = SILUETAS[silueta](**(parametros_silueta or {}))
-    fn_radio, fn_dz, segmentos, paso_z = DISENOS[diseno].construir(
-        fn_silueta, altura=altura, **(parametros or {})
-    )
+    # Contrato de construir(): devuelve al menos
+    #   (funcion_radio, funcion_dz, segmentos, paso_z)
+    # y opcionalmente un quinto elemento, funcion_dangulo, que solo usan los
+    # patrones cuyo trazo vuelve sobre sí mismo (rizos).
+    resultado = DISENOS[diseno].construir(fn_silueta, altura=altura, **(parametros or {}))
+    fn_radio, fn_dz, segmentos, paso_z = resultado[:4]
+    fn_dangulo = resultado[4] if len(resultado) > 4 else None
 
     return generar_pieza(
         fn_radio,
@@ -70,6 +76,7 @@ def pasos_bowl(
         perfil=perfil,
         segmentos_por_capa=segmentos_por_capa or segmentos,
         funcion_dz=fn_dz,
+        funcion_dangulo=fn_dangulo,
         base_solida=base_solida,
         capas_transicion=capas_transicion,
         paso_z=paso_z,

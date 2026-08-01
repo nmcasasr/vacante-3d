@@ -49,6 +49,7 @@ def _cli() -> None:
     p.add_argument("--sin-base", action="store_true", help="no rellenar el fondo")
     p.add_argument("--boquilla", type=float, default=0.8)
     p.add_argument("--altura-capa", type=float, default=0.4)
+    p.add_argument("--ancho-linea", type=float, help="ancho del cordón en mm (por defecto, el de la boquilla)")
     p.add_argument("--sin-nivelacion", action="store_true", help="no incluir G29 en el start gcode")
     p.add_argument("--start-gcode", help="archivo con el start gcode a usar")
     p.add_argument("--end-gcode", help="archivo con el end gcode a usar")
@@ -61,6 +62,7 @@ def _cli() -> None:
     perfil = Perfil(
         diametro_boquilla=args.boquilla,
         altura_capa=args.altura_capa,
+        ancho_linea=args.ancho_linea,
         nivelar=not args.sin_nivelacion,
         start_gcode=cargar_gcode(args.start_gcode) if args.start_gcode else None,
         end_gcode=cargar_gcode(args.end_gcode) if args.end_gcode else None,

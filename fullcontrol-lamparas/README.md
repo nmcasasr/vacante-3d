@@ -211,13 +211,35 @@ python -m lamparas.bowls --help
 | `malla` | malla fina de rombos | onda radial con **medio lóbulo de más por vuelta**: las crestas de una vuelta caen en los valles de la anterior |
 | `celosia` | calado real, con agujeros pasantes | la **Z** ondula dentro de la vuelta; las vueltas se tocan solo en los nodos |
 | `tramado` | entramado diagonal trenzado | dos familias de hélices opuestas combinadas con `max()`, así una tira pasa por encima de la otra |
+| `rizos` | bucles que sobresalen, tipo candelero "Dream of Glow" | trocoide: el trazo **retrocede** en ángulo y cierra un bucle, en vez de solo ondular |
 
 Los parámetros propios de cada patrón van con `--p clave=valor` (repetible) y
 están documentados en el `construir()` de cada módulo.
 
 **Siluetas** (`--silueta`): `bol` (por defecto), `copa` (cónica), `platillo`
-(panza y boca cerrada), `campana`. Se ajustan con `--radio-base`,
-`--radio-boca` y `--radio-max`.
+(panza y boca cerrada), `campana`, `candelero` (acampanado con cuello). Se
+ajustan con `--radio-base`, `--radio-boca` y `--radio-max`.
+
+El candelero de las referencias sale así:
+
+```bash
+python -m lamparas.bowls rizos --silueta candelero --altura 90 \
+       --radio-base 45 --radio-boca 14 --preview
+```
+
+### Rizos: qué hace falta para que sea un bucle y no una onda
+
+Una onda entra y sale del radio pero el ángulo siempre avanza. Para que el
+trazo se cierre sobre sí mismo tiene que **retroceder** en ángulo, y eso lo da
+`funcion_dangulo` en `generar_pieza()`. La curva es una trocoide, y solo cierra
+el bucle si la amplitud supera `radio / n_rizos`. Por debajo de eso queda una
+pared ondulada; el módulo lo calcula y avisa.
+
+### Ancho de línea
+
+`--ancho-linea` está separado de `--boquilla`: la boquilla es el hardware, el
+ancho es cuánto plástico se empuja. Se puede pedir hasta ~2x la boquilla para
+una pared más gruesa y opaca. Si no se especifica, se usa el de la boquilla.
 
 ### Dos cosas que estos diseños resuelven y conviene entender
 

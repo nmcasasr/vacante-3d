@@ -23,7 +23,7 @@ if TYPE_CHECKING:  # evita import circular en runtime
 def _e_para_linea(largo: float, perfil: "Perfil") -> float:
     """mm de filamento necesarios para una línea de `largo` mm con la sección actual."""
     area_filamento = math.pi * (perfil.diametro_filamento / 2) ** 2
-    volumen = largo * perfil.diametro_boquilla * perfil.altura_capa
+    volumen = largo * perfil.ancho * perfil.altura_capa
     return volumen / area_filamento
 
 

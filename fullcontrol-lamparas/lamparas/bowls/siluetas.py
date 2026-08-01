@@ -65,9 +65,29 @@ def campana(radio_base: float = 28.0, radio_boca: float = 78.0) -> Silueta:
     return silueta
 
 
+def candelero(radio_base: float = 45.0, radio_boca: float = 14.0, alto_cuello: float = 0.15) -> Silueta:
+    """
+    Silueta de candelero: cuerpo acampanado que se va cerrando hacia arriba y
+    termina en un cuello recto. Es la forma de las piezas "Dream of Glow".
+
+    Al cerrarse con la altura no tiene nada de voladizo, así que es de las más
+    fáciles de imprimir: cada vuelta apoya de sobra sobre la anterior.
+    """
+
+    def silueta(t: float) -> float:
+        if t >= 1 - alto_cuello:
+            return radio_boca
+        u = t / (1 - alto_cuello)
+        s = u * u * (3 - 2 * u)
+        return radio_base + (radio_boca - radio_base) * s
+
+    return silueta
+
+
 SILUETAS = {
     "bol": bol,
     "copa": copa,
     "platillo": platillo,
     "campana": campana,
+    "candelero": candelero,
 }

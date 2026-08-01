@@ -31,8 +31,14 @@ class Perfil:
     0.8 mm imprimiendo PLA en modo vaso con capas gruesas.
     """
 
-    diametro_boquilla: float = 0.8      # mm - ancho de extrusión
+    diametro_boquilla: float = 0.8      # mm - la boquilla física
     altura_capa: float = 0.4            # mm - capa gruesa, líneas marcadas
+
+    # Ancho del cordón. Si queda en None se usa el diámetro de boquilla, que es
+    # lo habitual. Se puede pedir más (hasta ~2x la boquilla) para una pared más
+    # gruesa y opaca, o menos para una más fina: no es una orden a la impresora
+    # sino cuánto plástico se empuja, y el cordón se aplasta hasta ese ancho.
+    ancho_linea: Optional[float] = None
     diametro_filamento: float = 1.75    # mm
     velocidad_impresion: int = 1200     # mm/min
     velocidad_viaje: int = 6000         # mm/min
@@ -59,9 +65,14 @@ class Perfil:
     nombre_impresora: str = "generic"
 
     @property
+    def ancho(self) -> float:
+        """Ancho efectivo del cordón: el pedido, o el de la boquilla."""
+        return self.ancho_linea if self.ancho_linea is not None else self.diametro_boquilla
+
+    @property
     def area_extrusion(self) -> float:
         """mm² de sección de cada línea extruida (modelo rectangular)."""
-        return self.diametro_boquilla * self.altura_capa
+        return self.ancho * self.altura_capa
 
     def start(self) -> str:
         from .impresoras import start_a1
@@ -86,7 +97,7 @@ def pasos_iniciales(perfil: Perfil) -> list:
     return [
         fc.ExtrusionGeometry(
             area_model="rectangle",
-            width=perfil.diametro_boquilla,
+            width=perfil.ancho,
             height=perfil.altura_capa,
         ),
         fc.Printer(
@@ -100,7 +111,7 @@ def _verificar_cama(radio_max: float, perfil: Perfil) -> None:
     """Avisa (sin abortar) si la pieza se sale de la cama."""
     cx, cy = perfil.centro
     ancho, largo = perfil.tamano_cama
-    margen = perfil.diametro_boquilla / 2
+    margen = perfil.ancho / 2
     if (
         cx - radio_max - margen < 0
         or cy - radio_max - margen < 0
@@ -124,7 +135,7 @@ def _espiral_base(radio: float, perfil: Perfil, paso_arco: float = 1.0):
     """
     cx, cy = perfil.centro
     z = perfil.altura_capa
-    separacion = perfil.diametro_boquilla  # una vuelta pegada a la anterior
+    separacion = perfil.ancho  # una vuelta pegada a la anterior
     puntos = []
     angulo = 0.0
     r = 0.0
@@ -146,6 +157,7 @@ def generar_pieza(
     espiral: bool = True,
     capas_base: int = 1,
     funcion_dz: Optional[FuncionRadio] = None,
+    funcion_dangulo: Optional[FuncionRadio] = None,
     base_solida: bool = False,
     capas_transicion: int = 6,
     paso_z: Optional[float] = None,
@@ -167,6 +179,11 @@ def generar_pieza(
             permite las celosías: si la Z ondula dentro de la vuelta y la fase
             se invierte capa a capa, las capas se tocan solo en los cruces y
             entre medio queda el calado.
+        funcion_dangulo: corrimiento angular en radianes, `(angulo, t) -> dang`.
+            Sin esto el ángulo solo avanza y el recorrido nunca puede volver
+            sobre sí mismo. Con esto sí, y ahí aparecen los rizos: si el
+            corrimiento retrocede más rápido de lo que avanza el ángulo, el
+            trazo cierra un bucle en vez de ondular.
         base_solida: rellena el fondo con una espiral antes de empezar la pared
             (necesario para un bowl que tenga que contener algo).
         capas_transicion: en las primeras capas el patrón se mezcla desde un
@@ -255,10 +272,15 @@ def generar_pieza(
             z = z_capa + fraccion * subida if rampa else z_capa
             if funcion_dz is not None:
                 z += funcion_dz(angulo, t) * mezcla
+            # el corrimiento angular solo afecta la POSICIÓN; el `angulo` que
+            # ven las funciones de forma sigue siendo el que avanza parejo
+            angulo_pos = angulo
+            if funcion_dangulo is not None:
+                angulo_pos += funcion_dangulo(angulo, t) * mezcla
             puntos.append(
                 fc.Point(
-                    x=cx + radio * math.cos(angulo),
-                    y=cy + radio * math.sin(angulo),
+                    x=cx + radio * math.cos(angulo_pos),
+                    y=cy + radio * math.sin(angulo_pos),
                     z=z,
                 )
             )
@@ -356,7 +378,7 @@ def a_gcode(pasos: list, perfil: Optional[Perfil] = None) -> str:
                 "primer": "no_primer",
                 "print_speed": perfil.velocidad_impresion,
                 "travel_speed": perfil.velocidad_viaje,
-                "extrusion_width": perfil.diametro_boquilla,
+                "extrusion_width": perfil.ancho,
                 "extrusion_height": perfil.altura_capa,
                 "dia_feed": perfil.diametro_filamento,
             },

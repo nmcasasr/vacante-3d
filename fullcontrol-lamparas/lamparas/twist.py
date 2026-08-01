@@ -107,6 +107,7 @@ def _cli() -> None:
     p.add_argument("--segmentos", type=int, default=120, help="resolución angular por vuelta")
     p.add_argument("--boquilla", type=float, default=0.8, help="diámetro de boquilla en mm")
     p.add_argument("--altura-capa", type=float, default=0.4, help="altura de capa en mm")
+    p.add_argument("--ancho-linea", type=float, help="ancho del cordón en mm (por defecto, el de la boquilla)")
     p.add_argument("--sin-espiral", action="store_true", help="capas planas en vez de modo vaso")
     p.add_argument("--nombre", default="lampara_twist", help="nombre del .gcode en output/")
     p.add_argument("--sin-nivelacion", action="store_true", help="no incluir G29 en el start gcode")
@@ -120,6 +121,7 @@ def _cli() -> None:
     perfil = Perfil(
         diametro_boquilla=args.boquilla,
         altura_capa=args.altura_capa,
+        ancho_linea=args.ancho_linea,
         nivelar=not args.sin_nivelacion,
         start_gcode=cargar_gcode(args.start_gcode) if args.start_gcode else None,
         end_gcode=cargar_gcode(args.end_gcode) if args.end_gcode else None,
