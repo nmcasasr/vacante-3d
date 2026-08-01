@@ -210,12 +210,27 @@ def generar_pieza(
     radio_max = 0.0
     radios_medios = []
 
+    def _mezcla(capa: int) -> float:
+        """Cuánto del patrón está activo en esta vuelta: 0 en la primera, 1 al final."""
+        return min(1.0, capa / capas_transicion) if capas_transicion > 0 else 1.0
+
+    # El paso vertical tiene que crecer JUNTO con la amplitud del patrón, nunca
+    # antes. Si se sube el paso completo mientras la onda todavía está atenuada,
+    # la vuelta no llega a tocar la de abajo y quedan anillos sueltos en el aire.
+    # El piso de altura_capa es para que la parte maciza suba como una capa normal.
+    pasos_capa = [max(perfil.altura_capa, paso * _mezcla(c)) for c in range(n_capas + 1)]
+
+    # la primera vuelta arranca exactamente una capa por encima de la base
+    z_vuelta = z_offset + pasos_capa[0]
+
     for capa in range(n_capas):
         # La primera capa va a z = altura_capa, no a z = 0: a z = 0 la boquilla
         # estaría apoyada contra la cama.
-        z_capa = z_offset + (capa + 1) * paso
+        z_capa = z_vuelta
+        subida = pasos_capa[capa + 1]  # lo que sube esta vuelta hasta la siguiente
+        z_vuelta += subida
         rampa = espiral and capa >= capas_base
-        mezcla = min(1.0, (capa + 1) / capas_transicion) if capas_transicion > 0 else 1.0
+        mezcla = _mezcla(capa)
 
         # se calcula la vuelta entera primero para poder mezclarla con su propio
         # radio medio durante la transición
@@ -237,7 +252,7 @@ def generar_pieza(
         for fraccion, angulo, t, radio_crudo in crudos:
             radio = medio + (radio_crudo - medio) * mezcla
             radio_max = max(radio_max, radio)
-            z = z_capa + fraccion * paso if rampa else z_capa
+            z = z_capa + fraccion * subida if rampa else z_capa
             if funcion_dz is not None:
                 z += funcion_dz(angulo, t) * mezcla
             puntos.append(
@@ -257,10 +272,41 @@ def generar_pieza(
     pasos.extend(puntos[1:])
 
     _verificar_cama(radio_max, perfil)
+    _verificar_apoyo(puntos[len(puntos) - n_capas * (segmentos_por_capa + 1):],
+                     segmentos_por_capa + 1, perfil)
     if silueta_referencia is not None:
         radios_medios = [silueta_referencia(capa / n_capas) for capa in range(n_capas + 1)]
     _verificar_voladizo(radios_medios, paso)
     return pasos
+
+
+def _verificar_apoyo(puntos_pared: list, por_vuelta: int, perfil: Perfil) -> None:
+    """
+    Avisa si alguna vuelta no llega a tocar la de abajo en NINGÚN punto.
+
+    Es el control que separa una celosía de un montón de anillos sueltos. Una
+    vuelta puede estar despegada en casi toda su longitud (eso es justamente el
+    calado), pero si en toda la vuelta no hay un solo punto donde el hueco baje
+    de la altura de capa, esa vuelta se imprime en el aire y la pieza se cae.
+    """
+    flotantes = []
+    n_vueltas = len(puntos_pared) // por_vuelta
+    for v in range(1, n_vueltas):
+        anterior = puntos_pared[(v - 1) * por_vuelta : v * por_vuelta]
+        actual = puntos_pared[v * por_vuelta : (v + 1) * por_vuelta]
+        if len(actual) < por_vuelta:
+            break
+        hueco = min(a.z - b.z for a, b in zip(actual, anterior))
+        if hueco > perfil.altura_capa + 1e-6:
+            flotantes.append((v, hueco))
+    if flotantes:
+        v, hueco = flotantes[0]
+        print(
+            f"AVISO: {len(flotantes)} vuelta(s) no tocan la de abajo en ningún punto "
+            f"(la primera es la {v}, con {hueco:.2f} mm de hueco mínimo). "
+            "Se van a imprimir en el aire: bajá el paso vertical o subí la "
+            "amplitud del patrón."
+        )
 
 
 def _verificar_voladizo(radios_medios: list, paso: float) -> None:

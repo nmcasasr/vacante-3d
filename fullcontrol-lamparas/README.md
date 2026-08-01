@@ -228,13 +228,21 @@ bajar sobre material ya impreso. Por eso `celosia` sube `2 * amplitud_z` por
 vuelta en vez de una altura de capa, y usa `solape` para dejar una mordida
 controlada de ~0.2 mm en los nodos, que es lo que los suelda.
 
-### Voladizo
+### Chequeos automáticos
 
-En modo vaso cada vuelta se apoya sobre la de abajo. Si el radio crece más
-rápido que el ancho de línea por vuelta, la pared se descuelga. El generador
-mide la silueta y avisa por consola cuando pasa de 45°; por encima de ~55° no
-esperes que salga. La silueta `platillo` es la más propensa: bajá `--radio-max`
-o subí `--altura` hasta que el aviso desaparezca.
+`generar_pieza()` verifica tres cosas y avisa por consola. Miralas antes de
+mandar a imprimir: no abortan la generación, solo avisan.
+
+- **Cabe en la cama.** Radio máximo contra `Perfil.tamano_cama`.
+- **Voladizo.** En modo vaso cada vuelta se apoya sobre la de abajo; si el radio
+  crece más rápido que el ancho de línea por vuelta, la pared se descuelga. Se
+  mide sobre la silueta lisa y avisa a partir de 45°; por encima de ~55° no
+  esperes que salga. La silueta `platillo` es la más propensa: bajá
+  `--radio-max` o subí `--altura` hasta que el aviso desaparezca.
+- **Apoyo.** Que cada vuelta toque a la de abajo en *algún* punto. Una vuelta
+  puede estar despegada casi entera —eso es justamente el calado— pero si en
+  toda su longitud no hay un solo punto de contacto, se imprime en el aire.
+  Este control es el que separa una celosía de un montón de anillos sueltos.
 
 ## Cómo agregar una forma nueva
 
