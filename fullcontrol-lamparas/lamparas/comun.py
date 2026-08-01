@@ -113,54 +113,133 @@ def _verificar_cama(radio_max: float, perfil: Perfil) -> None:
         )
 
 
-def generar_lampara(
+def _espiral_base(radio: float, perfil: Perfil, paso_arco: float = 1.0):
+    """
+    Espiral de Arquímedes que rellena el fondo de la pieza, del centro hacia
+    afuera. Es lo que le da piso a un bowl sin romper el trazo continuo del
+    modo vaso: se imprime toda la base y se sigue de largo con la pared.
+
+    Devuelve (puntos, angulo_final) para que la pared arranque justo donde
+    termina la base y no quede un salto.
+    """
+    cx, cy = perfil.centro
+    z = perfil.altura_capa
+    separacion = perfil.diametro_boquilla  # una vuelta pegada a la anterior
+    puntos = []
+    angulo = 0.0
+    r = 0.0
+    while r <= radio:
+        puntos.append(fc.Point(x=cx + r * math.cos(angulo), y=cy + r * math.sin(angulo), z=z))
+        # paso angular adaptativo: segmentos de largo ~constante en toda la espiral
+        angulo += paso_arco / max(r, 0.6)
+        r = separacion * angulo / (2 * math.pi)
+    # cierre exacto en el radio pedido, para empalmar con la pared
+    puntos.append(fc.Point(x=cx + radio * math.cos(angulo), y=cy + radio * math.sin(angulo), z=z))
+    return puntos, angulo
+
+
+def generar_pieza(
     funcion_radio: FuncionRadio,
     altura: float,
     perfil: Optional[Perfil] = None,
-    segmentos_por_capa: int = 120,
+    segmentos_por_capa: int = 200,
     espiral: bool = True,
     capas_base: int = 1,
+    funcion_dz: Optional[FuncionRadio] = None,
+    base_solida: bool = False,
+    capas_transicion: int = 6,
+    paso_z: Optional[float] = None,
+    silueta_referencia: Optional[Callable[[float], float]] = None,
 ) -> list:
     """
-    Construye la lista de pasos de FullControl para un sólido de revolución
-    cuyo radio lo define `funcion_radio(angulo, t)`.
+    Construye los pasos de FullControl para un sólido de revolución cuyo radio
+    lo define `funcion_radio(angulo, t)`.
 
     Args:
         funcion_radio: radio en mm para un ángulo (rad) y una altura relativa t (0..1).
-        altura: altura total de la lámpara en mm.
+        altura: altura total de la pared en mm.
         perfil: parámetros de impresión. Si es None se usa `Perfil()`.
-        segmentos_por_capa: resolución angular (más = más suave, más pesado el gcode).
-        espiral: True para modo vaso real -- la Z sube de forma continua a lo
-            largo de cada vuelta, sin escalón de cambio de capa.
-        capas_base: cuántas primeras vueltas se imprimen planas (sin rampa de Z)
-            antes de empezar a espiralar. Ayuda a la adherencia.
+        segmentos_por_capa: resolución angular. Los patrones finos necesitan
+            bastante: como mínimo unos 6 segmentos por lóbulo.
+        espiral: modo vaso, con la Z subiendo de forma continua en cada vuelta.
+        capas_base: primeras vueltas planas (sin rampa de Z), para adherencia.
+        funcion_dz: desplazamiento de Z en mm, `(angulo, t) -> dz`. Es lo que
+            permite las celosías: si la Z ondula dentro de la vuelta y la fase
+            se invierte capa a capa, las capas se tocan solo en los cruces y
+            entre medio queda el calado.
+        base_solida: rellena el fondo con una espiral antes de empezar la pared
+            (necesario para un bowl que tenga que contener algo).
+        capas_transicion: en las primeras capas el patrón se mezcla desde un
+            círculo liso hasta su forma completa. Evita el escalón contra la
+            base y mejora el agarre.
+        paso_z: cuánto sube la pieza por vuelta, en mm. Por defecto la altura de
+            capa, que es lo normal. Las celosías necesitan un paso MAYOR que su
+            oscilación de Z: si la vuelta de arriba ondula ±A y solo sube 0.4,
+            en las crestas termina 1 mm por debajo de la vuelta anterior y la
+            boquilla vuelve a meterse en material ya impreso. Con paso_z >= 2*A
+            las vueltas se tocan en los nodos y nunca se pisan.
+        silueta_referencia: silueta lisa `t -> radio`, solo para medir el
+            voladizo. Sin esto la medición usa el radio medio de cada vuelta,
+            que en los patrones con relieve variable da falsos positivos.
 
     Returns:
         La lista de pasos lista para `fc.transform(...)`.
     """
     perfil = perfil or Perfil()
     cx, cy = perfil.centro
-    n_capas = max(1, int(round(altura / perfil.altura_capa)))
+    paso = paso_z or perfil.altura_capa
+    n_capas = max(1, int(round(altura / paso)))
+    angulos = [seg / segmentos_por_capa * 2 * math.pi for seg in range(segmentos_por_capa + 1)]
+
+    # radio medio de la primera capa: define el tamaño de la base y el punto de
+    # partida de la transición
+    radios_capa0 = [funcion_radio(a, 0.0) for a in angulos[:-1]]
+    radio_medio_0 = sum(radios_capa0) / len(radios_capa0)
 
     pasos = pasos_iniciales(perfil)
-    radio_max = 0.0
     puntos: list = []
+    angulo_inicio = 0.0
+
+    if base_solida:
+        puntos_base, angulo_inicio = _espiral_base(radio_medio_0, perfil)
+        puntos.extend(puntos_base)
+
+    # con base sólida la pared arranca una capa más arriba, encima del fondo
+    z_offset = perfil.altura_capa if base_solida else 0.0
+
+    radio_max = 0.0
+    radios_medios = []
 
     for capa in range(n_capas):
-        # La primera capa se imprime a z = altura_capa, no a z = 0: a z = 0 la
-        # boquilla estaría apoyada contra la cama.
-        z_base = (capa + 1) * perfil.altura_capa
+        # La primera capa va a z = altura_capa, no a z = 0: a z = 0 la boquilla
+        # estaría apoyada contra la cama.
+        z_capa = z_offset + (capa + 1) * paso
         rampa = espiral and capa >= capas_base
+        mezcla = min(1.0, (capa + 1) / capas_transicion) if capas_transicion > 0 else 1.0
 
+        # se calcula la vuelta entera primero para poder mezclarla con su propio
+        # radio medio durante la transición
+        crudos = []
         for seg in range(segmentos_por_capa + 1):  # +1 para cerrar la vuelta
             fraccion = seg / segmentos_por_capa
-            angulo = fraccion * 2 * math.pi
-            # `t` avanza dentro de la capa para que la forma no dé saltos
-            t = (capa + fraccion) / n_capas
-            radio = funcion_radio(angulo, t)
-            radio_max = max(radio_max, radio)
+            # Ángulo ACUMULADO a lo largo de toda la espiral, no reiniciado en
+            # cada vuelta. Para un patrón de n lóbulos enteros da igual, pero
+            # permite usar frecuencias de medio lóbulo (n + 0.5): así el patrón
+            # se invierte solo de una vuelta a la otra, que es lo que teje la
+            # malla, y sin ningún salto en la costura.
+            angulo = angulo_inicio + (capa + fraccion) * 2 * math.pi
+            t = (capa + fraccion) / n_capas  # `t` avanza dentro de la capa: sin saltos
+            crudos.append((fraccion, angulo, t, funcion_radio(angulo, t)))
 
-            z = z_base + fraccion * perfil.altura_capa if rampa else z_base
+        medio = sum(r for _, _, _, r in crudos[:-1]) / segmentos_por_capa
+        radios_medios.append(medio)
+
+        for fraccion, angulo, t, radio_crudo in crudos:
+            radio = medio + (radio_crudo - medio) * mezcla
+            radio_max = max(radio_max, radio)
+            z = z_capa + fraccion * paso if rampa else z_capa
+            if funcion_dz is not None:
+                z += funcion_dz(angulo, t) * mezcla
             puntos.append(
                 fc.Point(
                     x=cx + radio * math.cos(angulo),
@@ -178,7 +257,37 @@ def generar_lampara(
     pasos.extend(puntos[1:])
 
     _verificar_cama(radio_max, perfil)
+    if silueta_referencia is not None:
+        radios_medios = [silueta_referencia(capa / n_capas) for capa in range(n_capas + 1)]
+    _verificar_voladizo(radios_medios, paso)
     return pasos
+
+
+def _verificar_voladizo(radios_medios: list, paso: float) -> None:
+    """
+    Avisa si la silueta se abre demasiado rápido.
+
+    En modo vaso cada vuelta se apoya sobre la de abajo. Si el radio crece más
+    que el ancho de línea por vuelta, la vuelta queda colgando en el aire. El
+    ángulo se mide desde la vertical: 45° es el límite cómodo, más de 55° suele
+    descolgarse.
+    """
+    if len(radios_medios) < 2:
+        return
+    saltos = [radios_medios[i + 1] - radios_medios[i] for i in range(len(radios_medios) - 1)]
+    salto_max = max(saltos, default=0.0)
+    angulo = math.degrees(math.atan2(salto_max, paso))
+    if angulo > 45:
+        print(
+            f"AVISO: voladizo máximo de {angulo:.0f}° respecto de la vertical "
+            f"({salto_max:.2f} mm de radio por vuelta de {paso:.2f} mm). "
+            "Por encima de ~55° la pared se descuelga: bajá el radio de boca, "
+            "subí la altura o usá una silueta más suave."
+        )
+
+
+# nombre viejo, se mantiene para los diseños que ya lo usan
+generar_lampara = generar_pieza
 
 
 def a_gcode(pasos: list, perfil: Optional[Perfil] = None) -> str:

@@ -44,6 +44,17 @@ En ese caso las temperaturas las fija tu start gcode, no el nuestro.
 imprimir (ver más abajo, o un visor tipo [gcode.ws](https://gcode.ws)) y
 **quedate mirando la primera capa**.
 
+### Cómo se lo pasás a la impresora
+
+Por **microSD**: archivo en la raíz de la tarjeta (no en subcarpetas), nombre
+alfanumérico sin acentos, y desde la pantalla de la A1 *File* → seleccionarlo →
+*Print*.
+
+No sirve mandarlo desde Bambu Studio ni desde Orca Slicer: los dos son slicers,
+esperan una malla y para Bambu usan el mismo plugin de red que exige un `.3mf`
+laminado por ellos. Un `.gcode` crudo lo rechazan. Donde Orca sí sirve es como
+**visor**: abrí el archivo generado y revisá capa por capa antes de imprimir.
+
 Las coordenadas se centran por defecto en `(128, 128)`, el centro de la cama de
 256×256 mm de la A1. Si cambiás de impresora, ajustá `Perfil.centro` y
 `Perfil.tamano_cama` (el generador avisa por consola si la pieza no entra).
@@ -164,9 +175,66 @@ lamparas/
   impresoras.py  # start/end gcode de la A1 (o el tuyo, desde un archivo)
   preview.py     # previsualización HTML 3D
   twist.py       # lámpara ondulada con twist progresivo
+  bowls/         # bowls con patrones tejidos
+    siluetas.py  # formas de la pared: bol, copa, platillo, campana
+    cesta.py     # trenzado de cestería
+    malla.py     # malla fina de rombos
+    celosia.py   # calado real, con agujeros pasantes
+    tramado.py   # entramado diagonal
 output/          # .gcode y .html generados (gitignored)
 requirements.txt
 ```
+
+---
+
+## Bowls con patrones tejidos
+
+Cuatro patrones, cuatro siluetas, se combinan entre sí. Ninguno se puede hacer
+con un slicer: el patrón cambia dentro de cada vuelta y de una vuelta a la otra.
+
+```bash
+python -m lamparas.bowls malla --preview
+python -m lamparas.bowls cesta --altura 70 --radio-boca 85 --p n_tiras=20
+python -m lamparas.bowls celosia --silueta platillo --radio-max 90 --solo-preview
+python -m lamparas.bowls tramado --p torsion=14 --p amplitud=2.5 --nombre bowl_diagonal
+python -m lamparas.bowls --help
+```
+
+| patrón | qué hace | cómo |
+|---|---|---|
+| `cesta` | tejas horizontales alternadas, tipo cestería | onda radial cuya fase se invierte entre bandas de capas, con envolvente seno |
+| `malla` | malla fina de rombos | onda radial con **medio lóbulo de más por vuelta**: las crestas de una vuelta caen en los valles de la anterior |
+| `celosia` | calado real, con agujeros pasantes | la **Z** ondula dentro de la vuelta; las vueltas se tocan solo en los nodos |
+| `tramado` | entramado diagonal trenzado | dos familias de hélices opuestas combinadas con `max()`, así una tira pasa por encima de la otra |
+
+Los parámetros propios de cada patrón van con `--p clave=valor` (repetible) y
+están documentados en el `construir()` de cada módulo.
+
+**Siluetas** (`--silueta`): `bol` (por defecto), `copa` (cónica), `platillo`
+(panza y boca cerrada), `campana`. Se ajustan con `--radio-base`,
+`--radio-boca` y `--radio-max`.
+
+### Dos cosas que estos diseños resuelven y conviene entender
+
+**Base sólida.** Un bowl necesita piso, y el modo vaso es un trazo continuo sin
+saltos. `generar_pieza(base_solida=True)` rellena el fondo con una espiral de
+Arquímedes desde el centro hacia afuera y sigue de largo con la pared, sin
+cortar la extrusión. Con `--sin-base` queda abierto abajo (pantalla de lámpara).
+
+**Paso vertical de la celosía.** Es el detalle no obvio del calado. Si la Z
+ondula ±0.7 mm pero la pieza sube solo 0.4 mm por vuelta, la cresta de una
+vuelta queda 1 mm *por debajo* del valle de la anterior: la boquilla vuelve a
+bajar sobre material ya impreso. Por eso `celosia` sube `2 * amplitud_z` por
+vuelta en vez de una altura de capa, y usa `solape` para dejar una mordida
+controlada de ~0.2 mm en los nodos, que es lo que los suelda.
+
+### Voladizo
+
+En modo vaso cada vuelta se apoya sobre la de abajo. Si el radio crece más
+rápido que el ancho de línea por vuelta, la pared se descuelga. El generador
+mide la silueta y avisa por consola cuando pasa de 45°; por encima de ~55° no
+esperes que salga. La silueta `platillo` es la más propensa: bajá `--radio-max`
+o subí `--altura` hasta que el aviso desaparezca.
 
 ## Cómo agregar una forma nueva
 
