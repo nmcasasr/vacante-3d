@@ -78,6 +78,11 @@ altura es mucho más directo (y más fácil de parametrizar) que modelarla en CA
 La contrapartida es la del aviso de arriba: al no haber slicer, tampoco hay
 start/end gcode de la impresora.
 
+**Para entender cómo se escribe un diseño en FullControl** hay un tutorial
+corto en [`docs/fullcontrol.md`](docs/fullcontrol.md): el modelo de la lista de
+pasos, cómo se calcula la extrusión, los helpers de geometría y los errores
+típicos.
+
 ---
 
 ## Instalación
