@@ -255,6 +255,56 @@ bajar sobre material ya impreso. Por eso `celosia` sube `2 * amplitud_z` por
 vuelta en vez de una altura de capa, y usa `solape` para dejar una mordida
 controlada de ~0.2 mm en los nodos, que es lo que los suelda.
 
+## Cambiar de color sin purgar
+
+La idea: parar, meter el filamento nuevo y seguir. Lo que quedaba del color
+viejo en la zona de fusión sale mezclado con el nuevo durante las primeras
+vueltas, y esa mezcla es el efecto.
+
+```bash
+# pausa manual a 20 y a 40 mm: la impresora para, cambiás el rollo y reanudás
+python -m lamparas.bowls cesta --altura 60 --cambio 20 --cambio 40
+
+# cambio de slot del AMS (SIN VERIFICAR, leer abajo)
+python -m lamparas.bowls cesta --altura 60 --cambio-ams 20:1
+```
+
+**`--cambio` usa `M400 U1`**, el comando nativo de pausa de Bambu (M600 no
+existe en estas máquinas). No toca el AMS, no purga nada y no depende de ningún
+comando propietario. Es la opción segura, y para dos o tres colores por zonas
+es todo lo que hace falta.
+
+**`--cambio-ams` no está verificado.** Bambu nunca documentó los comandos del
+AMS; lo que emite es el patrón `M620 S{slot}A` / `T{slot}` / `M621 S{slot}A`
+que reconstruyó la comunidad. Para tener los comandos que tu firmware espera de
+verdad, sacá el bloque real de un gcode de dos colores laminado por tu Bambu
+Studio y pasalo por `colores.quitar_purga()`, que le saca el `M620.10` (el que
+lleva la longitud de flush) y los movimientos que extruyen de más.
+
+### Cuánta altura dura la mezcla
+
+El color viejo no desaparece de golpe: hay que empujarlo fuera del bloque
+caliente. Milímetros de filamento hasta que sale limpio, según la comunidad:
+
+| transición | filamento | en un bowl de radio 55 |
+|---|---|---|
+| blanco → negro | 60–80 mm | **0.6 mm de altura** |
+| gris → azul | ~48 mm | 0.4 mm |
+| negro → blanco | 250–300 mm | **2.4 mm de altura** |
+
+Tapar claro con oscuro es rápido; al revés cuesta cuatro veces más.
+`colores.altura_de_mezcla(mm, radio)` lo calcula para tu geometría.
+
+La consecuencia: **un cambio solo da entre 0.6 y 2.4 mm de mezcla**, o sea una
+transición de borde suave, no un ombre. Para un degradado a lo largo de 40 mm
+harían falta decenas de cambios encadenados (`colores.alturas_regulares()` los
+reparte), con su costo en tiempo de máquina. Si lo que querés es un ombre
+limpio, filamento gradiente de un solo rollo lo resuelve sin ningún cambio: en
+modo vaso el color se mapea solo a la altura, porque la pieza es un trazo
+continuo de abajo hacia arriba.
+
+---
+
 ### Chequeos automáticos
 
 `generar_pieza()` verifica tres cosas y avisa por consola. Miralas antes de

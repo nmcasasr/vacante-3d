@@ -162,6 +162,7 @@ def generar_pieza(
     capas_transicion: int = 6,
     paso_z: Optional[float] = None,
     silueta_referencia: Optional[Callable[[float], float]] = None,
+    cambios: Optional[dict] = None,
 ) -> list:
     """
     Construye los pasos de FullControl para un sólido de revolución cuyo radio
@@ -198,6 +199,9 @@ def generar_pieza(
         silueta_referencia: silueta lisa `t -> radio`, solo para medir el
             voladizo. Sin esto la medición usa el radio medio de cada vuelta,
             que en los patrones con relieve variable da falsos positivos.
+        cambios: `{altura_mm: bloque_gcode}`. El bloque se inserta en el punto
+            donde el recorrido cruza esa altura. Sirve para cambiar de color:
+            ver `lamparas/colores.py`.
 
     Returns:
         La lista de pasos lista para `fc.transform(...)`.
@@ -291,7 +295,7 @@ def generar_pieza(
     pasos.append(fc.Extruder(on=False))
     pasos.append(puntos[0])
     pasos.append(fc.Extruder(on=True))
-    pasos.extend(puntos[1:])
+    pasos.extend(_insertar_cambios(puntos[1:], cambios) if cambios else puntos[1:])
 
     _verificar_cama(radio_max, perfil)
     _verificar_apoyo(puntos[len(puntos) - n_capas * (segmentos_por_capa + 1):],
@@ -300,6 +304,30 @@ def generar_pieza(
         radios_medios = [silueta_referencia(capa / n_capas) for capa in range(n_capas + 1)]
     _verificar_voladizo(radios_medios, paso)
     return pasos
+
+
+def _insertar_cambios(puntos: list, cambios: dict) -> list:
+    """
+    Mete cada bloque de gcode en el punto donde el recorrido cruza su altura.
+
+    En los diseños donde la Z ondula dentro de la vuelta (celosía) el cruce
+    puede caer en una cresta y adelantar el cambio media vuelta. A la escala de
+    un cambio de color da igual.
+    """
+    pendientes = sorted(cambios.items())
+    salida, i = [], 0
+    for punto in puntos:
+        while i < len(pendientes) and punto.z >= pendientes[i][0]:
+            salida.append(fc.ManualGcode(text=pendientes[i][1]))
+            i += 1
+        salida.append(punto)
+    if i < len(pendientes):
+        faltan = [f"{a:.1f}" for a, _ in pendientes[i:]]
+        print(
+            f"AVISO: {len(pendientes) - i} cambio(s) quedan por encima de la pieza "
+            f"y no se insertaron (alturas: {', '.join(faltan)} mm)."
+        )
+    return salida
 
 
 def _verificar_apoyo(puntos_pared: list, por_vuelta: int, perfil: Perfil) -> None:

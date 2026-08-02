@@ -40,6 +40,7 @@ def pasos_bowl(
     segmentos_por_capa: Optional[int] = None,
     base_solida: bool = True,
     capas_transicion: int = 6,
+    cambios: Optional[dict] = None,
 ) -> list:
     """
     Arma los pasos de FullControl de un bowl.
@@ -54,6 +55,7 @@ def pasos_bowl(
         segmentos_por_capa: si es None se usa el que recomienda el patrón, que
             sale de su cantidad de lóbulos.
         base_solida: rellena el fondo. False deja el bowl abierto abajo.
+        cambios: {altura_mm: bloque_gcode} para cambiar de color (ver colores.py).
         capas_transicion: capas en las que el patrón nace desde un círculo liso.
     """
     if diseno not in DISENOS:
@@ -79,6 +81,7 @@ def pasos_bowl(
         funcion_dangulo=fn_dangulo,
         base_solida=base_solida,
         capas_transicion=capas_transicion,
+        cambios=cambios,
         paso_z=paso_z,
         # el voladizo se mide sobre la silueta lisa: el relieve del patrón hace
         # oscilar el radio medio y daría falsas alarmas

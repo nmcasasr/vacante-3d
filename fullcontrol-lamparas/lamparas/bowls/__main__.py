@@ -15,6 +15,7 @@ import argparse
 import inspect
 
 from ..comun import Perfil
+from ..colores import cambio_ams, pausa_manual
 from ..impresoras import cargar_gcode
 from ..preview import guardar_html, previsualizar
 from . import DISENOS, SILUETAS, a_gcode, guardar_gcode, pasos_bowl
@@ -50,6 +51,10 @@ def _cli() -> None:
     p.add_argument("--boquilla", type=float, default=0.8)
     p.add_argument("--altura-capa", type=float, default=0.4)
     p.add_argument("--ancho-linea", type=float, help="ancho del cordón en mm (por defecto, el de la boquilla)")
+    p.add_argument("--cambio", type=float, action="append", default=[], metavar="ALTURA",
+                   help="pausa para cambiar el filamento a mano a esa altura en mm (repetible)")
+    p.add_argument("--cambio-ams", action="append", default=[], metavar="ALTURA:SLOT",
+                   help="cambio de slot del AMS sin purga (SIN VERIFICAR, ver colores.py)")
     p.add_argument("--sin-nivelacion", action="store_true", help="no incluir G29 en el start gcode")
     p.add_argument("--start-gcode", help="archivo con el start gcode a usar")
     p.add_argument("--end-gcode", help="archivo con el end gcode a usar")
@@ -80,6 +85,11 @@ def _cli() -> None:
     if ignorados:
         print(f"AVISO: la silueta '{args.silueta}' no usa {', '.join(ignorados)}; se ignora.")
 
+    cambios = {h: pausa_manual(f"a {h:.1f} mm") for h in args.cambio}
+    for spec in args.cambio_ams:
+        altura, slot = spec.split(":")
+        cambios[float(altura)] = cambio_ams(int(slot), f"a {float(altura):.1f} mm")
+
     nombre = args.nombre or f"bowl_{args.diseno}"
     pasos = pasos_bowl(
         diseno=args.diseno,
@@ -90,6 +100,7 @@ def _cli() -> None:
         parametros_silueta=parametros_silueta,
         segmentos_por_capa=args.segmentos,
         base_solida=not args.sin_base,
+        cambios=cambios or None,
     )
 
     if args.plot:
