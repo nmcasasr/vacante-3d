@@ -8,6 +8,7 @@ exportación del .gcode -- viva acá y no se duplique.
 """
 
 import math
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional, Tuple
@@ -416,8 +417,20 @@ def a_gcode(pasos: list, perfil: Optional[Perfil] = None) -> str:
 
 
 def guardar_gcode(gcode: str, nombre: str) -> Path:
-    """Escribe el gcode en `output/<nombre>.gcode` y devuelve la ruta."""
+    """
+    Escribe el gcode en `output/<nombre>.gcode` y devuelve la ruta.
+
+    La escritura es atómica: primero un `.tmp` y después un rename. Un gcode de
+    lámpara son varios MB, y cualquier cosa que esté mirando la carpeta -- el
+    watcher de gcode-preview, un visor abierto -- se despierta con el primer
+    byte. Escribiendo en el sitio leería un archivo a medio generar; con el
+    rename, o ve el archivo viejo o ve el nuevo entero.
+
+    El `.tmp` queda fuera del patrón `*.gcode`, así que el watcher lo ignora.
+    """
     DIR_OUTPUT.mkdir(parents=True, exist_ok=True)
     ruta = DIR_OUTPUT / f"{nombre}.gcode"
-    ruta.write_text(gcode)
+    temporal = ruta.parent / f"{ruta.name}.tmp"
+    temporal.write_text(gcode)
+    os.replace(temporal, ruta)
     return ruta

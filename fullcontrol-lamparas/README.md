@@ -141,6 +141,30 @@ contenedor.
 de la línea extruida) pero mucho más pesado y necesita un navegador en la misma
 máquina.
 
+### Loop en vivo con gcode-preview (VS Code)
+
+La extensión que está en `../../gcode-preview` puede quedarse mirando `output/`
+y previsualizar siempre el gcode más nuevo. Sirve para iterar parámetros sin
+regenerar un HTML de 4 MB por vuelta, y trae dos cosas que el preview de acá no
+tiene: **slider de capas** y **mapa de calor de voladizo** medido sobre el
+recorrido real.
+
+1. En VS Code, click derecho sobre `output/` → **"G-code: Watch Folder
+   (preview newest)"**. La carpeta puede no existir todavía.
+2. `python -m lamparas.bowls celosia --altura 70` — el panel se actualiza solo.
+3. Cambiás parámetros, volvés a correr. Cada corrida reemplaza la vista.
+
+Por eso `guardar_gcode()` escribe de forma atómica (`.gcode.tmp` + rename): el
+watcher se despierta con el primer byte y si no, leería un archivo a medio
+escribir.
+
+**Ojo con el mapa de calor en los calados.** Su métrica es "¿hay pared una capa
+más abajo, a menos de 3 mm?", así que una `celosia` le va a salir roja entera —
+y es exactamente lo que el diseño busca. Para el calado el chequeo que vale es
+el `_verificar_apoyo()` de `comun.py`, que pide contacto en *algún* punto de la
+vuelta y no en todos. En las siluetas lisas y en `cesta`/`malla`/`tramado` sí
+coinciden las dos mediciones.
+
 Desde código:
 
 ```python
