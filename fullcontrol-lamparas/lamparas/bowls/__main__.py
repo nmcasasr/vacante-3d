@@ -12,6 +12,7 @@ repetir). Están documentados en el `construir()` de cada módulo:
 """
 
 import argparse
+import fullcontrol as fc
 import inspect
 
 from ..comun import Perfil
@@ -48,13 +49,43 @@ def _cli() -> None:
                    metavar="CLAVE=VALOR", help="parámetro del patrón, repetible")
     p.add_argument("--segmentos", type=int, help="resolución angular (por defecto, la del patrón)")
     p.add_argument("--sin-base", action="store_true", help="no rellenar el fondo")
+    p.add_argument("--capas-transicion", type=int, default=6, metavar="N",
+                   help="vueltas en las que el patrón nace desde un círculo liso (por defecto 6). "
+                        "Subirlo hace que el calado entre más despacio: en las primeras vueltas los "
+                        "picos quedan al aire sin nada debajo, y con pocas capas de transición "
+                        "arrancan demasiado alto para agarrarse de la base.")
+    p.add_argument("--capas-base", type=int, default=1, metavar="N",
+                   help="primeras vueltas sin rampa de Z (anillos cerrados apilados, por defecto 1). "
+                        "Le da al calado algo macizo de donde arrancar en vez de un solo cordón.")
     p.add_argument("--boquilla", type=float, default=0.8)
     p.add_argument("--altura-capa", type=float, default=0.4)
     p.add_argument("--ancho-linea", type=float, help="ancho del cordón en mm (por defecto, el de la boquilla)")
+    p.add_argument("--velocidad", type=int, metavar="MM_MIN",
+                   help="velocidad de impresión en mm/min (por defecto 1200 = 20 mm/s). "
+                        "Los patrones que puentean al aire (celosia, malla) necesitan menos: "
+                        "el cordón tiene que cuajar antes de que la vuelta siguiente pase por encima.")
+    p.add_argument("--ventilador", type=int, metavar="PCT",
+                   help="ventilador de capa en %% (por defecto 100). PLA en modo vaso quiere 100; "
+                        "PETG no tolera tanto (el perfil de Orca lo limita a ~60) y con mas se despega "
+                        "entre capas. Ojo: el template del .3mf NO lo define, sale de aca.")
+    # --- modulacion dentro de la vuelta ---
+    p.add_argument("--velocidad-pico", type=int, metavar="MM_MIN",
+                   help="velocidad en la CRESTA de la onda (maximo voladizo, el cordon va al aire). "
+                        "--velocidad pasa a ser la del cruce. Ej: --velocidad 600 --velocidad-pico 120.")
+    p.add_argument("--ventilador-pico", type=int, metavar="PCT",
+                   help="ventilador en la cresta. --ventilador pasa a ser el del cruce, donde "
+                        "conviene MENOS aire para que las vueltas suelden.")
+    p.add_argument("--ancho-nodo", type=float, metavar="MM",
+                   help="ancho de cordon en el CRUCE con la vuelta de abajo: mas material justo "
+                        "donde tiene que soldar. --ancho-linea queda como el del resto.")
     p.add_argument("--cambio", type=float, action="append", default=[], metavar="ALTURA",
                    help="pausa para cambiar el filamento a mano a esa altura en mm (repetible)")
     p.add_argument("--cambio-ams", action="append", default=[], metavar="ALTURA:SLOT",
                    help="cambio de slot del AMS sin purga (SIN VERIFICAR, ver colores.py)")
+    p.add_argument("--velocidad-en", action="append", default=[], metavar="ALTURA:MM_MIN",
+                   help="cambiar la velocidad a esa altura, repetible. Sirve para hacer una torre "
+                        "de calibración: bandas de altura a velocidades crecientes, para ver a "
+                        "partir de qué velocidad el patrón deja de cuajar.")
     p.add_argument("--sin-nivelacion", action="store_true", help="no incluir G29 en el start gcode")
     p.add_argument("--start-gcode", help="archivo con el start gcode a usar")
     p.add_argument("--end-gcode", help="archivo con el end gcode a usar")
@@ -64,7 +95,7 @@ def _cli() -> None:
     p.add_argument("--plot", action="store_true", help="visor interactivo de FullControl")
     args = p.parse_args()
 
-    perfil = Perfil(
+    ajustes = dict(
         diametro_boquilla=args.boquilla,
         altura_capa=args.altura_capa,
         ancho_linea=args.ancho_linea,
@@ -72,6 +103,11 @@ def _cli() -> None:
         start_gcode=cargar_gcode(args.start_gcode) if args.start_gcode else None,
         end_gcode=cargar_gcode(args.end_gcode) if args.end_gcode else None,
     )
+    if args.velocidad:
+        ajustes["velocidad_impresion"] = args.velocidad
+    if args.ventilador is not None:
+        ajustes["ventilador"] = args.ventilador
+    perfil = Perfil(**ajustes)
 
     # solo se le pasan a la silueta los radios que esa silueta acepta
     pedidos = {
@@ -89,6 +125,21 @@ def _cli() -> None:
     for spec in args.cambio_ams:
         altura, slot = spec.split(":")
         cambios[float(altura)] = cambio_ams(int(slot), f"a {float(altura):.1f} mm")
+    for spec in args.velocidad_en:
+        altura, mm_min = spec.split(":")
+        cambios[float(altura)] = fc.Printer(print_speed=int(mm_min))
+
+    # nodo = valle de la onda (cruce con la vuelta de abajo), pico = cresta.
+    v_nodo = args.velocidad or 1200
+    f_nodo = args.ventilador if args.ventilador is not None else 100
+    w_base = args.ancho_linea or args.boquilla
+    modulacion = {}
+    if args.velocidad_pico:
+        modulacion["velocidad"] = (v_nodo, args.velocidad_pico)
+    if args.ventilador_pico is not None:
+        modulacion["ventilador"] = (f_nodo, args.ventilador_pico)
+    if args.ancho_nodo:
+        modulacion["ancho"] = (args.ancho_nodo, w_base)
 
     nombre = args.nombre or f"bowl_{args.diseno}"
     pasos = pasos_bowl(
@@ -100,7 +151,10 @@ def _cli() -> None:
         parametros_silueta=parametros_silueta,
         segmentos_por_capa=args.segmentos,
         base_solida=not args.sin_base,
+        capas_transicion=args.capas_transicion,
+        capas_base=args.capas_base,
         cambios=cambios or None,
+        modulacion=modulacion or None,
     )
 
     if args.plot:

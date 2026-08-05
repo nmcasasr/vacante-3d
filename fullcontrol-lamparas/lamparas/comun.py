@@ -164,6 +164,7 @@ def generar_pieza(
     paso_z: Optional[float] = None,
     silueta_referencia: Optional[Callable[[float], float]] = None,
     cambios: Optional[dict] = None,
+    modulacion: Optional[dict] = None,
 ) -> list:
     """
     Construye los pasos de FullControl para un sólido de revolución cuyo radio
@@ -200,6 +201,20 @@ def generar_pieza(
         silueta_referencia: silueta lisa `t -> radio`, solo para medir el
             voladizo. Sin esto la medición usa el radio medio de cada vuelta,
             que en los patrones con relieve variable da falsos positivos.
+        modulacion: cambia velocidad, ventilador y ancho DENTRO de cada vuelta,
+            según en qué punto de la onda de `funcion_dz` esté el recorrido.
+            `{'velocidad': (nodo, pico), 'ventilador': (nodo, pico), 'ancho': (nodo, pico)}`,
+            interpolando entre los dos valores.
+
+            El valle de `funcion_dz` es el CRUCE con la vuelta de abajo (ahí las
+            dos se muerden y hay que soldar); la cresta es el PICO, el punto de
+            máximo voladizo, donde el cordón está puenteando al aire. O sea que
+            la propia onda del patrón dice dónde estamos, sin que el diseño
+            tenga que exponer nada.
+
+            Sirve para lo que el patrón pide a gritos: más material y menos aire
+            en los cruces, y máximo aire y mínima velocidad en los picos.
+
         cambios: `{altura_mm: bloque_gcode}`. El bloque se inserta en el punto
             donde el recorrido cruza esa altura. Sirve para cambiar de color:
             ver `lamparas/colores.py`.
@@ -242,6 +257,55 @@ def generar_pieza(
     # El piso de altura_capa es para que la parte maciza suba como una capa normal.
     pasos_capa = [max(perfil.altura_capa, paso * _mezcla(c)) for c in range(n_capas + 1)]
 
+    # --- modulación dentro de la vuelta -------------------------------------
+    # La amplitud de la onda se mide muestreándola, en vez de pedírsela al
+    # patrón: así esto funciona con cualquier `funcion_dz` sin que el diseño
+    # tenga que exponer su amplitud.
+    amplitud_onda = 0.0
+    if modulacion and funcion_dz is not None:
+        amplitud_onda = max(
+            abs(funcion_dz(s / 400 * 2 * math.pi, 0.5)) for s in range(401)
+        )
+    modular = bool(modulacion) and amplitud_onda > 1e-9
+    ultimo = {"velocidad": None, "ventilador": None, "ancho": None}
+
+    def _pasos_modulacion(dz_crudo: float) -> list:
+        """
+        Pasos a insertar antes del punto, según dónde caiga en la onda.
+
+        k = 0 en el valle (el CRUCE con la vuelta de abajo: hay que soldar) y
+        k = 1 en la cresta (el PICO: el cordón está puenteando al aire).
+        Se emite solo cuando el valor cuantizado cambia, si no el gcode se
+        llenaría de comandos redundantes: son cientos de segmentos por vuelta.
+        """
+        k = min(1.0, max(0.0, (dz_crudo / amplitud_onda + 1) / 2))
+        salida = []
+
+        rango = modulacion.get("velocidad")
+        if rango:
+            v = int(round((rango[0] + (rango[1] - rango[0]) * k) / 30.0) * 30)
+            if v != ultimo["velocidad"]:
+                salida.append(fc.Printer(print_speed=v))
+                ultimo["velocidad"] = v
+
+        rango = modulacion.get("ventilador")
+        if rango:
+            f = int(round((rango[0] + (rango[1] - rango[0]) * k) / 5.0) * 5)
+            if f != ultimo["ventilador"]:
+                salida.append(fc.Fan(speed_percent=f))
+                ultimo["ventilador"] = f
+
+        rango = modulacion.get("ancho")
+        if rango:
+            w = round((rango[0] + (rango[1] - rango[0]) * k) / 0.05) * 0.05
+            if w != ultimo["ancho"]:
+                salida.append(
+                    fc.ExtrusionGeometry(area_model="rectangle", width=w, height=perfil.altura_capa)
+                )
+                ultimo["ancho"] = w
+
+        return salida
+
     # la primera vuelta arranca exactamente una capa por encima de la base
     z_vuelta = z_offset + pasos_capa[0]
 
@@ -275,8 +339,10 @@ def generar_pieza(
             radio = medio + (radio_crudo - medio) * mezcla
             radio_max = max(radio_max, radio)
             z = z_capa + fraccion * subida if rampa else z_capa
-            if funcion_dz is not None:
-                z += funcion_dz(angulo, t) * mezcla
+            dz_crudo = funcion_dz(angulo, t) if funcion_dz is not None else 0.0
+            z += dz_crudo * mezcla
+            if modular:
+                puntos.extend(_pasos_modulacion(dz_crudo))
             # el corrimiento angular solo afecta la POSICIÓN; el `angulo` que
             # ven las funciones de forma sigue siendo el que avanza parejo
             angulo_pos = angulo
@@ -293,13 +359,19 @@ def generar_pieza(
     # Viaje sin extruir hasta el primer punto y recién ahí se abre el extrusor.
     # Con primer='no_primer' esto es necesario: FullControl necesita un punto
     # previo para poder calcular la longitud de la primera línea extruida.
+    # `puntos` puede traer pasos de modulación intercalados, así que el viaje
+    # inicial tiene que apuntar al primer PUNTO, no al primer elemento.
+    primero = next(i for i, p in enumerate(puntos) if isinstance(p, fc.Point))
+    pasos.extend(puntos[:primero])
     pasos.append(fc.Extruder(on=False))
-    pasos.append(puntos[0])
+    pasos.append(puntos[primero])
     pasos.append(fc.Extruder(on=True))
-    pasos.extend(_insertar_cambios(puntos[1:], cambios) if cambios else puntos[1:])
+    resto = puntos[primero + 1:]
+    pasos.extend(_insertar_cambios(resto, cambios) if cambios else resto)
 
     _verificar_cama(radio_max, perfil)
-    _verificar_apoyo(puntos[len(puntos) - n_capas * (segmentos_por_capa + 1):],
+    solo_puntos = [p for p in puntos if isinstance(p, fc.Point)]
+    _verificar_apoyo(solo_puntos[len(solo_puntos) - n_capas * (segmentos_por_capa + 1):],
                      segmentos_por_capa + 1, perfil)
     if silueta_referencia is not None:
         radios_medios = [silueta_referencia(capa / n_capas) for capa in range(n_capas + 1)]
@@ -315,11 +387,22 @@ def _insertar_cambios(puntos: list, cambios: dict) -> list:
     puede caer en una cresta y adelantar el cambio media vuelta. A la escala de
     un cambio de color da igual.
     """
-    pendientes = sorted(cambios.items())
+    pendientes = sorted(cambios.items(), key=lambda kv: kv[0])
     salida, i = [], 0
     for punto in puntos:
+        # La lista puede traer pasos que no son puntos (cambios de velocidad,
+        # ventilador o ancho que inyecta la modulación por nodo). Esos no tienen
+        # altura: se copian tal cual sin mirarlos.
+        if not isinstance(punto, fc.Point):
+            salida.append(punto)
+            continue
         while i < len(pendientes) and punto.z >= pendientes[i][0]:
-            salida.append(fc.ManualGcode(text=pendientes[i][1]))
+            bloque = pendientes[i][1]
+            # Un str es gcode crudo (los cambios de color). Cualquier otra cosa
+            # es un paso de FullControl ya armado — `fc.Printer(print_speed=...)`
+            # para cambiar de velocidad, por ejemplo. Va tal cual, para que
+            # FullControl siga el estado en vez de que le pisemos la F a mano.
+            salida.append(fc.ManualGcode(text=bloque) if isinstance(bloque, str) else bloque)
             i += 1
         salida.append(punto)
     if i < len(pendientes):

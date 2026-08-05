@@ -40,7 +40,9 @@ def pasos_bowl(
     segmentos_por_capa: Optional[int] = None,
     base_solida: bool = True,
     capas_transicion: int = 6,
+    capas_base: int = 1,
     cambios: Optional[dict] = None,
+    modulacion: Optional[dict] = None,
 ) -> list:
     """
     Arma los pasos de FullControl de un bowl.
@@ -57,6 +59,8 @@ def pasos_bowl(
         base_solida: rellena el fondo. False deja el bowl abierto abajo.
         cambios: {altura_mm: bloque_gcode} para cambiar de color (ver colores.py).
         capas_transicion: capas en las que el patrón nace desde un círculo liso.
+        capas_base: primeras vueltas sin rampa de Z (anillos cerrados), para que
+            el calado arranque desde algo macizo en vez de desde un solo cordón.
     """
     if diseno not in DISENOS:
         raise ValueError(f"diseño desconocido: {diseno!r}. Opciones: {sorted(DISENOS)}")
@@ -81,7 +85,9 @@ def pasos_bowl(
         funcion_dangulo=fn_dangulo,
         base_solida=base_solida,
         capas_transicion=capas_transicion,
+        capas_base=capas_base,
         cambios=cambios,
+        modulacion=modulacion,
         paso_z=paso_z,
         # el voladizo se mide sobre la silueta lisa: el relieve del patrón hace
         # oscilar el radio medio y daría falsas alarmas
