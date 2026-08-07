@@ -75,9 +75,23 @@ def _cli() -> None:
     p.add_argument("--ventilador-pico", type=int, metavar="PCT",
                    help="ventilador en la cresta. --ventilador pasa a ser el del cruce, donde "
                         "conviene MENOS aire para que las vueltas suelden.")
+    p.add_argument("--espera", type=int, metavar="MS",
+                   help="parar la boquilla N ms en cada CRUCE para que la soldadura cuaje antes "
+                        "de salir al aire otra vez (retrae, G4, ceba). Tecnica del gcode de "
+                        "Squeezy Fidget Toy, que usa 1500 ms. Cuesta tiempo: 430 cruces x 1.5 s = 11 min.")
+    p.add_argument("--espera-cada", type=int, default=1, metavar="N",
+                   help="esperar solo cada N cruces, para no pagar el tiempo en todos.")
+    p.add_argument("--retraccion", type=float, default=1.5, metavar="MM",
+                   help="retraccion durante la espera (por defecto 1.5). Sin esto la boquilla "
+                        "queda presurizada y deja un grumo.")
     p.add_argument("--ancho-nodo", type=float, metavar="MM",
                    help="ancho de cordon en el CRUCE con la vuelta de abajo: mas material justo "
                         "donde tiene que soldar. --ancho-linea queda como el del resto.")
+    p.add_argument("--temperatura", type=int, metavar="GRADOS",
+                   help="temperatura de boquilla DURANTE la pieza. Se inyecta en el cuerpo, asi que "
+                        "sobrevive al empaquetado del .3mf y pisa la del template (que solo sirve para "
+                        "el calentado inicial). PETG en patrones calados quiere ~240: mas caliente no "
+                        "solidifica y se descuelga en los vanos.")
     p.add_argument("--cambio", type=float, action="append", default=[], metavar="ALTURA",
                    help="pausa para cambiar el filamento a mano a esa altura en mm (repetible)")
     p.add_argument("--cambio-ams", action="append", default=[], metavar="ALTURA:SLOT",
@@ -86,6 +100,11 @@ def _cli() -> None:
                    help="cambiar la velocidad a esa altura, repetible. Sirve para hacer una torre "
                         "de calibración: bandas de altura a velocidades crecientes, para ver a "
                         "partir de qué velocidad el patrón deja de cuajar.")
+    p.add_argument("--ventilador-en", action="append", default=[], metavar="ALTURA:PCT",
+                   help="cambiar el ventilador a esa altura, repetible. El gcode de Squeezy Fidget Toy "
+                        "lo usa asi: 0%% en toda la seccion maciza y 100%% en cuanto empieza el calado. "
+                        "Las zonas macizas sin aire quedan mas fuertes y transparentes; los puentes con "
+                        "aire no se descuelgan.")
     p.add_argument("--sin-nivelacion", action="store_true", help="no incluir G29 en el start gcode")
     p.add_argument("--start-gcode", help="archivo con el start gcode a usar")
     p.add_argument("--end-gcode", help="archivo con el end gcode a usar")
@@ -128,6 +147,9 @@ def _cli() -> None:
     for spec in args.velocidad_en:
         altura, mm_min = spec.split(":")
         cambios[float(altura)] = fc.Printer(print_speed=int(mm_min))
+    for spec in args.ventilador_en:
+        altura, pct = spec.split(":")
+        cambios[float(altura)] = fc.Fan(speed_percent=int(pct))
 
     # nodo = valle de la onda (cruce con la vuelta de abajo), pico = cresta.
     v_nodo = args.velocidad or 1200
@@ -140,6 +162,8 @@ def _cli() -> None:
         modulacion["ventilador"] = (f_nodo, args.ventilador_pico)
     if args.ancho_nodo:
         modulacion["ancho"] = (args.ancho_nodo, w_base)
+    if args.espera:
+        modulacion["espera"] = (args.espera, args.retraccion, args.espera_cada)
 
     nombre = args.nombre or f"bowl_{args.diseno}"
     pasos = pasos_bowl(
@@ -156,6 +180,12 @@ def _cli() -> None:
         cambios=cambios or None,
         modulacion=modulacion or None,
     )
+
+    # Va al principio de los pasos, o sea DESPUES del marcador FIN DEL START
+    # GCODE. Ahi el empaquetador lo deja pasar verbatim; arriba del marcador lo
+    # borraria junto con el calentado de FullControl.
+    if args.temperatura:
+        pasos.insert(0, fc.ManualGcode(text=f"M104 S{args.temperatura} ; temperatura de impresion"))
 
     if args.plot:
         previsualizar(pasos)

@@ -56,16 +56,26 @@ BASE = dict(
     amplitud_z=0.5,
     capas_transicion=6,
     ancho_linea=1.0,      # el cordón nunca baja de 1 mm (la boquilla es de 0.8)
-    ancho_nodo=1.4,       # más material justo en el cruce, que es donde suelda
+    ancho_nodo=1.6,       # ESCALÓN: blob en el cruce, hilo fino en el vano
+    espera=0,             # ms parado en cada cruce (0 = sin espera)
+    espera_cada=1,
     velocidad=600,        # en el cruce
     velocidad_pico=120,   # en la cresta: 2 mm/s, el cordón va al aire
-    ventilador=60,        # FIJO durante toda la probeta
+    # El ventilador sigue la ESTRUCTURA, no es un valor global. Copiado del
+    # gcode de Squeezy Fidget Toy: 0 % en toda la seccion maciza (Z 0.4-27.6) y
+    # 100 % en cuanto empieza el calado. Lo macizo sin aire queda mas fuerte y
+    # transparente; los puentes con aire no se descuelgan. Resuelve el conflicto
+    # claridad/calado: no son la misma zona de la pieza.
+    ventilador=0,         # en la base maciza
+    ventilador_calado=100,
+    altura_calado=2.0,    # a que altura arranca el calado
+    temperatura=240,      # PETG: mas caliente no solidifica y se descuelga
 )
 
 # Un solo parámetro distinto por probeta, para que el resultado sea legible.
 PROBETAS = [
-    ("fan 40", dict(ventilador=40)),
-    ("fan 80", dict(ventilador=80)),
+    ("sin espera", dict(espera=0)),
+    ("espera 1.5s", dict(espera=1500)),
 ]
 
 
@@ -92,6 +102,8 @@ def main() -> None:
             "velocidad": (cfg["velocidad"], cfg["velocidad_pico"]),
             "ancho": (cfg["ancho_nodo"], cfg["ancho_linea"]),
         }
+        if cfg["espera"]:
+            modulacion["espera"] = (cfg["espera"], 1.5, cfg["espera_cada"])
         propios = pasos_bowl(
             diseno="celosia",
             silueta="copa",
@@ -101,6 +113,10 @@ def main() -> None:
             parametros_silueta=dict(radio_base=RADIO_BASE, radio_boca=RADIO_BOCA),
             capas_transicion=cfg["capas_transicion"],
             modulacion=modulacion,
+            # Cada probeta tiene su propio dict, asi que el cambio se dispara una
+            # vez por pieza. Uno compartido lo consumiria la primera y las demas
+            # imprimirian el calado sin ventilador.
+            cambios={cfg["altura_calado"]: fc.Fan(speed_percent=cfg["ventilador_calado"])},
         )
         if i:
             # Tres movimientos, no uno. Si se sube y se viaja en el mismo paso,
@@ -122,6 +138,10 @@ def main() -> None:
     # el empaquetador del .3mf lo lee como el estado inicial y lo restaura
     # después del injerto. Dejarlo en el default (100) hacía arrancar al 100 %
     # aunque la modulación pidiera 20 — mal para PETG, que no lo tolera.
+    # Despues del marcador FIN DEL START GCODE: sobrevive al empaquetado del .3mf
+    # y pisa la temperatura del template, que solo sirve para el calentado.
+    pasos.insert(0, fc.ManualGcode(text=f"M104 S{BASE['temperatura']} ; temperatura de impresion"))
+
     gcode = a_gcode(
         pasos,
         Perfil(velocidad_impresion=BASE["velocidad"], ventilador=BASE["ventilador"]),

@@ -125,28 +125,42 @@ def _verificar_cama(radio_max: float, perfil: Perfil) -> None:
         )
 
 
-def _espiral_base(radio: float, perfil: Perfil, paso_arco: float = 1.0):
+def _espiral_base(forma: Callable[[float], float], perfil: Perfil, paso_arco: float = 1.0):
     """
-    Espiral de Arquímedes que rellena el fondo de la pieza, del centro hacia
-    afuera. Es lo que le da piso a un bowl sin romper el trazo continuo del
-    modo vaso: se imprime toda la base y se sigue de largo con la pared.
+    Espiral que rellena el fondo de la pieza, del centro hacia afuera. Es lo que
+    le da piso a un bowl sin romper el trazo continuo del modo vaso: se imprime
+    toda la base y se sigue de largo con la pared.
+
+    `forma(angulo) -> radio` es el contorno de la pared. La espiral MORFA con
+    él: cada vuelta es una copia a escala de la silueta, no un círculo. En una
+    pieza cuyo radio ondula (el twist va de 36 a 44 mm) una base circular
+    sobresale donde la pared se mete, y se ve un anillo que no pertenece a la
+    figura.
+
+    El avance se calcula contra el radio MÁXIMO del contorno. Así la separación
+    entre vueltas nunca supera `perfil.ancho` — en la parte ancha da justo, y en
+    la angosta quedan más juntas, o sea con más solape. Al revés (avanzar contra
+    el mínimo) la parte ancha quedaría con huecos y la base saldría calada.
 
     Devuelve (puntos, angulo_final) para que la pared arranque justo donde
     termina la base y no quede un salto.
     """
     cx, cy = perfil.centro
     z = perfil.altura_capa
-    separacion = perfil.ancho  # una vuelta pegada a la anterior
+    r_max = max(forma(k / 180 * math.pi) for k in range(360)) or 1.0
+    avance = perfil.ancho / r_max  # fracción del contorno que se gana por vuelta
     puntos = []
     angulo = 0.0
-    r = 0.0
-    while r <= radio:
+    s = 0.0
+    while s <= 1.0:
+        r = s * forma(angulo)
         puntos.append(fc.Point(x=cx + r * math.cos(angulo), y=cy + r * math.sin(angulo), z=z))
         # paso angular adaptativo: segmentos de largo ~constante en toda la espiral
         angulo += paso_arco / max(r, 0.6)
-        r = separacion * angulo / (2 * math.pi)
-    # cierre exacto en el radio pedido, para empalmar con la pared
-    puntos.append(fc.Point(x=cx + radio * math.cos(angulo), y=cy + radio * math.sin(angulo), z=z))
+        s = avance * angulo / (2 * math.pi)
+    # cierre exacto sobre el contorno, para empalmar con la pared
+    puntos.append(fc.Point(x=cx + forma(angulo) * math.cos(angulo),
+                           y=cy + forma(angulo) * math.sin(angulo), z=z))
     return puntos, angulo
 
 
@@ -238,7 +252,8 @@ def generar_pieza(
     angulo_inicio = 0.0
 
     if base_solida:
-        puntos_base, angulo_inicio = _espiral_base(radio_medio_0, perfil)
+        # La base sigue el CONTORNO de la pared, no un círculo. Ver _espiral_base.
+        puntos_base, angulo_inicio = _espiral_base(lambda a: funcion_radio(a, 0.0), perfil)
         puntos.extend(puntos_base)
 
     # con base sólida la pared arranca una capa más arriba, encima del fondo
@@ -267,7 +282,7 @@ def generar_pieza(
             abs(funcion_dz(s / 400 * 2 * math.pi, 0.5)) for s in range(401)
         )
     modular = bool(modulacion) and amplitud_onda > 1e-9
-    ultimo = {"velocidad": None, "ventilador": None, "ancho": None}
+    ultimo = {"velocidad": None, "ventilador": None, "ancho": None, "k": None, "nodo": 0}
 
     def _pasos_modulacion(dz_crudo: float) -> list:
         """
@@ -280,6 +295,31 @@ def generar_pieza(
         """
         k = min(1.0, max(0.0, (dz_crudo / amplitud_onda + 1) / 2))
         salida = []
+
+        # Espera en el CRUCE: parar con la boquilla quieta deja que la soldadura
+        # con la vuelta de abajo cuaje antes de salir al aire otra vez, así el
+        # puente siguiente arranca de un anclaje sólido en vez de tirar de
+        # material blando. Es la técnica del gcode de "Squeezy Fidget Toy":
+        # retraer, G4, volver a cebar.
+        #
+        # La retracción NO es opcional: parar con la boquilla presurizada deja
+        # un grumo. En extrusión relativa (M83) el -R y el +R se cancelan, así
+        # que la contabilidad de E de FullControl no se entera y queda intacta.
+        #
+        # Se dispara en el FLANCO de bajada: k cruza el umbral una vez por nodo,
+        # no en cada uno de los cientos de puntos que hay cerca del valle.
+        espera = modulacion.get("espera")
+        if espera:
+            ms, retraccion, cada = espera
+            previo = ultimo["k"]
+            if previo is not None and previo >= 0.15 > k:
+                ultimo["nodo"] += 1
+                if ultimo["nodo"] % max(1, cada) == 0:
+                    salida.append(fc.ManualGcode(
+                        text=f"G1 E-{retraccion} F1800\nG4 P{ms} ; esperar a que suelde el cruce\n"
+                             f"G1 E{retraccion} F1800"
+                    ))
+        ultimo["k"] = k
 
         rango = modulacion.get("velocidad")
         if rango:
@@ -297,7 +337,18 @@ def generar_pieza(
 
         rango = modulacion.get("ancho")
         if rango:
-            w = round((rango[0] + (rango[1] - rango[0]) * k) / 0.05) * 0.05
+            # ESCALÓN, no rampa. Copiado del gcode de "Squeezy Fidget Toy":
+            # cordón fino en todo el vano y un blob gordo justo en el cruce, en
+            # vez de un degradé. Medido ahí: 0.950 mm² en los tramos horizontales
+            # contra 0.501 mm² en los que tienen pendiente — 53 %, un escalón
+            # limpio. Se ve a ojo en el visor de flujo de Orca: puntos verdes
+            # sobre malla azul.
+            #
+            # Gana en los dos frentes al mismo tiempo: menos masa colgando en el
+            # puente (descuelga menos y cuaja antes) y más material justo donde
+            # tiene que soldar. Una rampa lineal reparte mal las dos cosas.
+            w = rango[0] if k < 0.15 else rango[1]
+            w = round(w / 0.05) * 0.05
             if w != ultimo["ancho"]:
                 salida.append(
                     fc.ExtrusionGeometry(area_model="rectangle", width=w, height=perfil.altura_capa)
