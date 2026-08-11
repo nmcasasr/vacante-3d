@@ -2,7 +2,7 @@
   "name": "gcode-preview",
   "displayName": "G-code Live Preview",
   "description": "Edit G-code in VS Code and see a live 3D preview, colored by fan state (M106/M107).",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "nicolas",
   "engines": {
     "vscode": "^1.85.0"
@@ -50,6 +50,10 @@
       {
         "command": "gcodePreview.packBambu3mf",
         "title": "G-code → Bambu 3mf (printable over LAN)"
+      },
+      {
+        "command": "gcodePreview.pickBambuTemplate",
+        "title": "G-code: Choose Bambu Template (.gcode.3mf)"
       }
     ],
     "languages": [
@@ -153,7 +157,9 @@
         },
         "gcodePreview.orcaExtraArgs": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "Extra CLI arguments passed to OrcaSlicer."
         },

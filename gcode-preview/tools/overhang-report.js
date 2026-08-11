@@ -46,6 +46,11 @@ function parse(text) {
         else if (c === 'Y') pos.y = absPos ? v : pos.y + v;
         else if (c === 'Z') pos.z = absPos ? v : pos.z + v;
         else if (c === 'E') { if (absExt) { de = v - pos.e; pos.e = v; } else { de = v; pos.e += v; } } }
+      // Un movimiento que extruye sin desplazarse es cebado/purga/carga, no
+      // recorrido. El cambio de filamento del AMS empuja 24 mm parado en el
+      // cortador (X267, fuera de la cama). Ver media/main.js.
+      const moved = (pos.x - start.x) ** 2 + (pos.y - start.y) ** 2 + (pos.z - start.z) ** 2 > 1e-12;
+      if (!moved) continue;
       const e = de > 1e-6;
       V.push(start.x, start.y, start.z, pos.x, pos.y, pos.z); ext.push(e ? 1 : 0); segZ.push(pos.z);
       if (e) { bump(start.x, start.y, start.z); bump(pos.x, pos.y, pos.z); }

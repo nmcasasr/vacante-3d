@@ -7,9 +7,17 @@ moves are colored by fan state so you can see where cooling is on/off:
 - **red** = fan off (`M107`)
 - **dim gray** = travel moves
 
-Handles `G0/G1`, `G90/G91` (abs/rel), `M82/M83` (extruder abs/rel), `G92`, and
-`M106/M107`. Works with continuous spiral (vase mode) g-code since it just plots the
-extrusion path.
+Handles `G0/G1`, `G90/G91` (abs/rel), `M82/M83` (extruder abs/rel), `G92`,
+`M106/M107`, `T0`–`T3` (AMS slot) and `M400 U1` (pause). Works with continuous
+spiral (vase mode) g-code since it just plots the extrusion path.
+
+A move that extrudes **without going anywhere** — a prime, a purge, an AMS load —
+is skipped rather than plotted. It deposits nothing at a place, and counting it as
+toolpath is actively wrong: an AMS filament change parks at the cutter (X267, off
+the right edge of the bed) and pushes 24 mm through there, which stretched the
+bounding box to X267 and, downstream in the 3mf packer, put that into the `G29 A1`
+adaptive bed-mesh region and mis-measured the layer height by 24 % (0.499 mm
+reported for a 0.403 mm print).
 
 The preview also has a **timelapse scrub bar** (play/pause + move slider, spacebar
 to toggle) and a **vertical layer slider** on the right, both synced — drag layers
@@ -21,6 +29,59 @@ below for supporting wall and measures the perpendicular gap → angle from vert
 green (0–30°, safe) → yellow (~45°) → orange (~55°) → red (65°+, likely fails). The
 HUD shows the worst angle. Works on any g-code, and correctly handles vase-mode
 spirals (layers are detected by real Z / revolutions, not by "Z went up").
+
+**Filament changes:** the same button cycles on to **Color: Filament**, which paints
+the path by which filament was loaded and draws a ring around the model at the
+height of every change.
+
+- `T0`–`T3` are the four AMS slots, shown as **A1**–**A4** (the labels on the unit)
+  and given a stable colour each, so returning to A1 late in the print is visibly
+  the same filament. `T1000` and `T255` — the A1's "no tool" sentinels — are not
+  slots and are ignored.
+- `M400 U1` (Bambu's pause; M600 does not exist on these machines) is a colour
+  change too, but the g-code cannot say what got loaded — a human swapped the
+  spool. Those bands get a separate, desaturated palette and are labelled
+  *filament unknown*, so a guess never looks like a known slot.
+- The colours are **identifiers, not the real filament colours**. G-code does not
+  carry those; they live in the `.3mf`'s `project_settings`. A wrong "white" band
+  would read as the print rather than as a legend entry.
+- The ring is drawn at the height where printing **resumes**, not where `T` executed
+  — the change block itself runs off the bed, so that position means nothing.
+
+The legend lists only the slots the file actually uses, plus each change and its Z.
+The HUD counts them, split into AMS and manual.
+
+**Relief:** the last mode in the cycle colours each extrusion by how far its radius
+sits from the mean radius of its own layer — orange bulges out, cyan cuts in, grey
+is flat wall. This is the mode for looking at a **surface pattern**, and without it
+such a pattern is invisible: the path is drawn with flat vertex colours and no
+lighting, so a one-colour band renders as a flat silhouette and a 0.6 mm zigzag on
+a 45 mm radius is under two pixels. (The overhang map shows one only by accident,
+because bulging also changes the local overhang angle.)
+
+Getting this to work is entirely about measuring the centre well enough. The relief
+is 0.6 mm on a 45 mm radius, so an error `e` in the centre injects a fake
+`e·cos(angle)` — a full-circle sinusoid that renders as vertical stripes. Measured
+on a part whose smooth wall is provably round (44.999–44.999 mm):
+
+| centre estimator | error left on the smooth wall |
+|---|---|
+| median over the whole part (`extrusionCentre`) | 0.53 mm — drew stripes instead of the pattern |
+| centroid of the layer | 0.19 mm — pattern washed out |
+| median of the layer | 0.41 mm |
+| **least-squares circle fit per layer** | **0.006 mm** |
+
+The averages fail because a drawing is not distributed symmetrically around the
+axis — two different faces at 0° and 180° do not cancel. The fit does not care
+where the points sit, only that they lie on a circle. Solid layers (a bowl floor is
+a spiral sweeping the whole disc) are not circles and the fit runs away, so it is
+discarded whenever it lands more than 5 mm from the centroid.
+
+The colour scale is the p75 **across layers** of each layer's peak deviation. Both
+halves matter: a percentile over all segments at once is set by the solid base, and
+a percentile *inside* a layer underestimates a line drawing, which is sparse — the
+faces cover 5.7 % of their own bounding box, so a p98 within the layer read 0.30 mm
+for a 0.60 mm pattern.
 
 ## Vase-mode slicer (STL → G-code)
 
@@ -163,13 +224,40 @@ Reload the window afterwards (`Developer: Reload Window`). The commands are then
 available in **every** VS Code window — no F5, no Extension Development Host, no
 special workspace needed. Re-run `npm run reinstall` after changing the source.
 
-## Run it instead (development host)
+## Developing without reinstalling
+
+`npm run reinstall` builds a `.vsix` and installs it, and VS Code then wants a
+window reload to pick it up. That is the right loop for *shipping* a version, and
+the wrong one for iterating — you do not need it at all while developing.
+
+Press **F5** instead: it opens a second window ("Extension Development Host")
+running the extension straight from this folder, with no packaging and no install,
+and it leaves your main window alone. From there the reload you need depends on
+which half you touched:
+
+| you changed | what to do | cost |
+|---|---|---|
+| `media/main.js`, or the HTML/CSS in `getHtml()` | **Developer: Reload Webviews** from the Command Palette — or just close the preview panel and reopen it | instant, nothing restarts |
+| `src/*.ts` (extension host) | **Ctrl+R** / **Cmd+R** in the Extension Development Host window | ~1 s, only that window |
+
+Closing the preview panel is enough for the webview because the panel is a
+singleton that disposes on close, so reopening rebuilds its HTML and re-reads
+`media/main.js` from disk. Most of the visual work — the colour modes, the
+legends, the overhang map — lives in `media/main.js`, so most edits cost nothing
+but a panel reopen.
+
+`F5` runs `npm: watch` as its pre-launch task (`tsc -watch`), so TypeScript is
+already recompiled by the time you hit Ctrl+R. The task is marked
+`isBackground` with the `$tsc-watch` problem matcher — without that pair VS Code
+waits forever for a process that never exits.
+
+### Run it instead (development host)
 
 Only needed when you want breakpoints in the extension itself.
 
 ```bash
 npm install
-npm run compile      # or: npm run watch  (recompiles on change)
+npm run watch        # recompiles on change; F5 starts this for you
 ```
 
 Then in VS Code:

@@ -7,6 +7,17 @@
       "problemMatcher": "$tsc",
       "group": { "kind": "build", "isDefault": true },
       "label": "npm: compile"
+    },
+    {
+      // F5 uses this one. `isBackground` + `$tsc-watch` is what lets VS Code
+      // know the task has reached "Watching for file changes" and that it can
+      // launch now instead of waiting for a process that never exits.
+      "type": "npm",
+      "script": "watch",
+      "isBackground": true,
+      "problemMatcher": "$tsc-watch",
+      "group": "build",
+      "label": "npm: watch"
     }
   ]
 }

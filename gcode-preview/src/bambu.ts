@@ -155,7 +155,13 @@ export interface Stats {
   path: ThumbSeg[]; // extruding moves only, for the preview thumbnails
 }
 
-interface Seg { x1: number; y1: number; z1: number; x2: number; y2: number; z: number; ext: boolean }
+// `moved` separates deposited path from a prime/purge/load done standing still.
+// An AMS filament change parks at the cutter (X267, off the bed) and pushes
+// 24 mm of filament through there; that is real filament (so it counts towards
+// filamentMm) but it is not toolpath. Letting it into the bbox put X267 into
+// bbox_all, into the thumbnails, and into the `G29 A1` adaptive bed-mesh
+// region — i.e. it asked the printer to probe 11 mm off the right edge of the bed.
+interface Seg { x1: number; y1: number; z1: number; x2: number; y2: number; z: number; ext: boolean; moved: boolean }
 
 function scan(body: Body): { segs: Seg[]; filamentMm: number; seconds: number; extrudedMm: number; cum: number[]; zAt: number[] } {
   let absPos = body.absPos, absExt = body.absExt;
@@ -206,10 +212,13 @@ function scan(body: Body): { segs: Seg[]; filamentMm: number; seconds: number; e
       else if (c === 'E') { if (absExt) { de = v - pos.e; pos.e = v; } else { de = v; pos.e += v; } }
     }
     const ext = de > 1e-6;
-    if (ext) { filamentMm += de; extrudedMm += Math.hypot(pos.x - sx, pos.y - sy, pos.z - sz); }
     const dist = Math.hypot(pos.x - sx, pos.y - sy, pos.z - sz);
+    // filamentMm counts every extrusion, moving or not — a purge really does
+    // consume filament. extrudedMm only counts moving ones, because it is the
+    // denominator of the bead cross-section.
+    if (ext) { filamentMm += de; extrudedMm += dist; }
     if (feed > 0) seconds += (dist / feed) * 60;
-    segs.push({ x1: sx, y1: sy, z1: sz, x2: pos.x, y2: pos.y, z: pos.z, ext });
+    segs.push({ x1: sx, y1: sy, z1: sz, x2: pos.x, y2: pos.y, z: pos.z, ext, moved: dist > 1e-6 });
   }
   return { segs, filamentMm, seconds, extrudedMm, cum, zAt };
 }
@@ -239,7 +248,7 @@ function estimateLayerHeight(segs: Seg[], minz: number, maxz: number): number {
 
   const zset = new Set<number>();
   let nExt = 0;
-  for (const s of segs) { if (!s.ext) continue; nExt++; zset.add(Math.round(s.z * 1000)); }
+  for (const s of segs) { if (!s.ext || !s.moved) continue; nExt++; zset.add(Math.round(s.z * 1000)); }
   if (nExt < 2) return 0.2;
 
   // Discrete Z (a normally-sliced print): the median gap between Z levels.
@@ -257,7 +266,7 @@ function estimateLayerHeight(segs: Seg[], minz: number, maxz: number): number {
   const [cx, cy] = extrusionCentre(segs);
   let z0: number | null = null, start = 0;
   for (let i = 0; i < segs.length; i++) {
-    if (!segs[i].ext) continue;
+    if (!segs[i].ext || !segs[i].moved) continue;
     if (z0 === null) { z0 = segs[i].z; start = i; continue; }
     if (Math.abs(segs[i].z - z0) > 1e-6) { start = i; break; }
   }
@@ -266,7 +275,7 @@ function estimateLayerHeight(segs: Seg[], minz: number, maxz: number): number {
 
   let prev: number | null = null, total = 0;
   for (let i = start; i < segs.length; i++) {
-    if (!segs[i].ext) continue;
+    if (!segs[i].ext || !segs[i].moved) continue;
     const a = Math.atan2(segs[i].y2 - cy, segs[i].x2 - cx);
     if (prev !== null) {
       let d = a - prev;
@@ -282,10 +291,15 @@ function estimateLayerHeight(segs: Seg[], minz: number, maxz: number): number {
 // Segments up to the first big drop in Z among extrusions — i.e. the first
 // object on the plate. A sequential-print plate finishes one piece and starts
 // the next back down at the first layer; that drop is the object boundary.
+// NOTE: only moving extrusions count. A filament change lifts 3 mm and extrudes
+// there while standing still; that raised `alto` by 3 mm, so the return to the
+// real print height read as a 3 mm drop and the "next object" test fired on
+// every colour change — truncating the first object at the first change and
+// measuring the layer height off a fragment.
 function firstObject(segs: Seg[]): Seg[] {
   let alto = -Infinity;
   for (let i = 0; i < segs.length; i++) {
-    if (!segs[i].ext) continue;
+    if (!segs[i].ext || !segs[i].moved) continue;
     if (segs[i].z < alto - 2) return segs.slice(0, i);
     alto = Math.max(alto, segs[i].z);
   }
@@ -294,7 +308,7 @@ function firstObject(segs: Seg[]): Seg[] {
 
 export function bodyStats(body: Body): Stats {
   const { segs, filamentMm, seconds, extrudedMm, cum, zAt } = scan(body);
-  const ext = segs.filter((s) => s.ext);
+  const ext = segs.filter((s) => s.ext && s.moved);
   if (!ext.length) throw new Error('The G-code has no extrusion moves — nothing to print.');
 
   let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
@@ -312,7 +326,7 @@ export function bodyStats(body: Body): Stats {
   // two-specimen plate came out as 0.002 mm layers, i.e. 7638 of them.
   const primero = firstObject(segs);
   let z1 = Infinity, z2 = -Infinity;
-  for (const s of primero) { if (!s.ext) continue; z1 = Math.min(z1, s.z); z2 = Math.max(z2, s.z); }
+  for (const s of primero) { if (!s.ext || !s.moved) continue; z1 = Math.min(z1, s.z); z2 = Math.max(z2, s.z); }
   const layerHeight = estimateLayerHeight(primero, isFinite(z1) ? z1 : minz, isFinite(z2) ? z2 : maxz);
   const layerCount = Math.max(1, Math.round((maxz - minz) / layerHeight) + 1);
 
@@ -516,6 +530,51 @@ function patchTail(tail: string[], st: Stats): string[] {
   return out;
 }
 
+// Which AMS slots the body actually loads, 0-based, always including the one it
+// starts on.
+export function slotsUsados(lineas: string[]): number[] {
+  const s = new Set<number>([0]);
+  for (const l of lineas) {
+    const m = /^T([0-3])\s*$/.exec(l.trim());
+    if (m) s.add(parseInt(m[1], 10));
+  }
+  return [...s].sort((a, b) => a - b);
+}
+
+// Reescribe qué filamentos declara el plato para que sean los que el g-code usa
+// de verdad.
+//
+// Sin esto, el .3mf sale internamente contradictorio: la plantilla dice "este
+// plato usa los filamentos 0 y 2" y el toolpath injertado hace `T1`. Orca lo
+// rechaza al abrirlo con "Failed to process the G-code file ... from previous
+// 3mf", que no menciona filamentos por ningún lado.
+//
+// Solo se reasignan los IDs; los perfiles y colores se dejan como están. La
+// plantilla tiene que seguir declarando al menos tantos filamentos como slots
+// use la pieza — eso se verifica antes de llegar acá.
+function patchFilamentIds(json: string, usados: number[]): string {
+  const d = JSON.parse(json);
+  if (Array.isArray(d.filament_ids)) { d.filament_ids = usados; }
+  if (Array.isArray(d.filament_colors) && d.filament_colors.length >= usados.length) {
+    d.filament_colors = d.filament_colors.slice(0, usados.length);
+  }
+  d.first_extruder = usados[0];
+  return JSON.stringify(d);
+}
+
+function patchSliceInfoFilaments(xml: string, usados: number[]): string {
+  // Los <filament id> de slice_info van con base 1.
+  const entradas = [...xml.matchAll(/<filament [^>]*\/>/g)].map((m) => m[0]);
+  let i = 0;
+  let salida = xml.replace(/<filament [^>]*\/>/g, (e) =>
+    i < usados.length ? e.replace(/id="\d+"/, `id="${usados[i++] + 1}"`) : ''
+  );
+  // ...y layer_filament_list con base 0.
+  salida = salida.replace(/filament_list="[^"]*"/g, `filament_list="${usados.join(' ')}"`);
+  void entradas;
+  return salida;
+}
+
 function patchPlateJson(json: string, st: Stats, name: string): string {
   const d = JSON.parse(json);
   const bbox = [st.minx, st.miny, st.maxx, st.maxy];
@@ -580,6 +639,7 @@ export function packBambu3mf(template: Buffer, gcode: string, name = 'gcode-prev
 
   const { head, tail } = splitTemplate(plate.data.toString('utf8'));
   const body = extractBody(gcode);
+  const usados = slotsUsados(body.lines);
   const stats = bodyStats(body);
 
   // Nominal bead geometry from the template's own profile, used only to render
@@ -625,10 +685,12 @@ export function packBambu3mf(template: Buffer, gcode: string, name = 'gcode-prev
     // The firmware checks this. An unchanged md5 means the job is rejected.
     if (e.name === PLATE_MD5) return { ...e, data: Buffer.from(md5, 'ascii') };
     if (e.name === PLATE_JSON) {
-      return { ...e, data: Buffer.from(patchPlateJson(e.data.toString('utf8'), stats, name), 'utf8') };
+      const con = patchPlateJson(e.data.toString('utf8'), stats, name);
+      return { ...e, data: Buffer.from(patchFilamentIds(con, usados), 'utf8') };
     }
     if (e.name === SLICE_INFO) {
-      return { ...e, data: Buffer.from(patchSliceInfo(e.data.toString('utf8'), stats, name), 'utf8') };
+      const con = patchSliceInfo(e.data.toString('utf8'), stats, name);
+      return { ...e, data: Buffer.from(patchSliceInfoFilaments(con, usados), 'utf8') };
     }
     return e; // everything else (thumbnails, settings, rels) rides along untouched
   });
