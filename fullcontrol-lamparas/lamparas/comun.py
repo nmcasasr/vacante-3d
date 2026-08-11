@@ -164,6 +164,16 @@ def _espiral_base(forma: Callable[[float], float], perfil: Perfil, paso_arco: fl
     return puntos, angulo
 
 
+# Lo que el preview necesita para traducir un click en la pantalla a las
+# coordenadas en las que están escritos los toques. `t` no es "altura sobre la
+# cama dividido la altura de la pieza": la base sólida ocupa unas capas abajo y
+# las capas de transición suben menos que las demás, así que el mapeo no es la
+# regla de tres que uno supondría. Adivinarlo desde el gcode significa poner los
+# toques unos milímetros más arriba de donde se los pintó, y eso se ve.
+# Lo llena `generar_pieza`, que es la única que lo sabe de verdad.
+ULTIMO_MAPEO: dict = {}
+
+
 def generar_pieza(
     funcion_radio: FuncionRadio,
     altura: float,
@@ -179,6 +189,7 @@ def generar_pieza(
     silueta_referencia: Optional[Callable[[float], float]] = None,
     cambios: Optional[dict] = None,
     modulacion: Optional[dict] = None,
+    pintura: Optional[dict] = None,
 ) -> list:
     """
     Construye los pasos de FullControl para un sólido de revolución cuyo radio
@@ -229,9 +240,27 @@ def generar_pieza(
             Sirve para lo que el patrón pide a gritos: más material y menos aire
             en los cruces, y máximo aire y mínima velocidad en los picos.
 
-        cambios: `{altura_mm: bloque_gcode}`. El bloque se inserta en el punto
-            donde el recorrido cruza esa altura. Sirve para cambiar de color:
-            ver `lamparas/colores.py`.
+        pintura: pintar una figura CON COLOR, cambiando de filamento al entrar y
+            al salir del dibujo. `{'mascara': fn, 'entrar': bloque, 'salir': bloque}`,
+            donde `mascara(angulo, t) -> 0..1` dice dónde va el dibujo y los
+            bloques son los que devuelve `colores.cambio_ams()`.
+
+            A diferencia de `cambios`, que va por altura, esto dispara **dentro
+            de la vuelta**, en el punto exacto donde el recorrido entra o sale
+            de la figura. Es lo único que permite pintar una forma que no sea
+            una banda horizontal.
+
+            Leé el aviso que imprime: cada cambio son ~56 s de máquina y el
+            color nuevo tarda un par de vueltas en salir limpio, así que un
+            dibujo con detalle sale carísimo y borroneado. Ver el docstring de
+            `lamparas/superficie.py`.
+
+        cambios: `{altura_mm: bloque}`. El bloque se inserta en el punto donde
+            el recorrido cruza esa altura. Sirve para cambiar de color: ver
+            `lamparas/colores.py`. El bloque puede ser una cadena de gcode, un
+            paso de FullControl ya armado, o un **callable** que recibe el
+            último punto impreso y devuelve el gcode — que es lo que usa el
+            cambio por AMS, porque necesita saber adónde volver.
 
     Returns:
         La lista de pasos lista para `fc.transform(...)`.
@@ -357,8 +386,45 @@ def generar_pieza(
 
         return salida
 
+    # --- pintura: cambios de color DENTRO de la vuelta -----------------------
+    # Se dispara en el flanco: la máscara cambia de 0 a 1 (o al revés) entre un
+    # punto y el siguiente, y ahí va el bloque. El bloque necesita saber dónde
+    # está la boquilla, y eso es el ÚLTIMO punto ya emitido — el mismo criterio
+    # que usa `_insertar_cambios`, y por el mismo motivo: volver al punto que
+    # todavía no se imprimió se saltearía ese tramo de pared.
+    pintando = {"estado": None, "n": 0}
+
+    def _pintar(angulo_p: float, t_p: float) -> None:
+        if not pintura:
+            return
+        dentro = pintura["mascara"](angulo_p, t_p) > 0.5
+        if pintando["estado"] is None:
+            pintando["estado"] = dentro
+            return
+        if dentro == pintando["estado"]:
+            return
+        anterior = next((q for q in reversed(puntos) if isinstance(q, fc.Point)), None)
+        if anterior is None:
+            pintando["estado"] = dentro
+            return
+        bloque = pintura["entrar"] if dentro else pintura["salir"]
+        puntos.append(fc.ManualGcode(text=bloque(anterior, perfil.velocidad_impresion)))
+        pintando["estado"] = dentro
+        pintando["n"] += 1
+
     # la primera vuelta arranca exactamente una capa por encima de la base
     z_vuelta = z_offset + pasos_capa[0]
+
+    # z de t=0 (arranque de la pared) y de t=1 (última vuelta), más las alturas
+    # exactas de cada vuelta: con eso el preview invierte z -> t sin suponer que
+    # la espiral sube parejo, que es justo lo que no hace abajo.
+    ULTIMO_MAPEO.clear()
+    ULTIMO_MAPEO.update({
+        "z0": z_vuelta,
+        "z1": z_vuelta + sum(pasos_capa[1:n_capas + 1]),
+        "capas": n_capas,
+        "z_capa": [z_vuelta + sum(pasos_capa[1:c + 1]) for c in range(n_capas + 1)],
+    })
 
     for capa in range(n_capas):
         # La primera capa va a z = altura_capa, no a z = 0: a z = 0 la boquilla
@@ -394,6 +460,7 @@ def generar_pieza(
             z += dz_crudo * mezcla
             if modular:
                 puntos.extend(_pasos_modulacion(dz_crudo))
+            _pintar(angulo, t)
             # el corrimiento angular solo afecta la POSICIÓN; el `angulo` que
             # ven las funciones de forma sigue siendo el que avanza parejo
             angulo_pos = angulo
@@ -418,29 +485,72 @@ def generar_pieza(
     pasos.append(puntos[primero])
     pasos.append(fc.Extruder(on=True))
     resto = puntos[primero + 1:]
-    pasos.extend(_insertar_cambios(resto, cambios) if cambios else resto)
+    pasos.extend(
+        _insertar_cambios(resto, cambios, puntos[primero], perfil.velocidad_impresion)
+        if cambios else resto
+    )
 
+    if pintura and pintando["n"]:
+        _avisar_pintura(pintando["n"])
     _verificar_cama(radio_max, perfil)
     solo_puntos = [p for p in puntos if isinstance(p, fc.Point)]
     _verificar_apoyo(solo_puntos[len(solo_puntos) - n_capas * (segmentos_por_capa + 1):],
                      segmentos_por_capa + 1, perfil)
     if silueta_referencia is not None:
         radios_medios = [silueta_referencia(capa / n_capas) for capa in range(n_capas + 1)]
-    _verificar_voladizo(radios_medios, paso)
+    _verificar_voladizo(radios_medios, paso, perfil.ancho)
     return pasos
 
 
-def _insertar_cambios(puntos: list, cambios: dict) -> list:
+# Segundos de máquina por cambio de filamento del AMS. 29 s de descarga + 25 s
+# de carga, del `project_settings.config` de Bambu, más el viaje. Verificado
+# aparte contra los marcadores M73 de un gcode laminado de 64 cambios: mediana
+# de 60 s, y 55 % del tiempo total de esa pieza. No incluye torre de purga —
+# nuestro bloque no construye ninguna.
+SEGUNDOS_POR_CAMBIO = 56
+
+
+def _avisar_pintura(n: int) -> None:
+    """
+    Avisa cuánto cuesta pintar con cambios de filamento. No aborta: es una
+    decisión de quien imprime, pero tiene que verla antes y no después.
+    """
+    horas = n * SEGUNDOS_POR_CAMBIO / 3600
+    print(
+        f"AVISO: la pintura mete {n} cambios de filamento. A ~{SEGUNDOS_POR_CAMBIO} s "
+        f"cada uno son {horas:.1f} h SOLO en cambiar, aparte del tiempo de impresión."
+    )
+    print(
+        "       Y el color no va a salir limpio: a radio 40 una vuelta consume 33 mm "
+        "de filamento y un blanco->negro tarda ~70 mm en limpiarse, o sea 2 vueltas. "
+        "Cada tramo pintado que dure menos que eso sale mezclado con el anterior."
+    )
+
+
+def _insertar_cambios(puntos: list, cambios: dict, punto_previo=None, velocidad=None) -> list:
     """
     Mete cada bloque de gcode en el punto donde el recorrido cruza su altura.
 
     En los diseños donde la Z ondula dentro de la vuelta (celosía) el cruce
     puede caer en una cresta y adelantar el cambio media vuelta. A la escala de
     un cambio de color da igual.
+
+    `punto_previo` es el punto anterior al primero de `puntos`: hace falta
+    porque un cambio que caiga en el primer punto tiene que poder decir dónde
+    estaba la boquilla antes.
+
+    `velocidad` es la de impresión vigente, en mm/min. Se va siguiendo a lo
+    largo del recorrido —la cambian tanto la modulación por nodo como un
+    `--velocidad-en`— porque el bloque del AMS tiene que reponerla al terminar:
+    emite `F` para sus propios movimientos y FullControl no la vuelve a emitir,
+    ya que para él nunca cambió.
     """
     pendientes = sorted(cambios.items(), key=lambda kv: kv[0])
     salida, i = [], 0
+    ultimo = punto_previo
     for punto in puntos:
+        if isinstance(punto, fc.Printer) and punto.print_speed is not None:
+            velocidad = punto.print_speed
         # La lista puede traer pasos que no son puntos (cambios de velocidad,
         # ventilador o ancho que inyecta la modulación por nodo). Esos no tienen
         # altura: se copian tal cual sin mirarlos.
@@ -449,6 +559,17 @@ def _insertar_cambios(puntos: list, cambios: dict) -> list:
             continue
         while i < len(pendientes) and punto.z >= pendientes[i][0]:
             bloque = pendientes[i][1]
+            # Un callable es un bloque que necesita saber DÓNDE se lo inserta:
+            # el cambio por AMS se lleva la boquilla fuera de la cama y tiene
+            # que volver sola. Se lo llama con el último punto YA IMPRESO, que
+            # es donde está la boquilla de verdad — no con `punto`, que todavía
+            # no se imprimió: volver ahí se saltearía ese tramo de pared.
+            if callable(bloque):
+                bloque = bloque(ultimo if ultimo is not None else punto, velocidad)
+            # Un cambio de velocidad insertado por altura (`--velocidad-en`)
+            # también corre el estado, y puede caer justo antes de un cambio.
+            if isinstance(bloque, fc.Printer) and bloque.print_speed is not None:
+                velocidad = bloque.print_speed
             # Un str es gcode crudo (los cambios de color). Cualquier otra cosa
             # es un paso de FullControl ya armado — `fc.Printer(print_speed=...)`
             # para cambiar de velocidad, por ejemplo. Va tal cual, para que
@@ -456,6 +577,7 @@ def _insertar_cambios(puntos: list, cambios: dict) -> list:
             salida.append(fc.ManualGcode(text=bloque) if isinstance(bloque, str) else bloque)
             i += 1
         salida.append(punto)
+        ultimo = punto
     if i < len(pendientes):
         faltan = [f"{a:.1f}" for a, _ in pendientes[i:]]
         print(
@@ -494,7 +616,7 @@ def _verificar_apoyo(puntos_pared: list, por_vuelta: int, perfil: Perfil) -> Non
         )
 
 
-def _verificar_voladizo(radios_medios: list, paso: float) -> None:
+def _verificar_voladizo(radios_medios: list, paso: float, ancho: float = 0.8) -> None:
     """
     Avisa si la silueta se abre demasiado rápido.
 
@@ -508,12 +630,28 @@ def _verificar_voladizo(radios_medios: list, paso: float) -> None:
     saltos = [radios_medios[i + 1] - radios_medios[i] for i in range(len(radios_medios) - 1)]
     salto_max = max(saltos, default=0.0)
     angulo = math.degrees(math.atan2(salto_max, paso))
-    if angulo > 45:
+    # El número que decide si se cae NO es el ángulo sino cuánto se corre el
+    # radio entre dos vueltas contra el ancho del cordón: eso es el solape con
+    # el que apoya la vuelta nueva. Bajar la velocidad ayuda a que el cordón
+    # cuaje, pero no le devuelve apoyo a algo que quedó en el aire.
+    solape = ancho - salto_max
+    if solape < 0:
         print(
-            f"AVISO: voladizo máximo de {angulo:.0f}° respecto de la vertical "
-            f"({salto_max:.2f} mm de radio por vuelta de {paso:.2f} mm). "
-            "Por encima de ~55° la pared se descuelga: bajá el radio de boca, "
-            "subí la altura o usá una silueta más suave."
+            f"ERROR de voladizo: el radio crece {salto_max:.2f} mm por vuelta y el cordón mide "
+            f"{ancho:.2f} mm. La vuelta nueva NO TOCA la anterior: se cae seguro. "
+            f"({angulo:.0f}° desde la vertical.)"
+        )
+    elif solape < ancho * 0.5:
+        print(
+            f"AVISO: el radio crece {salto_max:.2f} mm por vuelta y el cordón mide {ancho:.2f} mm, "
+            f"o sea {100*solape/ancho:.0f}% de solape ({angulo:.0f}° desde la vertical). "
+            "Por debajo del 50% conviene bajar la velocidad y subir el ventilador en esa zona; "
+            "por debajo del 25% no esperes que salga."
+        )
+    elif angulo > 45:
+        print(
+            f"Voladizo máximo {angulo:.0f}° desde la vertical: {salto_max:.2f} mm de radio por "
+            f"vuelta, {100*solape/ancho:.0f}% de solape sobre un cordón de {ancho:.2f} mm. Imprimible."
         )
 
 
@@ -548,6 +686,217 @@ def a_gcode(pasos: list, perfil: Optional[Perfil] = None) -> str:
         ),
         show_tips=False,
     )
+
+
+# Flags con clave=valor que se convierten en controles. Son los que llevan los
+# parámetros de patrón, estructura, pintura y silueta.
+_FLAGS_KV = ("--p", "--pe", "--pp", "--ps")
+
+# Flags sueltos que también vale la pena exponer, con su rango.
+_FLAGS_SUELTOS = {
+    "--altura": (20.0, 300.0),
+    "--radio-base": (5.0, 110.0),
+    "--radio-boca": (5.0, 110.0),
+    "--radio-max": (5.0, 110.0),
+    "--ancho-linea": (0.3, 1.6),
+    "--velocidad": (120.0, 6000.0),
+}
+
+
+def _rango(clave: str, valor: float):
+    """
+    Rango razonable para un control, a partir del nombre y del valor actual.
+
+    Se adivina en vez de declararse en cada módulo a propósito: un parámetro
+    nuevo aparece como control sin que haya que registrarlo en ningún lado, que
+    es lo que hace que valga la pena mantenerlo. Los nombres que sabemos que son
+    fracciones o cuentas enteras se tratan aparte; el resto sale del valor.
+    """
+    if clave.startswith("t_") or clave.endswith("_t") or clave in ("persistencia", "borde", "vuelo_alto"):
+        return 0.0, 1.0, 0.01
+    if clave in ("octavas", "modos", "cantidad", "dientes", "escala", "n_lados", "semilla", "alternar"):
+        tope = max(4.0, valor * 4)
+        return 0.0, tope, 1.0
+    if "grados" in clave:
+        return 0.0, 360.0, 5.0
+    tope = max(1.0, abs(valor) * 3)
+    return 0.0, tope, tope / 200
+
+
+def descripciones_de(func) -> dict:
+    """
+    Saca `{parámetro: descripción}` del bloque `Args:` del docstring de `func`.
+
+    Se lee del docstring en vez de mantener una tabla aparte a propósito: la
+    tabla se desincroniza en cuanto alguien agrega un parámetro y se olvida de
+    registrarlo, y entonces el tooltip miente — que es peor que no tenerlo. El
+    docstring en cambio se escribe igual porque es lo que uno lee en el código.
+
+    Reconoce el formato de Google (`nombre: texto`, con continuaciones más
+    indentadas), que es el que usa todo el repo.
+    """
+    import inspect
+    import re
+
+    doc = inspect.getdoc(func) or ""
+    if "Args:" not in doc:
+        return {}
+    cuerpo = doc.split("Args:", 1)[1]
+    # el bloque termina en la próxima sección de nivel cero
+    for corte in ("\nReturns:", "\nRaises:", "\nNota:", "\n##"):
+        if corte in cuerpo:
+            cuerpo = cuerpo.split(corte, 1)[0]
+
+    def claves_pendientes(clave, partes, salida):
+        for k in clave or []:
+            salida[k] = " ".join(partes)
+        return ()
+
+    # La sangría de las entradas se MIDE, no se asume. `textwrap.dedent` acá no
+    # sirve: le alcanza una sola línea sin sangrar en el bloque para que el
+    # prefijo común sea 0 y no saque nada — y entonces todas las entradas se
+    # leen como continuaciones y el resultado es un solo parámetro fantasma con
+    # todo el texto pegado.
+    lineas = [l for l in cuerpo.splitlines() if l.strip()]
+    if not lineas:
+        return {}
+    sangria = len(lineas[0]) - len(lineas[0].lstrip())
+
+    salida, clave, partes = {}, None, []
+    for linea in lineas:
+        propia = len(linea) - len(linea.lstrip())
+        # Acepta `nombre: texto` y también `a, b, c: texto` — varios docstrings
+        # documentan juntos los parámetros que van juntos, y sin esto la
+        # descripción del primero se comía la de todos los siguientes.
+        m = (re.match(r"^([\w, ]+): (.*)$", linea.strip())
+             if propia <= sangria else None)
+        if m:
+            for k in claves_pendientes(clave, partes, salida):
+                pass
+            clave, partes = [x.strip() for x in m.group(1).split(",")], [m.group(2)]
+        elif clave:
+            partes.append(linea.strip())
+    claves_pendientes(clave, partes, salida)
+
+    # Solo lo que puede ser un parámetro de verdad: una frase de prosa que
+    # termina en dos puntos ("Es la silueta para una matera: pared vertical…")
+    # calza con el patrón y entraría como un parámetro fantasma.
+    salida = {k: v for k, v in salida.items() if k.isidentifier()}
+    # Los docstrings de acá explican largo; el tooltip quiere lo esencial.
+    return {k: (v if len(v) <= 260 else v[:257].rsplit(" ", 1)[0] + "…") for k, v in salida.items()}
+
+
+def encabezado_receta(argv: list, modulo: str) -> str:
+    """
+    El comando que generó la pieza, como comentario para meter en el gcode.
+
+    El `.params.json` vive en `output/`, que está en `.gitignore`: si se borra
+    esa carpeta, los parámetros se van con ella y la pieza queda huérfana. El
+    gcode en cambio es lo que uno guarda, manda o imprime, así que lleva el
+    comando adentro y se describe solo.
+
+    Va como comentario, o sea que la impresora lo ignora. Y va ANTES del start
+    gcode, así que el empaquetador del .3mf —que corta en el marcador de fin de
+    start gcode— lo descarta al empaquetar sin que estorbe.
+    """
+    partes = [f"python -m {modulo}"] + [str(a) for a in argv[1:]]
+    linea = " ".join(partes)
+    envuelto = []
+    actual = ""
+    for palabra in linea.split(" "):
+        if len(actual) + len(palabra) + 1 > 88:
+            envuelto.append(actual)
+            actual = "    " + palabra
+        else:
+            actual = (actual + " " + palabra) if actual else palabra
+    envuelto.append(actual)
+    cuerpo = "\n".join(f"; {l}" for l in envuelto)
+    return (
+        ";===== RECETA ==================================================\n"
+        "; Este archivo se generó con el comando de abajo. Volvé a correrlo\n"
+        "; para reproducirlo, o cambiale un número para variarlo.\n"
+        f"{cuerpo}\n"
+        ";===============================================================\n"
+    )
+
+
+def guardar_receta(nombre: str, argv: list, modulo: str, descripciones: dict = None,
+                   extra: dict = None) -> Path:
+    """
+    Deja un `<nombre>.params.json` al lado del gcode, con cómo se generó.
+
+    Es lo que le permite al preview ofrecer controles: la extensión lee la
+    receta, arma un slider por cada parámetro numérico y vuelve a invocar este
+    mismo comando con el valor cambiado. El gcode nunca se edita — se regenera,
+    así que no hay forma de que la pieza y sus parámetros se desincronicen, que
+    es el problema que tiene editar el gcode a mano.
+
+    Args:
+        nombre: el mismo que se le pasó a `guardar_gcode`.
+        argv: `sys.argv`, tal cual.
+        modulo: cómo volver a invocar esto, p.ej. "lamparas.bowls". Hace falta
+            porque `sys.argv[0]` de un `python -m paquete` es la ruta del
+            `__main__.py`, y correr ESE archivo directo rompe los imports
+            relativos del paquete. Lo que hay que reconstruir es `-m modulo`.
+        extra: se mezcla tal cual en la receta. Por ahí va el mapeo z<->t, que
+            el preview necesita para saber a qué `t` corresponde un click.
+    """
+    import json
+    import sys
+
+    controles = []
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a in _FLAGS_KV and i + 1 < len(argv) and "=" in argv[i + 1]:
+            clave, _, valor = argv[i + 1].partition("=")
+            try:
+                v = float(valor)
+            except ValueError:
+                i += 2
+                continue
+            mn, mx, paso = _rango(clave, v)
+            controles.append({"flag": a, "clave": clave, "valor": v,
+                              "min": mn, "max": mx, "paso": paso,
+                              "que": (descripciones or {}).get(a, {}).get(clave, "")})
+            i += 2
+            continue
+        if a in _FLAGS_SUELTOS and i + 1 < len(argv):
+            try:
+                v = float(argv[i + 1])
+            except ValueError:
+                i += 2
+                continue
+            mn, mx = _FLAGS_SUELTOS[a]
+            controles.append({"flag": a, "clave": a.lstrip("-"), "valor": v,
+                              "min": mn, "max": mx, "paso": (mx - mn) / 200,
+                              "que": (descripciones or {}).get("", {}).get(a, "")})
+            i += 2
+            continue
+        i += 1
+
+    receta = {
+        "python": sys.executable,
+        "cwd": str(Path.cwd()),
+        # Los argumentos con los que se vuelve a invocar, ya listos para
+        # `spawn(python, args)`. No es `sys.argv`: ver el docstring.
+        "args": ["-m", modulo] + list(argv[1:]),
+        "nombre": nombre,
+        # Con esto la extensión baja la resolución mientras arrastrás: 1.8 s en
+        # vez de 8.6 s. Al soltar regenera completo.
+        # Lo que la extensión agrega mientras arrastrás un slider: baja la
+        # resolución para ir rápido, y NO deja receta — si la dejara, el
+        # `--segmentos` del borrador quedaría pegado y todo lo que se genere
+        # después saldría en baja resolución sin que nadie lo pida.
+        "borrador": ["--segmentos", "120", "--sin-receta"],
+        "controles": controles,
+    }
+    if extra:
+        receta.update(extra)
+    DIR_OUTPUT.mkdir(parents=True, exist_ok=True)
+    ruta = DIR_OUTPUT / f"{nombre}.params.json"
+    ruta.write_text(json.dumps(receta, indent=1))
+    return ruta
 
 
 def guardar_gcode(gcode: str, nombre: str) -> Path:

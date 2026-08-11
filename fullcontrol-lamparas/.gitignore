@@ -1,6 +1,10 @@
 # G-code generado
-output/
 *.gcode
+
+# El .gcode.3mf lo arma el empaquetador del preview a partir del gcode y de una
+# plantilla; se rehace con un click y pesa 1.5 MB. Lo que NO se rehace es la
+# receta y los toques —el diseño— y esos sí van.
+*.gcode.3mf
 
 # Python
 __pycache__/

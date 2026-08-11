@@ -19,6 +19,12 @@ import argparse
 import math
 from typing import Optional
 
+from .colores import (
+    cambios_desde_specs,
+    parsear_filamento,
+    pausa_manual,
+    verificar_slots,
+)
 from .comun import Perfil, a_gcode, generar_lampara, guardar_gcode
 from .impresoras import cargar_gcode
 from .preview import guardar_html, previsualizar
@@ -35,6 +41,7 @@ def pasos_lampara_twist(
     espiral: bool = True,
     base_solida: bool = False,
     capas_transicion: int = 0,
+    cambios: Optional[dict] = None,
 ) -> list:
     """Devuelve los pasos de FullControl de la lámpara (útil para previsualizar)."""
 
@@ -51,6 +58,7 @@ def pasos_lampara_twist(
         espiral=espiral,
         base_solida=base_solida,
         capas_transicion=capas_transicion,
+        cambios=cambios,
     )
 
 
@@ -129,6 +137,18 @@ def _cli() -> None:
                         "lampara sale abierta abajo (es una pantalla). La base se rellena hasta el "
                         "radio MAXIMO de la onda, no el medio, o los lobulos quedarian al aire.")
     p.add_argument("--sin-espiral", action="store_true", help="capas planas en vez de modo vaso")
+    p.add_argument("--cambio", type=float, action="append", default=[], metavar="ALTURA",
+                   help="pausa para cambiar el filamento a mano a esa altura en mm (repetible)")
+    p.add_argument("--cambio-ams", action="append", default=[], metavar="ALTURA:SLOT[:MATERIAL]",
+                   help="cambio de slot del AMS a esa altura, repetible. El SLOT va 1..4, como lo "
+                        "rotula el AMS (en el gcode sale como T0..T3). Ej: --cambio-ams 40:2:PETG")
+    p.add_argument("--slot-inicial", default="1", metavar="SLOT[:MATERIAL]",
+                   help="con qué filamento arranca la pieza (por defecto 1, o sea A1 con PLA)")
+    p.add_argument("--purga", type=float, default=0.0, metavar="MM",
+                   help="mm de filamento a purgar en cada cambio de AMS (por defecto 0, sin purga)")
+    p.add_argument("--plantilla-3mf", metavar="RUTA",
+                   help="plantilla .gcode.3mf con la que se va a empaquetar, solo para avisar si no "
+                        "declara todos los slots del AMS que usa la pieza")
     p.add_argument("--nombre", default="lampara_twist", help="nombre del .gcode en output/")
     p.add_argument("--sin-nivelacion", action="store_true", help="no incluir G29 en el start gcode")
     p.add_argument("--start-gcode", help="archivo con el start gcode a usar (p.ej. el de Bambu Studio)")
@@ -151,7 +171,22 @@ def _cli() -> None:
     if args.ventilador is not None:
         ajustes["ventilador"] = args.ventilador
     perfil = Perfil(**ajustes)
+    cambios = {h: pausa_manual(f"a {h:.1f} mm") for h in args.cambio}
+    if args.cambio_ams:
+        # Un slot inválido es un error de uso, no un bug: sale por argparse en
+        # vez de por un traceback.
+        try:
+            inicial = parsear_filamento(args.slot_inicial)
+            cambios.update(cambios_desde_specs(args.cambio_ams, inicial, args.purga, perfil))
+            slots = [inicial.slot] + [parsear_filamento(s.split(":", 1)[1]).slot
+                                      for s in args.cambio_ams]
+        except ValueError as e:
+            p.error(str(e))
+        if args.plantilla_3mf:
+            verificar_slots(slots, args.plantilla_3mf)
+
     comunes = dict(
+        cambios=cambios or None,
         base_solida=args.con_base,
         capas_transicion=args.capas_transicion,
         radio_base=args.radio_base,
