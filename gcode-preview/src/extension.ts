@@ -1103,13 +1103,17 @@ function getHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
        Las cotas y los rótulos van en versalitas espaciadas; los valores, en
        tipo normal, que es donde se apoya la lectura.
        --------------------------------------------------------------------- */
+    /* Plano sobre papel, no heliografía: el gris neutro de Orca cansa mucho
+       menos en una sesión larga que el azul saturado a pantalla completa, y la
+       tinta oscura sobre claro es como se leen los planos de verdad. Los roles
+       son los mismos, invertidos. */
     :root {
-      --papel: #0d3583;        /* fondo */
-      --papel-2: #10409c;      /* relleno de paneles */
-      --tinta: #cddcff;        /* líneas y texto secundario */
-      --tinta-viva: #ffffff;   /* valores y títulos */
-      --tinta-tenue: #6d92dd;  /* rótulos y bordes */
-      --acento: #ff6b4a;       /* una sola nota cálida, para lo que actúa */
+      --papel: #ebeae7;        /* fondo — el gris de Orca */
+      --papel-2: #f7f6f4;      /* relleno de paneles */
+      --tinta: #33518f;        /* líneas y texto secundario */
+      --tinta-viva: #16264d;   /* valores y títulos */
+      --tinta-tenue: #93a3c4;  /* rótulos y bordes */
+      --acento: #e8562a;       /* una sola nota cálida, para lo que actúa */
       --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
     }
     html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: var(--papel); }
@@ -1119,6 +1123,7 @@ function getHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
       position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
       font: 10px/1.5 var(--mono); letter-spacing: .08em; text-transform: uppercase;
       color: var(--tinta); pointer-events: none; z-index: 10; white-space: nowrap;
+      max-width: calc(100vw - 24px); overflow: hidden; text-overflow: ellipsis;
     }
     #build {
       position: fixed; bottom: 8px; left: 12px; font: 9px/1 var(--mono);
@@ -1127,7 +1132,7 @@ function getHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
 
     /* --- marco común de los paneles ------------------------------------- */
     #params, #legend {
-      background: rgba(13, 53, 131, .92);
+      background: rgba(247, 246, 244, .94);
       border: 1px solid var(--tinta-tenue);
       color: var(--tinta);
       font: 11px/1.5 var(--mono);
@@ -1139,15 +1144,15 @@ function getHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
     }
     .sw {
       display: inline-block; width: 8px; height: 8px; margin-right: 6px;
-      vertical-align: middle; border: 1px solid rgba(255,255,255,.35);
+      vertical-align: middle; border: 1px solid rgba(22,38,77,.35);
     }
-    #modeBtn, #travelBtn, #solidBtn {
+    #modeBtn, #travelBtn, #solidBtn, #escBtn {
       display: block; width: 100%; margin: 0 0 5px; padding: 4px 10px; cursor: pointer;
       font: 10px/1.4 var(--mono); letter-spacing: .09em; text-transform: uppercase;
       color: var(--tinta-viva); background: transparent;
       border: 1px solid var(--tinta-tenue); border-radius: 0; text-align: left;
     }
-    #modeBtn:hover, #travelBtn:hover, #solidBtn:hover {
+    #modeBtn:hover, #travelBtn:hover, #solidBtn:hover, #escBtn:hover {
       background: var(--papel-2); border-color: var(--tinta);
     }
 
@@ -1186,7 +1191,7 @@ function getHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
     #plantilla {
       margin: -6px 0 10px; padding: 4px 0 0; cursor: pointer;
       font-size: 9px; letter-spacing: .07em; color: var(--tinta-tenue);
-      border-top: 1px solid rgba(109,146,221,.35);
+      border-top: 1px solid rgba(147,163,196,.55);
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     #plantilla:hover { color: var(--acento); }
@@ -1194,7 +1199,7 @@ function getHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
     .par-grupo {
       margin: 12px 0 6px; font-size: 9px; letter-spacing: .16em;
       text-transform: uppercase; color: var(--tinta-tenue);
-      border-top: 1px solid rgba(109,146,221,.45); padding-top: 7px;
+      border-top: 1px solid rgba(147,163,196,.65); padding-top: 7px;
     }
     .par-grupo:first-child { border-top: none; margin-top: 0; padding-top: 0; }
     .par { margin-bottom: 9px; }
@@ -1240,7 +1245,7 @@ function getHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
     .cota {
       position: fixed; z-index: 5; pointer-events: none;
       font: 9px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
-      color: var(--tinta-viva); background: rgba(13, 53, 131, .8);
+      color: var(--tinta-viva); background: rgba(247, 246, 244, .88);
       padding: 2px 5px; transform: translate(-50%, -50%); white-space: nowrap;
     }
     .cota.hidden { display: none; }
@@ -1250,7 +1255,7 @@ function getHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
       position: fixed; left: 12px; bottom: 70px; width: 272px;
       max-height: calc(100vh - 420px); overflow-y: auto;
       padding: 10px 12px 12px; box-sizing: border-box; z-index: 30;
-      background: rgba(13, 53, 131, .92); border: 1px solid var(--tinta-tenue);
+      background: rgba(247, 246, 244, .94); border: 1px solid var(--tinta-tenue);
       color: var(--tinta); font: 11px/1.5 var(--mono);
     }
     #esculpir.hidden { display: none; }
@@ -1272,7 +1277,7 @@ function getHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
     #esc-gesto {
       margin: -6px 0 9px; padding-bottom: 7px; font-size: 8.5px;
       letter-spacing: .1em; text-transform: uppercase; color: var(--tinta);
-      border-bottom: 1px solid rgba(109,146,221,.35);
+      border-bottom: 1px solid rgba(147,163,196,.55);
     }
     #esculpir select {
       width: 100%; margin: 2px 0 8px; padding: 3px 4px; border-radius: 0;
@@ -1297,7 +1302,7 @@ function getHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
     }
     .esc-toque {
       display: flex; align-items: baseline; gap: 6px; padding: 3px 0;
-      border-top: 1px solid rgba(109,146,221,.35); font-size: 9.5px;
+      border-top: 1px solid rgba(147,163,196,.55); font-size: 9.5px;
     }
     .esc-toque > span:first-child { flex: 1 1 auto; letter-spacing: .04em; }
     .esc-toque b { color: var(--tinta-viva); font-weight: 400; font-variant-numeric: tabular-nums; }
@@ -1324,7 +1329,7 @@ function getHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
       display: flex; align-items: center; gap: 14px;
       width: min(760px, calc(100vw - 40px));
       padding: 8px 14px; box-sizing: border-box;
-      background: rgba(13, 53, 131, .92); border: 1px solid var(--tinta-tenue);
+      background: rgba(247, 246, 244, .94); border: 1px solid var(--tinta-tenue);
       border-radius: 0; font: 10px/1 var(--mono); letter-spacing: .08em;
       color: var(--tinta); z-index: 20; user-select: none;
     }
@@ -1365,6 +1370,33 @@ function getHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
       border: 1px solid var(--tinta-viva); border-radius: 0;
     }
     #layer-top { white-space: pre; }
+
+    /* --- panel angosto ---------------------------------------------------
+       El preview vive en una columna de VS Code, no en una ventana: puede
+       quedar en 600 px de ancho o en 380 de alto. Con las medidas fijas, el
+       panel de parámetros y la leyenda se montaban uno sobre otro y tapaban
+       justo la pieza. Se achica lo que se puede y se esconde lo que sobra,
+       por orden de importancia: primero el esculpido —que necesita espacio
+       para ser usable—, después las filas de detalle de la leyenda. */
+    @media (max-width: 900px) {
+      #params { width: 208px; padding: 8px 9px 10px; font-size: 10px; }
+      #legend { padding: 6px 7px; font-size: 10px; }
+      #esculpir { width: 208px; }
+      #hud { font-size: 9px; letter-spacing: .05em; }
+      #timebar { gap: 8px; padding: 6px 9px; }
+      .cota { font-size: 8px; padding: 1px 3px; }
+    }
+    @media (max-width: 640px) {
+      /* Ya no caben las dos columnas: la leyenda pasa a ser solo los botones. */
+      #legend > div:not([id]) { display: none; }
+      #params, #esculpir { width: 176px; }
+      #tlabel { display: none; }
+    }
+    @media (max-height: 560px) {
+      #params { max-height: calc(100vh - 96px); }
+      #esculpir { display: none; }        /* esculpir sin altura no se puede usar */
+      #layerbar { display: none; }
+    }
   </style>
 </head>
 <body>
@@ -1382,21 +1414,29 @@ function getHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
     <div id="params-lista"></div>
   </div>
   <div id="legend">
-    <button id="modeBtn" title="Cycle color scheme: fan → overhang → filament → bleed → relief">Color: Fan</button>
+    <button id="modeBtn" title="Cycle color scheme: fan → overhang → solape → velocidad → filament → bleed → relief">Color: Fan</button>
     <button id="travelBtn" title="Show or hide travel moves (T)">Travel: shown</button>
     <button id="solidBtn" title="Draw extrusions at real bead thickness (S)">Render: lines</button>
     <button id="escBtn" title="Esculpir (E): clic izquierdo sobre la pieza y arrastrá — arriba/abajo jala o empuja, izquierda/derecha agranda o achica el pincel. Para orbitar: clic derecho, o Shift + clic izquierdo.">Sculpt: off</button>
     <div id="legend-fan">
-      <div><span class="sw" style="background:#cddcff"></span>fan ON (M106 S255)</div>
-      <div><span class="sw" style="background:#ff5a3c"></span>fan OFF (M107)</div>
-      <div><span class="sw" style="background:#3a63c4"></span>travel move</div>
+      <div><span class="sw" style="background:#1f3f8f"></span>fan ON (M106 S255)</div>
+      <div><span class="sw" style="background:#e8562a"></span>fan OFF (M107)</div>
+      <div><span class="sw" style="background:#a8b2c6"></span>travel move</div>
     </div>
     <div id="legend-ovh" style="display:none">
       <div>overhang (angle from vertical)</div>
-      <div><span class="sw" style="background:#2fbf4d"></span>0–30° safe</div>
-      <div><span class="sw" style="background:#ffd23f"></span>~45° watch</div>
-      <div><span class="sw" style="background:#ff8c1a"></span>~55° risky</div>
-      <div><span class="sw" style="background:#ff2a2a"></span>65°+ likely fails</div>
+      <div><span class="sw" style="background:#146638"></span>0–30° safe</div>
+      <div><span class="sw" style="background:#a16207"></span>~45° watch</div>
+      <div><span class="sw" style="background:#c2410c"></span>~55° risky</div>
+      <div><span class="sw" style="background:#b91c1c"></span>65°+ likely fails</div>
+    </div>
+    <!-- Lo llena main.js: una fila por escalón, con los mm/s reales. -->
+    <div id="legend-vel" style="display:none"></div>
+    <div id="legend-sol" style="display:none">
+      <div>solape entre vueltas (del ancho del cordón)</div>
+      <div><span class="sw" style="background:#157f3c"></span>50%+ apoya bien</div>
+      <div><span class="sw" style="background:#a16207"></span>~25% justo</div>
+      <div><span class="sw" style="background:#b91c1c"></span>0% no se tocan</div>
     </div>
     <!-- Filled in by main.js: one row per AMS slot the print actually uses. -->
     <div id="legend-fil" style="display:none"></div>
@@ -1407,9 +1447,9 @@ function getHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
     </div>
     <div id="legend-rel" style="display:none">
       <div>relief (vs. the layer's mean radius)</div>
-      <div><span class="sw" style="background:#ff9d2e"></span>bulges outward</div>
-      <div><span class="sw" style="background:#2a51a8"></span>flat wall</div>
-      <div><span class="sw" style="background:#35c8d8"></span>cuts inward</div>
+      <div><span class="sw" style="background:#c2410c"></span>bulges outward</div>
+      <div><span class="sw" style="background:#5a6378"></span>flat wall</div>
+      <div><span class="sw" style="background:#0e6f84"></span>cuts inward</div>
     </div>
   </div>
   <div id="cargando" class="hidden"><i></i></div>

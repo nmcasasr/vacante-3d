@@ -380,33 +380,101 @@ const FEATURE = '; FEATURE: Outer wall';
 //
 // The bead's cross-section comes straight from the flow. Anchor it on the
 // template's nominal line width to split that area into width × height.
-function beadHeight(st: Stats, lineWidth: number, fallback: number): number {
-  if (!(st.extrudedMm > 0)) return fallback;
-  const area = (st.filamentMm * Math.PI * (1.75 / 2) ** 2) / st.extrudedMm;
-  const h = area / lineWidth;
-  return h > 0.01 && h < 5 ? h : fallback;
+// El ancho de cordón que el propio cuerpo declara con `;WIDTH:`. Es una
+// anotación pura —no arma capas— justamente para que meterla no pueda romper el
+// injerto: `; CHANGE_LAYER` sí arma capas, y además marca dónde termina el
+// start-gcode de la plantilla, así que el cuerpo no puede emitirlo.
+function anchoDeclarado(lines: string[]): number | null {
+  for (const l of lines) {
+    const m = /^;\s*WIDTH:\s*([0-9.]+)/.exec(l);
+    if (m) {
+      const w = parseFloat(m[1]);
+      if (w > 0.05 && w < 5) return w;
+    }
+  }
+  return null;
 }
 
-function injectProgress(body: Body, st: Stats, bead: number): { lines: string[]; layers: number } {
+// El ancho del cordón cuando el cuerpo no lo declara: se despeja del área que
+// sale del flujo, dividida por la altura de capa que se detectó recorriendo la
+// pieza. Antes esto devolvía la ALTURA (área / ancho nominal de la plantilla) y
+// se usaba como `; LAYER_HEIGHT:`, que es de dónde venía el desajuste.
+// La altura de cordón que el cuerpo declara con `;HEIGHT:`, si la declara.
+function alturaDeclarada(linea: string): number | null {
+  const m = /^;\s*HEIGHT:\s*([0-9.]+)/.exec(linea);
+  if (!m) return null;
+  const h = parseFloat(m[1]);
+  return h > 0.001 && h < 5 ? h : null;
+}
+
+
+// El techo de capa que declara el cuerpo con `;Z:`.
+function techoDeclarado(linea: string): number | null {
+  const m = /^;\s*Z:\s*([0-9.]+)/.exec(linea);
+  if (!m) return null;
+  const z = parseFloat(m[1]);
+  return z >= 0 && z < 1e4 ? z : null;
+}
+
+
+function beadAncho(st: Stats, layerHeight: number, fallback: number): number {
+  if (!(st.extrudedMm > 0) || !(layerHeight > 0)) return fallback;
+  const area = (st.filamentMm * Math.PI * (1.75 / 2) ** 2) / st.extrudedMm;
+  const w = area / layerHeight;
+  return w > 0.05 && w < 5 ? w : fallback;
+}
+
+// `ancho` se declara con `;WIDTH:` en cada capa; `bead` ya no se usa como
+// altura porque no lo es.
+function injectProgress(body: Body, st: Stats, ancho: number,
+                        declaraAncho: boolean): { lines: string[]; layers: number } {
   const out: string[] = [];
   const total = Math.max(1, st.seconds);
   const lh = st.layerHeight;
   let lastPct = -1, layer = 0;
 
-  const openLayer = (z: number) => {
+  // La altura que se declara es la SUBIDA REAL de la capa, no una constante.
+  //
+  // Acá había dos números distintos y el código usaba uno para decidir y el
+  // otro para declarar: la capa se abre cuando la Z se movió `st.layerHeight`
+  // (0.274 mm en la cabeza del hongo) y se declaraba `bead` (0.400), que sale
+  // de `area / lineWidth` y por lo tanto es la separación medida SOBRE LA
+  // SUPERFICIE, no la subida vertical. En una pared vertical coinciden; en una
+  // cúpula no, y ahí el visor dibuja cordones más altos que el espacio que
+  // realmente ocupan. Medido sobre la cabeza del hongo: 0.400 declarado contra
+  // 0.274 real, x1.5 en toda la pieza, y hasta 8 veces más recorrido metido
+  // dentro de una misma capa declarada cerca del tope.
+  //
+  // Con la subida real se cumple  Z_HEIGHT[i] - Z_HEIGHT[i-1] == LAYER_HEIGHT[i],
+  // que es la invariante que `verificar_capas.py` comprueba.
+  // `z` es donde ARRANCA la capa; se declara su TECHO, que es donde queda la
+  // boquilla al terminarla — la convención de cualquier slicer. Declarando el
+  // arranque, el 86 % de los movimientos caía fuera del rango de su propia capa
+  // (medido con `verificar_capas.py` sobre el injerto de la cabeza del hongo).
+  const openLayer = (z: number, alto: number, esTecho = false) => {
     layer++;
     out.push(
       '; CHANGE_LAYER',
-      `; Z_HEIGHT: ${z.toFixed(3)}`,
-      `; LAYER_HEIGHT: ${bead.toFixed(3)}`,
+      `; Z_HEIGHT: ${(esTecho ? z : z + alto).toFixed(3)}`,
+      `; LAYER_HEIGHT: ${alto.toFixed(3)}`,
       // total is patched in afterwards, once we know how many we emitted
       `; layer num/total_layer_count: ${layer}/@@TOTAL@@`,
       `M73 L${layer}`,
       FEATURE
     );
+    // Y el ancho, explícito. Si no se declara, el visor lo deduce como
+    // area/altura, y con la altura ya corregida esa cuenta da el cordón
+    // inclinado —más grueso de lo que es— justo donde la pared se acuesta.
+    // Solo se emite si el cuerpo no lo trae ya.
+    // `; LINE_WIDTH:` es el nombre que lee Orca; se comprobó abriendo un
+    // g-code exportado por él. Con `;WIDTH:` lo ignoraba y deducía el ancho
+    // como area/altura.
+    if (declaraAncho) {
+      out.push(`; LINE_WIDTH: ${ancho.toFixed(3)}`);
+      out.push(`;WIDTH:${ancho.toFixed(3)}`);
+    }
   };
 
-  openLayer(st.minz);
   // Track the last Z we announced and react to any move away from it, in either
   // direction. A rising threshold breaks the moment Z is not monotonic: a plate
   // with several objects lifts to travel and then starts the next one back down
@@ -415,10 +483,49 @@ function injectProgress(body: Body, st: Stats, bead: number): { lines: string[];
   // viewer draws nothing for them.
   let lastZ = st.minz;
 
+  // Un solo criterio manda, no los dos. Si el cuerpo declara sus alturas, el
+  // heurístico de "la Z se movió una capa" tiene que apagarse: si no, una vuelta
+  // que sube 0.400 dispara los dos y se abren capas de más. Medido: 682 capas
+  // declaradas donde la pieza tiene 425, y la suma se iba a 187 mm en una pieza
+  // de 116.
+  const cuerpoDeclara = body.lines.some((l) => alturaDeclarada(l) !== null);
+  // La capa semilla se abre con la primera altura que declara el cuerpo, no con
+  // la detectada: si no, esa sola capa no cierra contra la siguiente.
+  const primera = body.lines.map(alturaDeclarada).find((h) => h !== null);
+  let techo: number | null = null;
+
+  // Sin capa semilla cuando el cuerpo declara las suyas: la abre él en su
+  // primera anotación, incluida la del piso.
+  if (!cuerpoDeclara) openLayer(st.minz, lh);
+
   for (let i = 0; i < body.lines.length; i++) {
     const z = st.zAt[i];
-    if (Math.abs(z - lastZ) >= lh) {
-      openLayer(z);
+    // `z > 0` no es defensivo de más: antes del primer movimiento que fija Z,
+    // `zAt` vale 0, y sin la guarda se abría una capa en z=0 que luego volvía a
+    // subir. El visor recibía una pila que baja y vuelve, y `verificar_capas.py`
+    // lo marcaba como "Z_HEIGHT crece siempre: 1 violación en la capa 0".
+    // Si el CUERPO declara la altura de su capa, manda él.
+    //
+    // Una constante no alcanza para una pieza en modo vaso: la vuelta sube
+    // 0.400 donde la pared es vertical y 0.050 donde se acuesta. Con un solo
+    // número, donde la vuelta sube menos el visor mete varias pasadas en la
+    // misma capa y las dibuja más altas de lo que son — se ve como un aro en
+    // la cúpula. Comprobado bajando la constante de 0.400 a 0.274: el aro se
+    // corrió hacia arriba y se achicó en vez de desaparecer, que es justo lo
+    // que predice el mecanismo.
+    // El cuerpo puede declarar el TECHO de su capa con `;Z:`. Hace falta porque
+    // la altura del cordón no sirve para apilar: con la pared acostada el
+    // cordón mide 1.2 mm de alto mientras la vuelta sube 0.05, y los cordones
+    // se solapan. Sin `;Z:` la pila declarada se iba al doble de la pieza.
+    const zDecl = cuerpoDeclara ? techoDeclarado(body.lines[i]) : null;
+    if (zDecl !== null) techo = zDecl;
+    const hDecl = cuerpoDeclara ? alturaDeclarada(body.lines[i]) : null;
+    if (hDecl !== null) {
+      openLayer(techo ?? z + hDecl, hDecl, techo !== null);
+      lastZ = z;
+      techo = null;
+    } else if (!cuerpoDeclara && z > 0 && Math.abs(z - lastZ) >= lh) {
+      openLayer(z, lh);
       lastZ = z;
     }
 
@@ -632,6 +739,41 @@ export interface PackResult {
   plateGcode: string;
 }
 
+// Temperaturas que pide la pieza, leídas de su propio preámbulo.
+//
+// El start g-code de la plantilla se copia tal cual porque hace bien todo lo de
+// la máquina — pero también trae SUS temperaturas, que son las del material con
+// el que se exportó la plantilla. Una pieza de PETG empaquetada contra una
+// plantilla de PLA salía con la cama a 65 en vez de 80: el g-code decía una
+// cosa y el 3mf imprimía otra.
+function temperaturasDe(gcode: string): { boquilla?: number; cama?: number } {
+  const fin = gcode.split(/\r?\n/).findIndex((l) => FC_BODY_START.test(l));
+  const preambulo = gcode.split(/\r?\n/).slice(0, fin >= 0 ? fin : 200);
+  const out: { boquilla?: number; cama?: number } = {};
+  for (const l of preambulo) {
+    let m = /^M10[49]\s+S(\d+)/i.exec(l.trim());
+    if (m) { out.boquilla = parseInt(m[1], 10); continue; }
+    m = /^M1[49]0\s+S(\d+)/i.exec(l.trim());
+    if (m) { out.cama = parseInt(m[1], 10); }
+  }
+  return out;
+}
+
+// Reescribe las temperaturas del start g-code de la plantilla con las de la
+// pieza. Solo las que la pieza declara: si no dice nada, se deja la plantilla.
+function conTemperaturas(head: string[], t: { boquilla?: number; cama?: number }): string[] {
+  if (t.boquilla === undefined && t.cama === undefined) return head;
+  return head.map((l) => {
+    if (t.boquilla !== undefined && /^M10[49]\s+S\d+/i.test(l.trim())) {
+      return l.replace(/S\d+/i, `S${t.boquilla}`);
+    }
+    if (t.cama !== undefined && /^M1[49]0\s+S\d+/i.test(l.trim())) {
+      return l.replace(/S\d+/i, `S${t.cama}`);
+    }
+    return l;
+  });
+}
+
 export function packBambu3mf(template: Buffer, gcode: string, name = 'gcode-preview'): PackResult {
   const entries = listZipEntries(template);
   const plate = findEntry(entries, (n) => n === PLATE_GCODE);
@@ -642,8 +784,17 @@ export function packBambu3mf(template: Buffer, gcode: string, name = 'gcode-prev
   const usados = slotsUsados(body.lines);
   const stats = bodyStats(body);
 
-  // Nominal bead geometry from the template's own profile, used only to render
-  // the toolpath at the right thickness in a slicer preview.
+  // Nominal bead geometry, used only to render the toolpath at the right
+  // thickness in a slicer preview.
+  //
+  // El cuerpo manda sobre la plantilla. La plantilla es un perfil cualquiera
+  // —0.42 mm de cordón con boquilla de 0.4— y el cuerpo puede estar hecho con
+  // una boquilla de 0.8 y cordón de 1.2. Anclando en el ancho de la plantilla,
+  // `beadHeight` devolvía 0.480/0.42 = 1.143 y Orca dibujaba la pieza entera
+  // con 0.42 mm de cordón: todo el mapa de ancho corrido, en una pieza cuyo
+  // cordón real es 1.2 y constante.
+  //
+  // Por eso el generador anota `;WIDTH:` en el cuerpo. Si está, gana.
   const settings = findEntry(entries, (n) => n === PROJECT_SETTINGS);
   let lineWidth = 0.42, layerHeight = 0.2;
   if (settings) {
@@ -653,17 +804,20 @@ export function packBambu3mf(template: Buffer, gcode: string, name = 'gcode-prev
       layerHeight = parseFloat(cfg.layer_height) || layerHeight;
     } catch { /* keep the defaults; this only affects preview thickness */ }
   }
-  const bead = beadHeight(stats, lineWidth, layerHeight);
+  const declarado = anchoDeclarado(body.lines);
+  if (declarado) lineWidth = declarado;
+  else lineWidth = beadAncho(stats, layerHeight, lineWidth);
 
   // The body is built first: how many layers it really contains only falls out
   // of walking it, and the header has to agree with the markers inside.
-  const cuerpo = injectProgress(body, stats, bead);
+  const cuerpo = injectProgress(body, stats, lineWidth, !declarado);
   const real: Stats = { ...stats, layerCount: cuerpo.layers };
 
   // Orca writes LF only and ends the file with a newline; the md5 is over these
   // exact bytes, so keep both.
   const plateGcode =
-    [...patchHead(head, real, name, body), ...cuerpo.lines, ...patchTail(tail, real)].join('\n') + '\n';
+    [...conTemperaturas(patchHead(head, real, name, body), temperaturasDe(gcode)),
+     ...cuerpo.lines, ...patchTail(tail, real)].join('\n') + '\n';
   const plateBuf = Buffer.from(plateGcode, 'utf8');
   const md5 = crypto.createHash('md5').update(plateBuf).digest('hex').toUpperCase();
 

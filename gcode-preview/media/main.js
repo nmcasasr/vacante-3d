@@ -15,13 +15,13 @@
 
   // Paleta del plano. Los viajes van un paso por encima del papel: presentes,
   // pero nunca compitiendo con la pieza.
-  const TRAVEL_COL = 0x3a63c4;
-  const TRAVEL_HEX = '#3a63c4';
+  const TRAVEL_COL = 0xa8b2c6;
+  const TRAVEL_HEX = '#a8b2c6';
 
   const scene = new THREE.Scene();
   // Azul de plano: el mismo papel que el panel, para que el modelo se lea como
   // un dibujo tecnico sobre la hoja y no como una ventana 3D pegada al lado.
-  scene.background = new THREE.Color(0x0d3583);
+  scene.background = new THREE.Color(0xebeae7);
 
   const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 5000);
   camera.up.set(0, 0, 1); // printer Z is up
@@ -33,7 +33,7 @@
   // Ambient stays low and a directional light does the work, because the solid
   // render needs shading to read as a surface. Lines are unaffected: they use
   // LineBasicMaterial, which ignores lights entirely.
-  scene.add(new THREE.AmbientLight(0xffffff, 0.42));
+  scene.add(new THREE.AmbientLight(0xffffff, 0.62));
   const sol = new THREE.DirectionalLight(0xffffff, 0.85);
   sol.position.set(1, -1.4, 1.2);
   scene.add(sol);
@@ -139,6 +139,71 @@
     return { total, porSeg, acum, pausas };
   }
 
+  // Velocidad real de cada segmento: largo dividido el tiempo que sale del
+  // modelo trapezoidal. No es la F del g-code — en un tramo de 0.4 mm entre dos
+  // esquinas la máquina no llega ni cerca de lo que se le pidió, y ver dónde
+  // pasa eso explica por qué una pieza tarda más de lo que uno calculó.
+  // Sobre papel claro, un gris en el medio de la rampa no se ve: se confunde
+  // con el fondo justo en los valores más frecuentes. Los tres extremos tienen
+  // que ser oscuros. Azul -> violeta -> naranja recorre el tono sin pasar por
+  // ningún claro.
+  const VEL_LENTO = [0x1b, 0x3a, 0x7a];
+  const VEL_MEDIO = [0x8a, 0x2f, 0x8c];
+  const VEL_RAPIDO = [0xe8, 0x56, 0x2a];
+  const velHex = (t) => {
+    const a = t < 0.5 ? VEL_LENTO : VEL_MEDIO;
+    const b = t < 0.5 ? VEL_MEDIO : VEL_RAPIDO;
+    const k = t < 0.5 ? t * 2 : (t - 0.5) * 2;
+    const c = [0, 1, 2].map((i) => Math.round(a[i] + (b[i] - a[i]) * k));
+    return '#' + c.map((v) => v.toString(16).padStart(2, '0')).join('');
+  };
+
+  function coloresVelocidad(V, ext, porSeg, travelCol) {
+    const n = ext.length;
+    const colors = new Float32Array(n * 6);
+    const v = new Float64Array(n);
+    const muestras = [];
+    for (let i = 0; i < n; i++) {
+      const o = i * 6;
+      const d = Math.hypot(V[o + 3] - V[o], V[o + 4] - V[o + 1], V[o + 5] - V[o + 2]);
+      v[i] = porSeg[i] > 1e-9 ? d / porSeg[i] : 0;
+      if (ext[i] && v[i] > 0) muestras.push(v[i]);
+    }
+    // Los extremos se toman por percentil: un solo viaje a 500 mm/s aplastaría
+    // toda la escala de la pieza contra el extremo lento.
+    muestras.sort((a, b) => a - b);
+    const lo = muestras.length ? muestras[Math.floor(muestras.length * 0.02)] : 0;
+    const hi = muestras.length ? muestras[Math.floor(muestras.length * 0.98)] : 1;
+    // Piso absoluto, igual que el mapa de relieve. Una pieza a velocidad
+    // constante —que es lo normal: 20.00 mm/s en toda la cabeza del hongo— deja
+    // `hi - lo` en cero, y una escala de cero convierte el último bit de un
+    // Float32 en contraste a pleno color. Lo que se veía no era velocidad, era
+    // ruido de redondeo. Por debajo de este umbral no hay nada que mostrar.
+    const RANGO_MINIMO = Math.max(2, 0.08 * hi);   // mm/s
+    const plano = hi - lo < RANGO_MINIMO;
+    const span = Math.max(1e-6, hi - lo);
+    for (let i = 0; i < n; i++) {
+      const o = i * 6;
+      let r0, g0, b0;
+      if (!ext[i]) {
+        r0 = travelCol.r; g0 = travelCol.g; b0 = travelCol.b;
+      } else if (plano) {
+        r0 = VEL_MEDIO[0] / 255; g0 = VEL_MEDIO[1] / 255; b0 = VEL_MEDIO[2] / 255;
+      } else {
+        const t = Math.max(0, Math.min(1, (v[i] - lo) / span));
+        const a = t < 0.5 ? VEL_LENTO : VEL_MEDIO;
+        const b = t < 0.5 ? VEL_MEDIO : VEL_RAPIDO;
+        const k = t < 0.5 ? t * 2 : (t - 0.5) * 2;
+        r0 = (a[0] + (b[0] - a[0]) * k) / 255;
+        g0 = (a[1] + (b[1] - a[1]) * k) / 255;
+        b0 = (a[2] + (b[2] - a[2]) * k) / 255;
+      }
+      colors[o] = r0; colors[o + 1] = g0; colors[o + 2] = b0;
+      colors[o + 3] = r0; colors[o + 4] = g0; colors[o + 5] = b0;
+    }
+    return { colors, lo, hi, plano };
+  }
+
   function reloj(s) {
     if (!isFinite(s) || s <= 0) return '0m';
     const h = Math.floor(s / 3600);
@@ -175,8 +240,8 @@
 
     // Sobre papel azul un "frio" azul desaparece, asi que el extremo frio pasa
     // a ser la tinta palida del plano y el calido se queda con el unico acento.
-    const cold = new THREE.Color(0xff5a3c); // fan off
-    const hot = new THREE.Color(0xcddcff);  // fan on
+    const cold = new THREE.Color(0xe8562a); // fan off
+    const hot = new THREE.Color(0x1f3f8f);  // fan on
     const travelCol = new THREE.Color(TRAVEL_COL);
     const tmp = new THREE.Color();
 
@@ -438,11 +503,11 @@
   function overhangAngleToColor(deg, out) {
     let r, g, b;
     if (deg <= OVH_WARN) {
-      const t = deg / OVH_WARN;           // green -> yellow
-      r = 0.18 + t * 0.82; g = 0.75; b = 0.30 * (1 - t);
+      const t = deg / OVH_WARN;           // verde -> ámbar
+      r = 0.08 + t * 0.55; g = 0.50 - t * 0.12; b = 0.24 * (1 - t);
     } else {
-      const t = Math.min(1, (deg - OVH_WARN) / (OVH_FAIL - OVH_WARN)); // yellow -> red
-      r = 1.0; g = 0.75 * (1 - t); b = 0.0;
+      const t = Math.min(1, (deg - OVH_WARN) / (OVH_FAIL - OVH_WARN)); // ámbar -> rojo
+      r = 0.63 + t * 0.10; g = 0.38 * (1 - t) + 0.11 * t; b = 0.03 + t * 0.08;
     }
     out.setRGB(r, g, b);
   }
@@ -458,11 +523,47 @@
   }
 
   // Returns { colors: Float32Array(len like C), maxDeg }.
+  // --- Mapa de solape ------------------------------------------------------
+  // Cuánto se pisan dos cordones vecinos. Es el criterio que de verdad gobierna
+  // una pieza en modo vaso —si la vuelta nueva no apoya sobre la anterior, la
+  // pared se abre— y es el mismo que usan el aviso del generador y el de los
+  // toques. Va aparte del ángulo porque no son lo mismo: con paso vertical
+  // adaptativo, una vuelta que sube 0.2 mm y se corre 0.5 marca 68° de ángulo y
+  // sin embargo tiene 55% de solape, que es sano.
+  const SOL_BIEN = [0x15, 0x7f, 0x3c];   // >= 50%
+  const SOL_JUSTO = [0xa1, 0x62, 0x07];  // 25%
+  const SOL_MAL = [0xb9, 0x1c, 0x1c];    // 0: no se tocan
+
+  function solapeAColor(frac, out) {
+    // 0.5 es el umbral que veníamos usando en los avisos: por debajo conviene
+    // bajar la velocidad, por debajo de 0.25 no esperes que salga.
+    const t = Math.max(0, Math.min(1, frac / 0.5));
+    const a = t < 0.5 ? SOL_MAL : SOL_JUSTO;
+    const b = t < 0.5 ? SOL_JUSTO : SOL_BIEN;
+    const k = t < 0.5 ? t * 2 : (t - 0.5) * 2;
+    out.setRGB((a[0] + (b[0] - a[0]) * k) / 255,
+               (a[1] + (b[1] - a[1]) * k) / 255,
+               (a[2] + (b[2] - a[2]) * k) / 255);
+  }
+
   function computeOverhang(V, ext, segZ, layerH, bbox, travelCol) {
     const segCount = ext.length;
     const colors = new Float32Array(segCount * 6);
+    const solape = new Float32Array(segCount * 6);
+    const cordon = anchoDeCordon();
+    let peorSolape = 1;
     const cell = OVH_MAX_DIST;
-    const zb = (z) => Math.round(z / layerH);
+    // Las franjas del índice se miden con el RADIO DE BÚSQUEDA, no con la altura
+    // de capa. Antes iban en `round(z / layerH)` con una altura constante, y eso
+    // se rompió en cuanto el generador pasó a subir distinto según la pendiente
+    // (0.20 a 0.40 mm en la misma pieza): las franjas dejaron de coincidir con
+    // las vueltas, algunas quedaron vacías, y el segmento que miraba ahí no
+    // encontraba apoyo y se pintaba de rojo. Salían salpicaduras aisladas por
+    // toda la superficie en vez de agruparse donde la pared se tumba.
+    //
+    // Con franjas de OVH_MAX_DIST alcanza con mirar la propia y la de abajo para
+    // cubrir todo el rango buscado, sea cual sea el paso vertical.
+    const zb = (z) => Math.floor(z / OVH_MAX_DIST);
     const key = (b, gx, gy) => b + ':' + gx + ':' + gy;
 
     // Spatial hash of extrusion SEGMENTS (continuous wall, so distance is the
@@ -480,7 +581,7 @@
       const o = s * 6;
       const x1 = V[o], y1 = V[o + 1], x2 = V[o + 3], y2 = V[o + 4];
       const b = zb(segZ[s]);
-      const e = [x1, y1, x2, y2, segZ[s]];
+      const e = [x1, y1, x2, y2, segZ[s], s];
       put(b, Math.floor(x1 / cell), Math.floor(y1 / cell), e);
       const g2 = key(b, Math.floor(x2 / cell), Math.floor(y2 / cell));
       if (g2 !== key(b, Math.floor(x1 / cell), Math.floor(y1 / cell))) {
@@ -496,20 +597,26 @@
       if (!ext[s]) {
         colors[o] = travelCol.r; colors[o + 1] = travelCol.g; colors[o + 2] = travelCol.b;
         colors[o + 3] = travelCol.r; colors[o + 4] = travelCol.g; colors[o + 5] = travelCol.b;
+        solape[o] = travelCol.r; solape[o + 1] = travelCol.g; solape[o + 2] = travelCol.b;
+        solape[o + 3] = travelCol.r; solape[o + 4] = travelCol.g; solape[o + 5] = travelCol.b;
         continue;
       }
       const mx = (V[o] + V[o + 3]) / 2;
       const my = (V[o + 1] + V[o + 4]) / 2;
       const mz = segZ[s];
 
-      let deg;
+      let deg, sep3 = 0;
       if (mz <= bedZ) {
         deg = 0;
       } else {
         const gx = Math.floor(mx / cell), gy = Math.floor(my / cell);
         const qb = zb(mz);
-        let bestH = Infinity, bestDV = layerH;
-        for (let bz = qb - 1; bz >= qb - 2; bz--) {
+        // Apoyo = el material más cercano que esté DEBAJO, y punto. Sin ventana
+        // en múltiplos de la altura de capa: esa ventana daba por "sin apoyo" a
+        // una vuelta que subía más que 2×layerH, aunque tuviera pared justo
+        // abajo. Se elige por distancia 3D, que es el hueco de verdad.
+        let mejor = Infinity, bestH = Infinity, bestDV = layerH;
+        for (let bz = qb; bz >= qb - 1; bz--) {
           for (let dx = -1; dx <= 1; dx++) {
             for (let dy = -1; dy <= 1; dy++) {
               const arr = grid.get(key(bz, gx + dx, gy + dy));
@@ -517,23 +624,41 @@
               for (let i = 0; i < arr.length; i++) {
                 const e = arr[i];
                 const dv = mz - e[4];
-                if (dv < 0.4 * layerH || dv > 2.0 * layerH) continue; // must be below
+                // Se acepta apoyo AL LADO, no solo debajo. Una pasada plana
+                // —una repisa, el piso de un bol, el relleno radial de una
+                // banda tumbada— se sostiene sobre su vecina a la misma altura,
+                // y exigirle material debajo la marca suelta cuando no lo está.
+                // Se descartan los vecinos del propio recorrido: el segmento
+                // anterior y el siguiente siempre tocan, y contarlos haría que
+                // todo pareciera apoyado.
+                if (dv < -0.05 || dv > OVH_MAX_DIST) continue;
+                if (Math.abs(s - e[5]) < 60) continue;
                 const h2 = distToSegSq(mx, my, e[0], e[1], e[2], e[3]);
-                if (h2 < bestH) { bestH = h2; bestDV = dv; }
+                const d3 = h2 + dv * dv;
+                if (d3 < mejor) { mejor = d3; bestH = h2; bestDV = dv; }
               }
             }
           }
-          if (bestH !== Infinity) break; // found support one layer down
         }
         const dist = bestH === Infinity ? OVH_MAX_DIST : Math.min(OVH_MAX_DIST, Math.sqrt(bestH));
         deg = Math.atan2(dist, bestDV) * 180 / Math.PI;
+        // La separación entre los EJES de los dos cordones. Es lo que decide si
+        // hay superficie común: por debajo de un ancho de cordón se tocan, por
+        // encima no. El ángulo no lo dice —con paso adaptativo un dv chico
+        // infla el ángulo aunque el solape sea sano— así que van por separado.
+        sep3 = mejor === Infinity ? OVH_MAX_DIST : Math.sqrt(mejor);
       }
       if (deg > maxDeg) maxDeg = deg;
+      const frac = Math.max(0, 1 - sep3 / cordon);
+      if (frac < peorSolape) peorSolape = frac;
       overhangAngleToColor(deg, col);
       colors[o] = col.r; colors[o + 1] = col.g; colors[o + 2] = col.b;
       colors[o + 3] = col.r; colors[o + 4] = col.g; colors[o + 5] = col.b;
+      solapeAColor(frac, col);
+      solape[o] = col.r; solape[o + 1] = col.g; solape[o + 2] = col.b;
+      solape[o + 3] = col.r; solape[o + 4] = col.g; solape[o + 5] = col.b;
     }
-    return { colors, maxDeg };
+    return { colors, maxDeg, solape, peorSolape };
   }
 
   // --- Filament colour map --------------------------------------------------
@@ -542,12 +667,12 @@
   // real filament colours: the G-code does not carry those (they live in the
   // .3mf's project_settings), and inventing them would be worse than useless —
   // a wrong "white" band reads as the print, not as a legend entry.
-  const SLOT_COLOURS = [0x4ea3ff, 0xffb02e, 0x4ddb8a, 0xe35db4];
-  const SLOT_HEX = ['#4ea3ff', '#ffb02e', '#4ddb8a', '#e35db4'];
+  const SLOT_COLOURS = [0x1d4ed8, 0xb45309, 0x15803d, 0xa21caf];
+  const SLOT_HEX = ['#1d4ed8', '#b45309', '#15803d', '#a21caf'];
   // Bands 4+ are manual pauses: desaturated on purpose, so "we know this is
   // AMS slot A2" never looks like "someone swapped something in here".
-  const MANUAL_COLOURS = [0xb9a7d6, 0xd6bfa7, 0xa7d6c9, 0xd6a7a7];
-  const MANUAL_HEX = ['#b9a7d6', '#d6bfa7', '#a7d6c9', '#d6a7a7'];
+  const MANUAL_COLOURS = [0x6b5b95, 0x8a7350, 0x4f7d70, 0x8a5a5a];
+  const MANUAL_HEX = ['#6b5b95', '#8a7350', '#4f7d70', '#8a5a5a'];
   const bandColour = (b) => (b < 4 ? SLOT_COLOURS[b] : MANUAL_COLOURS[(b - 4) % MANUAL_COLOURS.length]);
   const bandHex = (b) => (b < 4 ? SLOT_HEX[b] : MANUAL_HEX[(b - 4) % MANUAL_HEX.length]);
   const bandLabel = (b) => (b < 4 ? `AMS A${b + 1} (T${b})` : `manual pause #${b - 3} (filament unknown)`);
@@ -671,9 +796,13 @@
   //
   // Assumes a solid of revolution, which every design in this repo is. On a
   // square part the corners would read as "relief" — they are, radially.
-  const RELIEF_IN = [0x35, 0xc8, 0xd8];   // hacia adentro
-  const RELIEF_FLAT = [0x2a, 0x51, 0xa8]; // sin relieve (papel del plano)
-  const RELIEF_OUT = [0xff, 0x9d, 0x2e];  // hacia afuera
+  // Sobre papel claro todo lo que pinta la PIEZA tiene que ser oscuro. El
+  // neutro es el que más importa y el que más fácil se escapa: si el "sin
+  // relieve" es claro, una pieza lisa —que es casi toda la superficie— se
+  // vuelve invisible contra el fondo, y lo poco que se ve son los extremos.
+  const RELIEF_IN = [0x0e, 0x6f, 0x84];   // hacia adentro
+  const RELIEF_FLAT = [0x5a, 0x63, 0x78]; // sin relieve
+  const RELIEF_OUT = [0xc2, 0x41, 0x0c];  // hacia afuera
 
   // Centro y radio de cada capa, por ajuste de circunferencia.
   //
@@ -771,6 +900,33 @@
     const ini = desde || 0;
     const { centros, cuenta, rad, suma } = ajusteDeCapas(V, ext, layerAt, layers, ini);
 
+    // La referencia contra la que se mide el relieve es la MEDIA MÓVIL del
+    // radio a lo largo del recorrido, no el radio medio de la capa.
+    //
+    // La media por capa supone una pared más o menos vertical. En una cúpula
+    // una franja de Z abarca medio casquete —radios de 20 a 88 mm— y en un
+    // piso anular una sola capa va de 17 a 58: el "relieve" pasa a ser "dónde
+    // estoy en la cúpula" y el mapa se llena de lóbulos naranjas y celestes que
+    // no son relieve de nada. La media móvil sigue la forma sea cual sea, así
+    // que lo que queda es la desviación local, que es lo que la palabra dice.
+    const VENTANA = Math.max(24, Math.min(2000, Math.round(n / Math.max(1, layers))));
+    const ref = new Float64Array(n);
+    {
+      const acum = new Float64Array(n + 1);
+      const cnt = new Float64Array(n + 1);
+      for (let i = 0; i < n; i++) {
+        const vale = ext[i] && i >= ini && cuenta[layerAt[i]] ? 1 : 0;
+        acum[i + 1] = acum[i] + (vale ? rad[i] : 0);
+        cnt[i + 1] = cnt[i] + vale;
+      }
+      const h = VENTANA >> 1;
+      for (let i = 0; i < n; i++) {
+        const a = Math.max(0, i - h), b = Math.min(n, i + h + 1);
+        const m = cnt[b] - cnt[a];
+        ref[i] = m > 0 ? (acum[b] - acum[a]) / m : rad[i];
+      }
+    }
+
     // The scale has to come from the WALL, and a percentile over all segments
     // does not: a solid base is an Archimedean spiral whose radius sweeps from
     // 0 to the full radius, so it alone produced a ±11.93 mm scale on a part
@@ -781,12 +937,22 @@
     // p75 and not the median, because half the layers here are deliberately
     // smooth (the pattern alternates) and the median would land between the two
     // populations, washing the textured layers out to half intensity.
+    // Una capa MACIZA —el piso anular barre de r=17 a r=58— desvía decenas de
+    // milímetros respecto de cualquier referencia local, y con eso fijaba la
+    // escala de toda la pieza: ±32.89 mm en una pared que no tiene relieve.
+    // Se detecta por tener muchísimos más segmentos que una vuelta normal.
+    const porSegmentoCapa = new Float64Array(layers);
+    for (let i = ini; i < n; i++) if (ext[i]) porSegmentoCapa[layerAt[i]]++;
+    const cuentas = [...porSegmentoCapa].filter((c) => c > 0).sort((a, b) => a - b);
+    const medianaSegs = cuentas.length ? cuentas[cuentas.length >> 1] : 0;
+    const esMaciza = (l) => medianaSegs > 0 && porSegmentoCapa[l] > 4 * medianaSegs;
+
     const porCapa = [];
     for (let l = 0; l < layers; l++) porCapa.push([]);
     const paso = Math.max(1, Math.floor(n / 40000));
     for (let i = 0; i < n; i += paso) {
-      if (!ext[i] || !cuenta[layerAt[i]]) continue;
-      porCapa[layerAt[i]].push(Math.abs(rad[i] - suma[layerAt[i]] / cuenta[layerAt[i]]));
+      if (!ext[i] || !cuenta[layerAt[i]] || esMaciza(layerAt[i])) continue;
+      porCapa[layerAt[i]].push(Math.abs(rad[i] - ref[i]));
     }
     // Per layer take the MAX, not a percentile. A line drawing is sparse — the
     // two faces here cover 5.7 % of their own bounding box, so barely 4 % of a
@@ -802,7 +968,14 @@
       picos.push(mx);
     }
     picos.sort((x, y) => x - y);
-    const escala = picos.length ? Math.max(1e-3, picos[Math.floor(picos.length * 0.75)]) : 1;
+    // Piso absoluto. En una pieza lisa la desviación real son micrones, y una
+    // escala de micrones convierte el ruido de coma flotante en contraste a
+    // pleno color: degradados naranjas y celestes donde no hay relieve ninguno.
+    // Por debajo de esto la pieza se declara lisa y se pinta plana, que es la
+    // respuesta honesta.
+    const RELIEVE_MINIMO = 0.02;   // mm
+    const bruto = picos.length ? picos[Math.floor(picos.length * 0.75)] : 0;
+    const escala = Math.max(RELIEVE_MINIMO, bruto);
 
     for (let i = 0; i < n; i++) {
       const o = i * 6;
@@ -810,7 +983,7 @@
       if (!ext[i] || !cuenta[layerAt[i]] || i < ini) {
         r0 = travelCol.r; g0 = travelCol.g; b0 = travelCol.b;
       } else {
-        const d = (rad[i] - suma[layerAt[i]] / cuenta[layerAt[i]]) / escala;
+        const d = (rad[i] - ref[i]) / escala;
         const k = Math.max(-1, Math.min(1, d));
         const dest = k >= 0 ? RELIEF_OUT : RELIEF_IN;
         const t = Math.abs(k);
@@ -824,7 +997,7 @@
     // Los intermedios quedan a mano para repintar el relieve mientras se
     // esculpe. Recalcularlos enteros por frame sería otro ajuste de
     // circunferencia por capa; lo único que cambia al deformar es el radio.
-    relieveVivo = { rad, cuenta, suma, escala, ini };
+    relieveVivo = { rad, cuenta, ref, escala, ini, ventana: VENTANA };
     return { colors, escala };
   }
 
@@ -910,6 +1083,8 @@
   const solidBtn = document.getElementById('solidBtn');
   const legendFan = document.getElementById('legend-fan');
   const legendOvh = document.getElementById('legend-ovh');
+  const legendSol = document.getElementById('legend-sol');
+  const legendVel = document.getElementById('legend-vel');
   const legendFil = document.getElementById('legend-fil');
   const legendRel = document.getElementById('legend-rel');
   const legendBleed = document.getElementById('legend-bleed');
@@ -917,10 +1092,14 @@
   // Color mode: 'fan', 'overhang' or 'filament'. All three colour arrays are
   // precomputed on load, so switching is a buffer copy and stays instant on a
   // 50k-segment lamp.
-  const MODES = ['fan', 'overhang', 'filament', 'bleed', 'relief'];
+  const MODES = ['fan', 'overhang', 'solape', 'velocidad', 'filament', 'bleed', 'relief'];
   let colorMode = 'fan';
   let fanColors = null;
   let overhangColors = null;
+  let solapeColors = null;
+  let velColors = null;
+  let velRango = [0, 0];
+  let peorSolape = 1;
   let filamentColors = null;
   let bleedColors = null;
   let bleedDirty = 0;
@@ -993,6 +1172,8 @@
   function applyColorMode() {
     if (lineGeom) {
       const src = colorMode === 'overhang' ? overhangColors
+        : colorMode === 'solape' ? solapeColors
+        : colorMode === 'velocidad' ? velColors
         : colorMode === 'filament' ? filamentColors
         : colorMode === 'bleed' ? bleedColors
         : colorMode === 'relief' ? reliefColors
@@ -1008,6 +1189,11 @@
     }
     if (legendFan) legendFan.style.display = colorMode === 'fan' ? '' : 'none';
     if (legendOvh) legendOvh.style.display = colorMode === 'overhang' ? '' : 'none';
+    if (legendSol) legendSol.style.display = colorMode === 'solape' ? '' : 'none';
+    if (legendVel) {
+      legendVel.style.display = colorMode === 'velocidad' ? '' : 'none';
+      if (colorMode === 'velocidad') buildVelLegend();
+    }
     if (legendFil) legendFil.style.display = colorMode === 'filament' ? '' : 'none';
     if (legendRel) legendRel.style.display = colorMode === 'relief' ? '' : 'none';
     if (legendBleed) legendBleed.style.display = colorMode === 'bleed' ? '' : 'none';
@@ -1016,6 +1202,27 @@
       modeBtn.textContent = 'Color: ' + colorMode[0].toUpperCase() + colorMode.slice(1);
     }
     updateHud();
+  }
+
+  // La leyenda dice mm/s, no "lento" y "rápido". Un número se compara con el
+  // de otra pieza; un adjetivo no: esta cabeza va a 20 mm/s, el Squeezy a 8 y
+  // el jarrón de referencia a 15, y eso solo se ve si están los números.
+  function buildVelLegend() {
+    if (!legendVel) return;
+    const [lo, hi, plano] = velRango;
+    if (plano) {
+      legendVel.innerHTML =
+        `<div>velocidad real (con aceleración y jerk)</div>` +
+        `<div><span class="sw" style="background:${velHex(0.5)}"></span>` +
+        `${hi.toFixed(1)} mm/s en toda la pieza</div>`;
+      return;
+    }
+    const filas = [0, 0.25, 0.5, 0.75, 1].map((t) => {
+      const v = lo + (hi - lo) * t;
+      return `<div><span class="sw" style="background:${velHex(t)}"></span>` +
+             `${v.toFixed(v < 10 ? 1 : 0)} mm/s</div>`;
+    });
+    legendVel.innerHTML = `<div>velocidad real (con aceleración y jerk)</div>` + filas.join('');
   }
 
   // One legend row per slot the print loads, plus the change heights. Built
@@ -1059,7 +1266,7 @@
   // expects, so it can just say so.
   const ESPERADOS = ['modeBtn', 'travelBtn', 'legend-fil', 'legend-rel', 'legend-bleed',
                      'escBtn', 'esculpir', 'esc-lista', 'plantilla',
-                     'cota-alto', 'cota-ancho', 'cargando', 'esc-titulo', 'esc-gesto'];
+                     'cota-alto', 'cota-ancho', 'cargando', 'esc-titulo', 'esc-gesto', 'legend-sol', 'legend-vel'];
   const faltantes = ESPERADOS.filter((id) => !document.getElementById(id));
 
   function updateHud() {
@@ -1075,6 +1282,19 @@
     if (colorMode === 'bleed' && bleedColors) {
       s += `  ·  ${(bleedDirty * 100).toFixed(0)}% of the print is still mixing` +
            `  (transition ≈ ${(BLEED_L * 3).toFixed(0)} mm of filament)`;
+    }
+    if (colorMode === 'velocidad' && velColors) {
+      s += velRango[2]
+        ? `  ·  velocidad constante, ${velRango[1].toFixed(1)} mm/s reales en toda la pieza`
+        : `  ·  ${velRango[0].toFixed(0)}–${velRango[1].toFixed(0)} mm/s reales` +
+          ` (lo pedido y lo que la máquina alcanza no es lo mismo)`;
+    }
+    if (colorMode === 'solape' && solapeColors) {
+      const pct = peorSolape * 100;
+      const juicio = pct <= 0 ? '⚠ hay vueltas que no se tocan'
+        : pct < 25 ? '⚠ no esperes que salga'
+        : pct < 50 ? 'justo: bajá la velocidad ahí' : 'ok';
+      s += `  ·  solape mínimo ${pct.toFixed(0)}% del cordón (${juicio})`;
     }
     if (colorMode === 'relief' && reliefColors) {
       s += `  ·  relief ±${reliefScale.toFixed(2)} mm from the layer's mean radius`;
@@ -1211,7 +1431,7 @@
     const geo = new THREE.BufferGeometry();
     // 10 segmentos: línea + 2 marcas + 2 referencias, por cada una de las dos cotas
     geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(10 * 2 * 3), 3));
-    cotas = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x9db8f0 }));
+    cotas = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x5d729b }));
     cotas.frustumCulled = false;
     scene.add(cotas);
   }
@@ -1342,6 +1562,11 @@
       const ovh = computeOverhang(V, ext, segZ, layerH, bbox, travelCol);
       overhangColors = ovh.colors;
       maxOverhang = ovh.maxDeg;
+      solapeColors = ovh.solape;
+      peorSolape = ovh.peorSolape;
+      const vel = coloresVelocidad(V, ext, tiempo.porSeg, travelCol);
+      velColors = vel.colors;
+      velRango = [vel.lo, vel.hi, vel.plano];
       filamentColors = computeFilamentColors(V, ext, segBand, travelCol);
       bleedColors = computeBleedColors(ext, segBand, segE, travelCol);
       bleedDirty = bleedStats(ext, segBand, bleedColors);
@@ -1351,6 +1576,9 @@
     } else {
       overhangColors = null;
       maxOverhang = 0;
+      solapeColors = null;
+      peorSolape = 1;
+      velColors = null;
       filamentColors = null;
       reliefColors = null;
       reliefScale = 0;
@@ -1475,6 +1703,11 @@
   // handful of runs and not one per pixel.
   const params = document.getElementById('params');
   const paramsLista = document.getElementById('params-lista');
+  const paramsTit = document.getElementById('params-tit');
+  // Se toman acá y no más abajo: `construirParams` los usa, y un `const`
+  // declarado después queda en zona muerta cuando llega la primera receta.
+  const guardarBtn = document.getElementById('guardarBtn');
+  const cargarBtn = document.getElementById('cargarBtn');
   const paramsEstado = document.getElementById('params-estado');
   let receta = null;
   let valores = {};
@@ -1513,8 +1746,18 @@
     receta = r;
     valores = {};
     if (!params || !paramsLista) return;
-    if (!r || !r.controles || !r.controles.length) {
-      params.classList.add('hidden');
+    // Sin receta igual se muestra el panel, solo que sin sliders. Abrir en
+    // Orca y cargar una versión no necesitan receta para nada — la necesitaba
+    // el panel entero por estar todo junto, y eso dejaba sin botón a cualquier
+    // pieza generada por fuera de la CLI.
+    const sinReceta = !r || !r.controles || !r.controles.length;
+    params.classList.remove('hidden');
+    if (paramsLista) paramsLista.classList.toggle('hidden', sinReceta);
+    // Guardar sí la necesita: copia el .params.json a la carpeta de versiones.
+    if (guardarBtn) guardarBtn.classList.toggle('hidden', sinReceta);
+    if (paramsTit) paramsTit.textContent = sinReceta ? 'Sin receta' : 'Parameters';
+    if (sinReceta) {
+      if (paramsLista) paramsLista.innerHTML = '';
       return;
     }
     paramsLista.innerHTML = '';
@@ -1578,8 +1821,6 @@
       return fila;
   }
 
-  const guardarBtn = document.getElementById('guardarBtn');
-  const cargarBtn = document.getElementById('cargarBtn');
   if (guardarBtn) {
     guardarBtn.addEventListener('click', () => vscode.postMessage({ type: 'guardar' }));
   }
@@ -1836,7 +2077,7 @@
     geo.setIndex(idx);
     geo.computeVertexNormals();
     const mat = new THREE.MeshLambertMaterial({
-      color: 0x8fb2ff, transparent: true, opacity: 0.5, side: THREE.DoubleSide
+      color: 0x6d86c4, transparent: true, opacity: 0.45, side: THREE.DoubleSide
     });
     mat.visible = false;   // invisible pero raycasteable
     const mesh = new THREE.Mesh(geo, mat);
@@ -2055,24 +2296,35 @@
       return;
     }
     if (!relieveVivo) return;
-    const { rad, cuenta, suma, escala, ini } = relieveVivo;
-    const capas = segMeta.layers, layerAt = segMeta.layerAt;
-    const dS = new Float64Array(capas);
+    const { rad, cuenta, ref, escala, ini, ventana } = relieveVivo;
+    const layerAt = segMeta.layerAt;
     const n = segExt.length;
-    for (let i = ini; i < n; i++) {
-      if (!segExt[i]) continue;
-      dS[layerAt[i]] += (d[i * 2] + d[i * 2 + 1]) / 2;
+    // El desplazamiento por segmento, y su media móvil con la MISMA ventana que
+    // usó el mapa estático: si la referencia no se corre junto con la pared, un
+    // toque que saca media vuelta pinta de naranja una zona que respecto de su
+    // entorno no sobresale nada.
+    const dSeg = new Float64Array(n);
+    for (let i = 0; i < n; i++) dSeg[i] = (d[i * 2] + d[i * 2 + 1]) / 2;
+    const ac = new Float64Array(n + 1);
+    for (let i = 0; i < n; i++) ac[i + 1] = ac[i] + (segExt[i] && i >= ini ? dSeg[i] : 0);
+    const cn = new Float64Array(n + 1);
+    for (let i = 0; i < n; i++) cn[i + 1] = cn[i] + (segExt[i] && i >= ini ? 1 : 0);
+    const h = ventana >> 1;
+    const dRef = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      const a = Math.max(0, i - h), b = Math.min(n, i + h + 1);
+      const m = cn[b] - cn[a];
+      dRef[i] = m > 0 ? (ac[b] - ac[a]) / m : dSeg[i];
     }
     const arr = col.array;
     for (let i = 0; i < n; i++) {
       const o = i * 6, l = layerAt[i];
       let r0, g0, b0;
       if (!segExt[i] || !cuenta[l] || i < ini) {
-        r0 = 0.227; g0 = 0.388; b0 = 0.769;         // el azul de viaje
+        r0 = 0.659; g0 = 0.698; b0 = 0.776;         // el gris de viaje
       } else {
-        const dm = (d[i * 2] + d[i * 2 + 1]) / 2;
         const k = Math.max(-1, Math.min(1,
-          (rad[i] + dm - (suma[l] + dS[l]) / cuenta[l]) / escala));
+          (rad[i] + dSeg[i] - (ref[i] + dRef[i])) / escala));
         const dest = k >= 0 ? RELIEF_OUT : RELIEF_IN;
         const t = Math.abs(k);
         r0 = (RELIEF_FLAT[0] + (dest[0] - RELIEF_FLAT[0]) * t) / 255;
@@ -2173,7 +2425,7 @@
   function crearCursor() {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(ESC_NC * 3), 3));
-    cursor = new THREE.LineLoop(geo, new THREE.LineBasicMaterial({ color: 0xff6b4a }));
+    cursor = new THREE.LineLoop(geo, new THREE.LineBasicMaterial({ color: 0xe8562a }));
     cursor.visible = false;
     scene.add(cursor);
   }

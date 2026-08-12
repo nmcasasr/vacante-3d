@@ -175,7 +175,7 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "package": "npm run compile && npx --yes @vscode/vsce package --allow-missing-repository --skip-license -o gcode-preview.vsix",
-    "reinstall": "npm run package && \"$HOME/Desktop/Visual Studio Code.app/Contents/Resources/app/bin/code\" --install-extension gcode-preview.vsix --force"
+    "reinstall": "npm run package && node tools/instalar.js"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
