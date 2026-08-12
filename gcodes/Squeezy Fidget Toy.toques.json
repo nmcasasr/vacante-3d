@@ -1,0 +1,17 @@
+{
+ "version": 1,
+ "toques": [
+  {
+   "tipo": "jalar",
+   "forma": "circulo",
+   "caida": "gauss",
+   "rotacion": 0,
+   "angulo": 30.8,
+   "t": 0.2804,
+   "radio_grados": 30,
+   "radio_t": 0.1,
+   "simetria": 1,
+   "fuerza": 2.934
+  }
+ ]
+}

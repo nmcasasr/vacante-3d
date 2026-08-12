@@ -1,0 +1,14 @@
+# --- entornos y dependencias: se reinstalan, no se versionan ---
+venv/
+node_modules/
+__pycache__/
+*.pyc
+
+# --- compilados y empaquetados ---
+ext-gcode/gcode-preview/out/
+*.vsix
+
+# --- temporales ---
+*.tmp
+.campo_arnes.js
+.campo_casos.json

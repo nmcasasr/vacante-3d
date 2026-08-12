@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Planos — generador de piezas 3D</title>
+<style>
+  :root {
+    --papel: #0d3583;
+    --papel-2: #10409c;
+    --tinta: #cddcff;
+    --tinta-viva: #ffffff;
+    --tinta-tenue: #6d92dd;
+    --linea: rgba(109,146,221,.55);
+    --acento: #ff6b4a;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--papel); color: var(--tinta); }
+  body { font: 13px/1.6 var(--mono); padding: 28px 22px 60px; }
+
+  .hoja { max-width: 1280px; margin: 0 auto; }
+
+  header.marco {
+    border: 1px solid var(--tinta-tenue); padding: 14px 16px; margin-bottom: 26px;
+    display: flex; flex-wrap: wrap; gap: 18px 30px; align-items: baseline;
+  }
+  header.marco h1 {
+    margin: 0; font-size: 17px; font-weight: 400; letter-spacing: .22em;
+    text-transform: uppercase; color: var(--tinta-viva); flex: 1 1 auto;
+  }
+  .campo { font-size: 9px; letter-spacing: .16em; text-transform: uppercase; color: var(--tinta-tenue); }
+  .campo b { display: block; font-weight: 400; font-size: 12px; letter-spacing: .04em; color: var(--tinta-viva); }
+
+  section { margin: 0 0 42px; }
+  h2 {
+    margin: 0 0 4px; font-size: 11px; font-weight: 400; letter-spacing: .2em;
+    text-transform: uppercase; color: var(--tinta-viva);
+  }
+  h2 .num { color: var(--acento); margin-right: 10px; }
+  .bajada { margin: 0 0 14px; font-size: 11.5px; color: var(--tinta-tenue); max-width: 78ch; }
+
+  .lienzo { overflow-x: auto; border: 1px solid var(--linea); background: rgba(16,64,156,.32); }
+  .lienzo svg { display: block; min-width: 1080px; width: 100%; height: auto; }
+
+  /* --- vocabulario del dibujo ------------------------------------------- */
+  .caja      { fill: var(--papel-2); stroke: var(--tinta-tenue); stroke-width: 1; }
+  .caja.eje  { stroke: var(--tinta); }
+  .caja.dato { fill: none; stroke: var(--tinta); stroke-dasharray: 3 3; }
+  .caja.acento { stroke: var(--acento); }
+  .zona      { fill: none; stroke: var(--linea); stroke-width: 1; stroke-dasharray: 2 4; }
+  .rot   { font: 8.5px var(--mono); letter-spacing: .16em; text-transform: uppercase; fill: var(--tinta-tenue); }
+  .tit   { font: 12px var(--mono); fill: var(--tinta-viva); }
+  .sub   { font: 10px var(--mono); fill: var(--tinta); }
+  .peq   { font: 9px var(--mono); fill: var(--tinta-tenue); }
+  .acc   { fill: var(--acento); }
+  .flecha { stroke: var(--tinta); stroke-width: 1; fill: none; marker-end: url(#punta); }
+  .flecha.vuelta { stroke: var(--acento); marker-end: url(#punta-acc); }
+  .flecha.suave  { stroke: var(--tinta-tenue); stroke-dasharray: 4 3; marker-end: url(#punta-tenue); }
+  .num-paso { font: 11px var(--mono); fill: var(--papel); }
+
+  /* --- notas ------------------------------------------------------------- */
+  .notas { display: grid; grid-template-columns: repeat(auto-fit, minmax(268px, 1fr)); gap: 0; margin-top: -1px; }
+  .nota { border: 1px solid var(--linea); margin: -1px 0 0 -1px; padding: 11px 13px; }
+  .nota h3 {
+    margin: 0 0 5px; font-size: 8.5px; font-weight: 400; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--acento);
+  }
+  .nota p { margin: 0; font-size: 11.5px; line-height: 1.55; color: var(--tinta); }
+  .nota code { color: var(--tinta-viva); }
+
+  table.cifras { border-collapse: collapse; width: 100%; margin-top: 14px; font-size: 11.5px; }
+  table.cifras th, table.cifras td { border: 1px solid var(--linea); padding: 6px 10px; text-align: left; }
+  table.cifras th { font-size: 8.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--tinta-tenue); font-weight: 400; }
+  table.cifras td b { font-weight: 400; color: var(--tinta-viva); font-variant-numeric: tabular-nums; }
+
+  footer { border-top: 1px solid var(--linea); padding-top: 12px; font-size: 9px; letter-spacing: .14em; text-transform: uppercase; color: var(--tinta-tenue); }
+</style>
+</head>
+<body>
+<div class="hoja">
+
+<header class="marco">
+  <h1>Planos del generador</h1>
+  <div class="campo">Pieza<b>vacante · 3d</b></div>
+  <div class="campo">Láminas<b>2 / 2</b></div>
+  <div class="campo">Escala<b>sin escala</b></div>
+  <div class="campo">Fecha<b>2026 · 08 · 08</b></div>
+</header>
+
+<!-- ==================== LÁMINA 1 ==================== -->
+<section>
+  <h2><span class="num">01</span>Plano de conjunto</h2>
+  <p class="bajada">
+    Dos mitades que no se conocen entre sí. Lo único que comparten son tres archivos en
+    <code>output/</code>. La mitad derecha nunca escribe g-code: cuando hay que cambiar algo,
+    vuelve a llamar a la izquierda con otros argumentos.
+  </p>
+
+  <div class="lienzo">
+  <svg viewBox="0 0 1240 690" role="img" aria-label="Plano de conjunto de la aplicación">
+    <defs>
+      <marker id="punta" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,1 L9,5 L0,9" fill="none" stroke="#cddcff" stroke-width="1.2"/>
+      </marker>
+      <marker id="punta-acc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,1 L9,5 L0,9" fill="none" stroke="#ff6b4a" stroke-width="1.2"/>
+      </marker>
+      <marker id="punta-tenue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,1 L9,5 L0,9" fill="none" stroke="#6d92dd" stroke-width="1.2"/>
+      </marker>
+    </defs>
+
+    <!-- rótulos de columna -->
+    <text class="rot" x="30"  y="24">A · generador — python</text>
+    <text class="rot" x="470" y="24">B · contrato — archivos en output/</text>
+    <text class="rot" x="880" y="24">C · preview — extensión de vs code</text>
+    <line x1="30" y1="32" x2="400" y2="32" stroke="var(--linea)"/>
+    <line x1="470" y1="32" x2="790" y2="32" stroke="var(--linea)"/>
+    <line x1="880" y1="32" x2="1210" y2="32" stroke="var(--linea)"/>
+
+    <!-- ============ columna A ============ -->
+    <rect class="caja eje" x="30" y="48" width="370" height="50"/>
+    <text class="tit" x="44" y="70">bowls/__main__.py</text>
+    <text class="peq" x="44" y="87">cli · 408 líneas · traduce banderas a objetos</text>
+
+    <path class="flecha" d="M215,98 L215,124"/>
+
+    <rect class="caja eje" x="30" y="126" width="370" height="50"/>
+    <text class="tit" x="44" y="148">bowls/__init__.py · pasos_bowl()</text>
+    <text class="peq" x="44" y="165">compone silueta + patrón + deformación en un radio</text>
+
+    <path class="flecha" d="M215,176 L215,202"/>
+
+    <rect class="zona" x="30" y="204" width="370" height="158"/>
+    <text class="rot" x="42" y="222">campos  (ángulo, t) → mm</text>
+    <rect class="caja" x="42" y="230" width="172" height="38"/>
+    <text class="sub" x="52" y="246">siluetas.py</text>
+    <text class="peq" x="52" y="260">el perfil: cilindro, huevo…</text>
+    <rect class="caja" x="222" y="230" width="166" height="38"/>
+    <text class="sub" x="232" y="246">estructura.py</text>
+    <text class="peq" x="232" y="260">arrugas fbm, bultos</text>
+    <rect class="caja" x="42" y="276" width="172" height="38"/>
+    <text class="sub" x="52" y="292">bowls/zigzag · ondas…</text>
+    <text class="peq" x="52" y="306">la textura de superficie</text>
+    <rect class="caja" x="222" y="276" width="166" height="38"/>
+    <text class="sub" x="232" y="292">superficie.py</text>
+    <text class="peq" x="232" y="306">máscaras de color</text>
+    <rect class="caja" x="42" y="322" width="346" height="32"/>
+    <text class="sub" x="52" y="343">modelado.py + formas.py <tspan class="peq">· toques: 9 formas × 5 caídas</tspan></text>
+
+    <path class="flecha" d="M215,362 L215,388"/>
+
+    <rect class="caja eje" x="30" y="390" width="370" height="56"/>
+    <text class="tit" x="44" y="412">comun.py · generar_pieza()</text>
+    <text class="peq" x="44" y="429">el motor: espiral continua, modo vaso, base sólida</text>
+    <text class="peq" x="44" y="441">deja el mapeo exacto z ↔ t</text>
+
+    <path class="flecha" d="M215,446 L215,472"/>
+
+    <rect class="caja" x="30" y="474" width="180" height="52"/>
+    <text class="sub" x="42" y="494">colores.py</text>
+    <text class="peq" x="42" y="510">bloque ams · 56 s</text>
+    <rect class="caja" x="220" y="474" width="180" height="52"/>
+    <text class="sub" x="232" y="494">impresoras.py</text>
+    <text class="peq" x="232" y="510">start / end g-code</text>
+
+    <!-- ============ columna B ============ -->
+    <rect class="caja dato" x="470" y="126" width="320" height="46"/>
+    <text class="tit" x="484" y="148">pieza.gcode</text>
+    <text class="peq" x="484" y="163">la espiral entera · 79 000 movimientos</text>
+
+    <rect class="caja dato" x="470" y="190" width="320" height="62"/>
+    <text class="tit" x="484" y="212">pieza.params.json</text>
+    <text class="peq" x="484" y="227">argv exacto · controles con rango y tooltip</text>
+    <text class="peq" x="484" y="240">mapeo z↔t · ruta del intérprete y del cwd</text>
+
+    <rect class="caja dato" x="470" y="270" width="320" height="52"/>
+    <text class="tit" x="484" y="292">pieza.toques.json</text>
+    <text class="peq" x="484" y="307">las pinceladas, en (ángulo°, t) y no en xyz</text>
+
+    <rect class="caja dato" x="470" y="352" width="320" height="52"/>
+    <text class="tit" x="484" y="374">recetas/&lt;pieza&gt;/vNNN/</text>
+    <text class="peq" x="484" y="389">copia de los tres · save v+ nunca pisa</text>
+
+    <path class="flecha suave" d="M630,322 L630,350"/>
+
+    <!-- flechas A -> B -->
+    <path class="flecha" d="M404,500 C440,500 440,300 466,236"/>
+    <text class="rot" x="410" y="428">escribe</text>
+
+    <!-- flechas B -> C -->
+    <path class="flecha" d="M794,206 C830,206 830,150 872,140"/>
+    <text class="rot" x="800" y="182">lee</text>
+
+    <!-- ============ columna C ============ -->
+    <rect class="caja eje" x="880" y="112" width="330" height="70"/>
+    <text class="tit" x="894" y="134">src/extension.ts</text>
+    <text class="peq" x="894" y="150">host · 1416 líneas · lanza el generador,</text>
+    <text class="peq" x="894" y="163">versiona recetas, elige plantilla, abre orca</text>
+
+    <path class="flecha" d="M1045,182 L1045,206"/>
+    <text class="rot" x="1056" y="198">postmessage</text>
+
+    <rect class="caja eje" x="880" y="208" width="330" height="96"/>
+    <text class="tit" x="894" y="230">media/main.js</text>
+    <text class="peq" x="894" y="246">webview · 2343 líneas</text>
+    <text class="peq" x="894" y="262">parse → three.js · 5 mapas de color</text>
+    <text class="peq" x="894" y="276">esculpido, cáscara de picking, fantasma</text>
+    <text class="peq" x="894" y="290">cotas, reloj de impresión, línea de tiempo</text>
+
+    <rect class="caja" x="880" y="322" width="330" height="52"/>
+    <text class="sub" x="894" y="342">bambu.ts · zip.ts · png.ts · thumbnail.ts</text>
+    <text class="peq" x="894" y="358">empaqueta el .gcode.3mf contra una plantilla</text>
+
+    <rect class="zona" x="880" y="392" width="330" height="54"/>
+    <text class="rot" x="892" y="410">rama aparte · entra por stl, no por parámetros</text>
+    <text class="peq" x="892" y="432">vase.ts · contours.ts · clamp.ts · orca.ts</text>
+
+    <!-- ============ la vuelta ============ -->
+    <path class="flecha vuelta" d="M1045,304 C1045,540 1045,616 944,616"/>
+    <path class="flecha vuelta" d="M330,616 L14,616 L14,73 L24,73"/>
+    <rect class="caja acento" x="330" y="586" width="600" height="60"/>
+    <text class="tit acc" x="346" y="608">la vuelta se cierra por los ARGUMENTOS</text>
+    <text class="peq" x="346" y="624">spawn: wsl.exe --cd &lt;cwd&gt; -e &lt;python&gt; -m lamparas.bowls &lt;argv con el valor nuevo&gt;</text>
+    <text class="peq" x="346" y="637">el g-code nunca se edita — un g-code editado ya no tiene parámetros</text>
+  </svg>
+  </div>
+
+  <div class="notas">
+    <div class="nota">
+      <h3>Por qué el contrato son archivos</h3>
+      <p>Editar el g-code parece más directo y es el camino muerto: un archivo editado ya no tiene
+      parámetros, así que la corrida siguiente tira el cambio, y habría que recalcular la extrusión de
+      cada punto movido. Regenerar no tiene ninguno de los dos problemas.</p>
+    </div>
+    <div class="nota">
+      <h3>Por qué (ángulo, t) y no (x, y, z)</h3>
+      <p>Una pincelada guardada en milímetros queda clavada a una cota que deja de significar nada en
+      cuanto movés el slider de altura. En altura relativa, los toques se estiran con la pieza.</p>
+    </div>
+    <div class="nota">
+      <h3>Por qué el mapeo z↔t viaja en la receta</h3>
+      <p><code>t</code> no es «z sobre altura»: la base sólida ocupa capas abajo y las de transición
+      suben menos. Adivinarlo desde el g-code pone los toques unos milímetros más arriba de donde se
+      los pintó. <code>generar_pieza</code> es la única que lo sabe, así que lo escribe.</p>
+    </div>
+    <div class="nota">
+      <h3>El puente WSL</h3>
+      <p>El proyecto vive en <code>/mnt/c</code> y VS Code corre como ventana nativa de Windows: el host
+      no puede ejecutar una ruta POSIX. Se detecta por la forma de la ruta y se envuelve con
+      <code>wsl.exe --cd</code>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== LÁMINA 2 ==================== -->
+<section>
+  <h2><span class="num">02</span>Plano de flujo</h2>
+  <p class="bajada">
+    Un gesto y su viaje de ida y vuelta. Lo que hace usable el ciclo es que tiene dos velocidades a
+    propósito: lo inmediato se dibuja sin salir del navegador, y la verdad llega segundos después.
+  </p>
+
+  <div class="lienzo">
+  <svg viewBox="0 0 1240 610" role="img" aria-label="Plano de flujo de una modificación">
+
+    <!-- carril 1 -->
+    <text class="rot" x="30" y="24">carril inmediato · sin python · 60 fps</text>
+    <line x1="30" y1="32" x2="1210" y2="32" stroke="var(--linea)"/>
+
+    <rect class="caja eje" x="30" y="48" width="228" height="76"/>
+    <circle class="acc" cx="46" cy="66" r="9"/><text class="num-paso" x="43" y="70">1</text>
+    <text class="tit" x="62" y="70">gesto</text>
+    <text class="peq" x="44" y="94">slider de parámetro,</text>
+    <text class="peq" x="44" y="107">o clic y arrastre sobre la pieza</text>
+
+    <path class="flecha" d="M258,86 L296,86"/>
+
+    <rect class="caja eje" x="298" y="48" width="248" height="76"/>
+    <circle class="acc" cx="314" cy="66" r="9"/><text class="num-paso" x="311" y="70">2</text>
+    <text class="tit" x="330" y="70">respuesta local</text>
+    <text class="peq" x="312" y="94">el número, y el fantasma: la cáscara</text>
+    <text class="peq" x="312" y="107">deformada — no el recorrido real</text>
+
+    <path class="flecha" d="M546,86 L584,86"/>
+
+    <rect class="caja eje" x="586" y="48" width="248" height="76"/>
+    <circle class="acc" cx="602" cy="66" r="9"/><text class="num-paso" x="599" y="70">3</text>
+    <text class="tit" x="618" y="70">soltar</text>
+    <text class="peq" x="600" y="94">nada se regenera con el dedo abajo.</text>
+    <text class="peq" x="600" y="107">sin pointerup (teclado): 400 ms</text>
+
+    <path class="flecha" d="M834,86 L872,86"/>
+
+    <rect class="caja eje" x="874" y="48" width="336" height="76"/>
+    <circle class="acc" cx="890" cy="66" r="9"/><text class="num-paso" x="887" y="70">4</text>
+    <text class="tit" x="906" y="70">postMessage → host</text>
+    <text class="peq" x="888" y="94">{ regen, valores }  ó  { toques, valores }</text>
+    <text class="peq" x="888" y="107">se prende la barra de carga</text>
+
+    <path class="flecha" d="M1042,124 L1042,184"/>
+
+    <!-- carril 2 -->
+    <text class="rot" x="30" y="164">carril verdadero · python · segundos</text>
+    <line x1="30" y1="172" x2="1210" y2="172" stroke="var(--linea)"/>
+
+    <rect class="caja eje" x="874" y="188" width="336" height="82"/>
+    <circle class="acc" cx="890" cy="206" r="9"/><text class="num-paso" x="887" y="210">5</text>
+    <text class="tit" x="906" y="210">host escribe y reescribe</text>
+    <text class="peq" x="888" y="234">pieza.toques.json ← la lista entera</text>
+    <text class="peq" x="888" y="247">argv ← el valor nuevo en su bandera</text>
+    <text class="peq" x="888" y="260">agrega --toques si el archivo ya existe</text>
+
+    <path class="flecha" d="M872,229 L836,229"/>
+
+    <rect class="caja eje" x="586" y="188" width="248" height="82"/>
+    <circle class="acc" cx="602" cy="206" r="9"/><text class="num-paso" x="599" y="210">6</text>
+    <text class="tit" x="618" y="210">spawn</text>
+    <text class="peq" x="600" y="234">wsl.exe --cd … -e python</text>
+    <text class="peq" x="600" y="247">-m lamparas.bowls  &lt;argv&gt;</text>
+    <text class="peq" x="600" y="260">una sola corrida a la vez; la última encolada gana</text>
+
+    <path class="flecha" d="M584,229 L548,229"/>
+
+    <rect class="caja eje" x="298" y="188" width="248" height="82"/>
+    <circle class="acc" cx="314" cy="206" r="9"/><text class="num-paso" x="311" y="210">7</text>
+    <text class="tit" x="330" y="210">python revisa y escribe</text>
+    <text class="peq" x="312" y="234">avisa mm/vuelta contra el cordón,</text>
+    <text class="peq" x="312" y="247">voladizo, coste de los cambios de color</text>
+    <text class="peq" x="312" y="260">→ .gcode + .params.json</text>
+
+    <path class="flecha" d="M296,229 L260,229"/>
+
+    <rect class="caja eje" x="30" y="188" width="228" height="82"/>
+    <circle class="acc" cx="46" cy="206" r="9"/><text class="num-paso" x="43" y="210">8</text>
+    <text class="tit" x="62" y="210">sendDoc(desdeDisco)</text>
+    <text class="peq" x="44" y="234">del disco y no del buffer abierto,</text>
+    <text class="peq" x="44" y="247">que estaría una versión atrás</text>
+
+    <path class="flecha" d="M144,270 L144,332"/>
+
+    <!-- carril 3 -->
+    <text class="rot" x="30" y="312">carril de dibujo · webview</text>
+    <line x1="30" y1="320" x2="1210" y2="320" stroke="var(--linea)"/>
+
+    <rect class="caja eje" x="30" y="336" width="360" height="106"/>
+    <circle class="acc" cx="46" cy="354" r="9"/><text class="num-paso" x="43" y="358">9</text>
+    <text class="tit" x="62" y="358">parse → escena</text>
+    <text class="peq" x="44" y="382">bbox desde «fin del start g-code»: la purga no es la pieza</text>
+    <text class="peq" x="44" y="395">ajuste de circunferencia por capa (0.006 mm)</text>
+    <text class="peq" x="44" y="408">→ cáscara de picking, relieve, cotas</text>
+    <text class="peq" x="44" y="421">tiempo por trapecio con aceleración y jerk</text>
+    <text class="peq" x="44" y="434">la cámara NO se mueve: ya encuadró este archivo</text>
+
+    <path class="flecha" d="M390,389 L428,389"/>
+
+    <rect class="caja" x="430" y="336" width="250" height="106"/>
+    <text class="rot" x="442" y="356">y recién ahí</text>
+    <text class="sub" x="442" y="378">se apaga la barra</text>
+    <text class="peq" x="442" y="396">no cuando python termina:</text>
+    <text class="peq" x="442" y="409">entre una cosa y la otra hay</text>
+    <text class="peq" x="442" y="422">medio segundo de parseo con</text>
+    <text class="peq" x="442" y="435">la pieza vieja todavía en pantalla</text>
+
+    <!-- rama de impresión -->
+    <text class="rot" x="740" y="312">rama de impresión · fuera del ciclo</text>
+    <line x1="740" y1="320" x2="1210" y2="320" stroke="var(--linea)"/>
+
+    <rect class="caja" x="740" y="336" width="470" height="46"/>
+    <text class="sub" x="754" y="356">open in orca</text>
+    <text class="peq" x="754" y="371">plantilla (.gcode.3mf de tu impresora) + el g-code de la pieza</text>
+
+    <path class="flecha" d="M975,382 L975,404"/>
+
+    <rect class="caja" x="740" y="406" width="470" height="60"/>
+    <text class="sub" x="754" y="426">packBambu3mf</text>
+    <text class="peq" x="754" y="442">chequea filamentos declarados vs T0…Tn, y la boquilla</text>
+    <text class="peq" x="754" y="455">parchea filament_ids · slice_info · miniaturas del toolpath</text>
+
+    <path class="flecha" d="M975,466 L975,488"/>
+
+    <rect class="caja" x="740" y="490" width="470" height="40"/>
+    <text class="sub" x="754" y="515">spawn orca-slicer.exe &lt;pieza&gt;.gcode.3mf</text>
+
+    <!-- vuelta grande -->
+    <path class="flecha vuelta" d="M555,442 C555,540 555,570 300,570 L120,570 L120,448"/>
+    <text class="rot acc" x="330" y="586">y el gesto siguiente arranca de acá</text>
+  </svg>
+  </div>
+
+  <table class="cifras">
+    <thead><tr><th>Medido sobre el jarrón</th><th>Valor</th><th>De dónde sale</th></tr></thead>
+    <tbody>
+      <tr><td>Movimientos de la pieza</td><td><b>79 339</b></td><td>376 capas en modo vaso</td></tr>
+      <tr><td>Parseo en el webview</td><td><b>≈ 420 ms</b></td><td>lo que dura la barra después de python</td></tr>
+      <tr><td>Impresión estimada</td><td><b>3 h 03 min</b></td><td>2 h 00 de movimiento + 1 h 02 en 67 cambios</td></tr>
+      <tr><td>Error del modelo de tiempo</td><td><b>≈ 1 %</b></td><td>contrastado contra el propio Bambu Studio</td></tr>
+      <tr><td>Error del centro por capa</td><td><b>0.006 mm</b></td><td>ajuste por mínimos cuadrados (Kåsa)</td></tr>
+      <tr><td>Coste de un cambio de color</td><td><b>56 s</b></td><td>29 s descarga + 25 s carga, del perfil de Bambu</td></tr>
+    </tbody>
+  </table>
+
+  <div class="notas" style="margin-top:14px">
+    <div class="nota">
+      <h3>Las dos velocidades</h3>
+      <p>El fantasma nunca finge ser el recorrido real. Por eso puede ser aproximado: desaparece en
+      cuanto llega el g-code de verdad, y eso ahorra mantener dos implementaciones idénticas del campo
+      de deformación en JS y en Python.</p>
+    </div>
+    <div class="nota">
+      <h3>El límite que gobierna todo</h3>
+      <p>En modo vaso cada vuelta apoya sobre la anterior. Si el radio se corre más que el ancho del
+      cordón, no hay superficie común y la pared se abre. Es el mismo número que vigilan el aviso de
+      voladizo, el de los toques y el del vuelo.</p>
+    </div>
+    <div class="nota">
+      <h3>Color por bandas, forma por textura</h3>
+      <p>Un cambio dentro de la vuelta cuesta 56 s y sangra entre 1.3 y 6.9 vueltas; el ojo de una
+      carita dura 0.04. Medido: 0 % de los segmentos del dibujo salen del color pedido. La forma se
+      hace con geometría; el color, con bandas.</p>
+    </div>
+  </div>
+</section>
+
+<footer>Vacante · planos del generador · dibujado el 08 · 08 · 2026</footer>
+
+</div>
+</body>
+</html>
