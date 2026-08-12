@@ -1,0 +1,65 @@
+{
+ "version": 1,
+ "toques": [
+  {
+   "tipo": "jalar",
+   "forma": "circulo",
+   "caida": "gauss",
+   "rotacion": 0,
+   "angulo": 346.9,
+   "t": 0.3196,
+   "radio_grados": 12.3,
+   "radio_t": 0.041,
+   "simetria": 1,
+   "fuerza": 1.656
+  },
+  {
+   "tipo": "jalar",
+   "forma": "circulo",
+   "caida": "gauss",
+   "rotacion": 0,
+   "angulo": 342.9,
+   "t": 0.2886,
+   "radio_grados": 45.3,
+   "radio_t": 0.151,
+   "simetria": 1,
+   "fuerza": 3.975
+  },
+  {
+   "tipo": "jalar",
+   "forma": "circulo",
+   "caida": "gauss",
+   "rotacion": 0,
+   "angulo": 3.9,
+   "t": 0.4211,
+   "radio_grados": 26.2,
+   "radio_t": 0.087,
+   "simetria": 1,
+   "fuerza": 2.739
+  },
+  {
+   "tipo": "jalar",
+   "forma": "circulo",
+   "caida": "gauss",
+   "rotacion": 0,
+   "angulo": 8.5,
+   "t": 0.4056,
+   "radio_grados": 36.7,
+   "radio_t": 0.122,
+   "simetria": 1,
+   "fuerza": 3.92
+  },
+  {
+   "tipo": "jalar",
+   "forma": "circulo",
+   "caida": "gauss",
+   "rotacion": 0,
+   "angulo": 11.3,
+   "t": 0.3845,
+   "radio_grados": 34.2,
+   "radio_t": 0.114,
+   "simetria": 1,
+   "fuerza": 2.392
+  }
+ ]
+}
