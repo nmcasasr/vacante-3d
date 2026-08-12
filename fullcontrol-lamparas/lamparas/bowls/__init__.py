@@ -36,13 +36,15 @@ DISENOS = {
 
 def pasos_bowl(
     diseno: str = "cesta",
-    silueta: str = "bol",
+    silueta = "bol",
     altura: float = 60.0,
     perfil: Optional[Perfil] = None,
     parametros: Optional[dict] = None,
     parametros_silueta: Optional[dict] = None,
     segmentos_por_capa: Optional[int] = None,
     base_solida: bool = True,
+    hueco: float = 0.0,
+    refuerzo_hueco: int = 0,
     capas_transicion: int = 6,
     capas_base: int = 1,
     cambios: Optional[dict] = None,
@@ -72,10 +74,15 @@ def pasos_bowl(
     """
     if diseno not in DISENOS:
         raise ValueError(f"diseño desconocido: {diseno!r}. Opciones: {sorted(DISENOS)}")
-    if silueta not in SILUETAS:
-        raise ValueError(f"silueta desconocida: {silueta!r}. Opciones: {sorted(SILUETAS)}")
-
-    fn_silueta = SILUETAS[silueta](**(parametros_silueta or {}))
+    # `silueta` puede venir ya hecha —la que sale de un DXF, ver
+    # lamparas/perfil.py— o ser el nombre de una del catálogo. Los patrones no
+    # notan la diferencia: reciben `radio(t)` y nada más.
+    if callable(silueta):
+        fn_silueta = silueta
+    else:
+        if silueta not in SILUETAS:
+            raise ValueError(f"silueta desconocida: {silueta!r}. Opciones: {sorted(SILUETAS)}")
+        fn_silueta = SILUETAS[silueta](**(parametros_silueta or {}))
     # Contrato de construir(): devuelve al menos
     #   (funcion_radio, funcion_dz, segmentos, paso_z)
     # y opcionalmente un quinto elemento, funcion_dangulo, que solo usan los
@@ -105,6 +112,8 @@ def pasos_bowl(
         funcion_dz=fn_dz,
         funcion_dangulo=fn_dangulo,
         base_solida=base_solida,
+        hueco=hueco,
+        refuerzo_hueco=refuerzo_hueco,
         capas_transicion=capas_transicion,
         capas_base=capas_base,
         cambios=cambios,

@@ -12,6 +12,7 @@ repetir). Están documentados en el `construir()` de cada módulo:
 """
 
 import argparse
+import sys as _sys
 import fullcontrol as fc
 import inspect
 
@@ -52,6 +53,29 @@ def _cli() -> None:
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("diseno", choices=sorted(DISENOS), help="patrón del bowl")
     p.add_argument("--silueta", choices=sorted(SILUETAS), default="bol")
+    p.add_argument("--perfil", metavar="ARCHIVO.dxf",
+                   help="tomar la silueta de un DXF de Fusion en vez del catalogo. Elige sola la "
+                        "curva mas larga que mas altura recorre; para ver que hay y forzar otra: "
+                        "python -m lamparas.perfil ARCHIVO.dxf")
+    p.add_argument("--perfil-capa", metavar="CAPA", help="forzar una capa del DXF")
+    p.add_argument("--perfil-idx", type=int, metavar="N", help="forzar una curva del DXF por su numero")
+    p.add_argument("--perfil-desde", type=float, metavar="Z",
+                   help="recortar el perfil por abajo, en las coordenadas del modelo. Para imprimir "
+                        "solo la cabeza de una lampara: --perfil-desde 124.4")
+    p.add_argument("--perfil-hasta", type=float, metavar="Z", help="recortar el perfil por arriba")
+    p.add_argument("--perfil-limitar", action="store_true",
+                   help="recortar la pendiente del perfil para que ninguna vuelta se corra mas que "
+                        "un cordon. Una cupula siempre tiene tangente horizontal en el apice y ahi "
+                        "las lineas quedan sueltas en el aire; esto la reemplaza por el cono mas "
+                        "cerrado que si pega, y avisa cuanto queda abierta la punta.")
+    p.add_argument("--piso", type=float, metavar="DIAMETRO",
+                   help="diametro que tiene que QUEDAR libre en el piso, en mm. No es el del "
+                        "recorrido: el cordon va centrado en la trayectoria y se come medio cordon "
+                        "por lado, asi que se compensa. Sin esto el agujero sale chico y no encaja.")
+    p.add_argument("--piso-refuerzo", type=int, default=3, metavar="N",
+                   help="vueltas de COLLAR: una pared corta que sube desde el borde del hueco "
+                        "(3 por defecto, o sea ~1.2 mm de alto con capa 0.4). Le da al encastre una "
+                        "superficie de agarre en vez de un canto de un solo cordon. 0 lo apaga.")
     p.add_argument("--altura", type=float, default=60.0, help="altura de la pared en mm")
     p.add_argument("--radio-base", type=float, help="radio del fondo en mm")
     p.add_argument("--radio-boca", type=float, help="radio de la boca en mm")
@@ -124,6 +148,10 @@ def _cli() -> None:
                         "sobrevive al empaquetado del .3mf y pisa la del template (que solo sirve para "
                         "el calentado inicial). PETG en patrones calados quiere ~240: mas caliente no "
                         "solidifica y se descuelga en los vanos.")
+    p.add_argument("--material", choices=["PLA", "PETG"], default="PLA",
+                   help="fija boquilla y cama. PETG: 245/80 y ventilador al 40%%, que es lo que "
+                        "usan los dos gcodes de referencia; a 100%% el PETG no suelda entre capas "
+                        "y una pieza en modo vaso, que es todo pared, se abre.")
     p.add_argument("--cambio", type=float, action="append", default=[], metavar="ALTURA",
                    help="pausa para cambiar el filamento a mano a esa altura en mm (repetible)")
     p.add_argument("--cambio-ams", action="append", default=[], metavar="ALTURA:SLOT[:MATERIAL]",
@@ -205,6 +233,10 @@ def _cli() -> None:
     )
     if args.velocidad:
         ajustes["velocidad_impresion"] = args.velocidad
+    if args.material == "PETG":
+        ajustes.setdefault("temp_boquilla", 245)
+        ajustes.setdefault("temp_cama", 80)
+        ajustes.setdefault("ventilador", 40)
     if args.ventilador is not None:
         ajustes["ventilador"] = args.ventilador
     perfil = Perfil(**ajustes)
@@ -348,16 +380,56 @@ def _cli() -> None:
             print(aviso)
         print(f"Toques: {len(toques)} desde {args.toques}.")
 
+    # --- silueta desde un DXF ---
+    silueta = args.silueta
+    altura = args.altura
+    if args.perfil:
+        from .. import perfil as _perfil
+        try:
+            cs = _perfil.curvas(args.perfil)
+            if args.perfil_capa:
+                cs = [c for c in cs if c.capa == args.perfil_capa]
+            if args.perfil_idx is not None:
+                cs = [c for c in cs if c.idx == args.perfil_idx]
+            if not cs:
+                p.error("--perfil: ninguna curva coincide con --perfil-capa/--perfil-idx")
+            curva = _perfil.elegir(cs)
+            silueta, info = _perfil.radio_de(curva, args.perfil_desde, args.perfil_hasta)
+        except (ValueError, OSError) as e:
+            p.error(f"--perfil: {e}")
+        # La altura sale del modelo salvo que la pidas distinta: el DXF ya la
+        # dice, y repetirla a mano es la forma más fácil de que no coincidan.
+        if not any(a == "--altura" for a in _sys.argv):
+            altura = info["alto"]
+        print(f"Perfil de {args.perfil}: {info['curva']}")
+        print(f"  z {info['z0']:.1f}..{info['z1']:.1f} -> {info['alto']:.1f} mm de alto, "
+              f"radio {info['r_min']:.1f}..{info['r_max']:.1f} mm "
+              f"(base {info['r_base']:.1f}, boca {info['r_boca']:.1f})")
+        if args.perfil_limitar:
+            silueta, rec = _perfil.limitar(silueta, info["alto"], perfil.altura_capa, perfil.ancho)
+            print(f"  perfil limitado: {rec['tocados']} de {rec['muestras']} muestras recortadas. "
+                  f"La boca pasa de Ø{2*rec['r_boca_antes']:.1f} a Ø{2*rec['r_boca_despues']:.1f} mm "
+                  f"— esa punta queda ABIERTA.")
+        malos = _perfil.voladizo(silueta, info["alto"], perfil.altura_capa, perfil.ancho)
+        if malos:
+            peor = max(malos, key=lambda m: m[2])
+            print(f"AVISO: {len(malos)} vueltas quedan separadas mas que el cordon "
+                  f"({perfil.ancho:g} mm): ahi la pared no apoya sobre la anterior. La peor, "
+                  f"{peor[2]:.2f} mm de separacion ({peor[1]:.0f} grados desde la vertical) "
+                  f"en z={info['z0'] + peor[0]*info['alto']:.1f}.")
+
     nombre = args.nombre or f"bowl_{args.diseno}"
     pasos = pasos_bowl(
         diseno=args.diseno,
-        silueta=args.silueta,
-        altura=args.altura,
+        silueta=silueta,
+        altura=altura,
         perfil=perfil,
         parametros=dict(args.parametros),
         parametros_silueta=parametros_silueta,
         segmentos_por_capa=args.segmentos,
         base_solida=not args.sin_base,
+        hueco=args.piso or 0.0,
+        refuerzo_hueco=args.piso_refuerzo,
         capas_transicion=args.capas_transicion,
         capas_base=args.capas_base,
         cambios=cambios or None,
@@ -380,7 +452,6 @@ def _cli() -> None:
         print(f"Preview: {guardar_html(pasos, nombre=nombre, perfil=perfil)}")
 
     if not args.solo_preview:
-        import sys as _sys
         gcode = encabezado_receta(_sys.argv, "lamparas.bowls") + a_gcode(pasos, perfil)
         ruta = guardar_gcode(gcode, nombre)
         if not args.sin_receta:
