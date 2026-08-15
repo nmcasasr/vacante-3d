@@ -21,19 +21,19 @@
       },
       {
         "command": "gcodePreview.sliceVase",
-        "title": "STL → Vase G-code"
+        "title": "STL \u2192 Vase G-code"
       },
       {
         "command": "gcodePreview.clampOverhangs",
-        "title": "STL → Clamp Overhangs (fixed STL)"
+        "title": "STL \u2192 Clamp Overhangs (fixed STL)"
       },
       {
         "command": "gcodePreview.sliceWithOrca",
-        "title": "STL → Slice with OrcaSlicer"
+        "title": "STL \u2192 Slice with OrcaSlicer"
       },
       {
         "command": "gcodePreview.pipeline",
-        "title": "STL → Pipeline (Clamp → Orca → Preview)"
+        "title": "STL \u2192 Pipeline (Clamp \u2192 Orca \u2192 Preview)"
       },
       {
         "command": "gcodePreview.watchGcode",
@@ -49,7 +49,7 @@
       },
       {
         "command": "gcodePreview.packBambu3mf",
-        "title": "G-code → Bambu 3mf (printable over LAN)"
+        "title": "G-code \u2192 Bambu 3mf (printable over LAN)"
       },
       {
         "command": "gcodePreview.pickBambuTemplate",
@@ -175,7 +175,8 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "package": "npm run compile && npx --yes @vscode/vsce package --allow-missing-repository --skip-license -o gcode-preview.vsix",
-    "reinstall": "npm run package && node tools/instalar.js"
+    "reinstall": "npm run package && node tools/instalar.js",
+    "test": "npm run compile && node tools/test-choques.js"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

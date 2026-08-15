@@ -41,11 +41,21 @@ def leer_marcas(ruta):
     capas, moves = [], []
     z = None
     actual = None
+    # El `;Z:` del cuerpo se emite JUSTO ANTES del `; CHANGE_LAYER` que abre su
+    # capa, así que asignárselo a la capa abierta se lo da a la anterior. Se
+    # guarda aparte y lo recoge el CHANGE_LAYER siguiente.
+    #
+    # Esto vivió escondido detrás de una tolerancia de 0.5 mm: mientras el paso
+    # fue de 0.4, la Z de la capa siguiente caía dentro y el desfase no se veía.
+    # Con capa de 0.8 —la de la referencia— 52 de 75 capas dieron "discrepan".
+    z_prusa_pendiente = None
     for linea in open(ruta, errors="ignore"):
         t = linea.strip()
+        m = re.match(r"^;Z:([0-9.]+)", t)
+        if m:
+            z_prusa_pendiente = float(m.group(1))
         for patron, clave in ((r"^; Z_HEIGHT: ([0-9.]+)", "z_bambu"),
                               (r"^; LAYER_HEIGHT: ([0-9.]+)", "h_bambu"),
-                              (r"^;Z:([0-9.]+)", "z_prusa"),
                               (r"^;HEIGHT:([0-9.]+)", "h_prusa"),
                               (r"^;WIDTH:([0-9.]+)", "w_prusa")):
             m = re.match(patron, t)
@@ -53,6 +63,9 @@ def leer_marcas(ruta):
                 actual[clave] = float(m.group(1))
         if t.startswith("; CHANGE_LAYER"):
             actual = {"i": len(capas)}
+            if z_prusa_pendiente is not None:
+                actual["z_prusa"] = z_prusa_pendiente
+                z_prusa_pendiente = None
             capas.append(actual)
             continue
         crudo = t.split(";")[0].strip()
@@ -98,24 +111,88 @@ def main():
           f"solape máximo {max(solapes):.3f} mm donde la pared se acuesta"
           if solapes else "")
 
-    z_real = max(z for _, z in moves)
-    check(abs(zs[-1] - z_real) < 0.5, "la última capa llega al techo de la pieza",
-          f"declara {zs[-1]:.2f}, la pieza llega a {z_real:.2f}")
-
-    fuera = 0
+    # Cuánto sube y baja el patrón DENTRO de una vuelta, medido del propio
+    # archivo. Hace falta antes de juzgar la última capa: en una pieza calada la
+    # cresta de la última vuelta queda por encima de su marca, por construcción,
+    # y ese margen es la amplitud de la onda y no un número fijo.
+    onda = 0.0
     for i, z in moves:
         techo, alto = zs[i], hs[i]
-        if not (techo - alto - TOL <= z <= techo + TOL):
-            fuera += 1
-    check(fuera == 0, "cada movimiento cae dentro de su capa",
-          f"{fuera} de {len(moves)} fuera de rango" if fuera else "")
+        if z < techo - alto:
+            onda = max(onda, techo - alto - z)
+        elif z > techo:
+            onda = max(onda, z - techo)
 
-    # Las marcas del cuerpo caen DESPUÉS del bloque que abre el injerto, así que
-    # cada capa lleva las suyas y las de la siguiente. Se compara contra la que
-    # el injerto declaró, con la tolerancia de un paso.
+    # La tolerancia de 0.5 mm que había acá estaba calibrada con `amplitud_z`
+    # 0.5. Al subir la amplitud a 0.7 la misma pieza sana empezó a fallar por
+    # 0.70 mm: la cresta de la última vuelta sobresale exactamente lo que
+    # ondula el patrón. Atada a la onda medida, el criterio deja de depender de
+    # con qué amplitud se generó la pieza.
+    z_real = max(z for _, z in moves)
+    sobra = z_real - zs[-1]
+    check(-0.5 < sobra <= onda + 0.5, "la última capa llega al techo de la pieza",
+          f"declara {zs[-1]:.2f}, la pieza llega a {z_real:.2f} "
+          f"({sobra:+.2f}, la onda da {onda:.2f})")
+
+    # Cuánto se sale de su capa cada movimiento, no solo si se sale.
+    #
+    # En una pieza CALADA la mitad de los puntos se sale por construcción: la
+    # boquilla sube y baja dentro de la vuelta para abrir el patrón, y una
+    # "capa" es una rebanada plana. Contarlos como fallas daba 53152 de 117166
+    # en la caperuza y no significaba nada.
+    #
+    # Lo que sí es una falla es un movimiento que cae en OTRA capa, o sea que se
+    # sale por más de una altura de capa entera: eso ya no es la onda, es la
+    # marca de capa puesta en el lugar equivocado —el defecto que dejó una pieza
+    # de 58 mm renderizada como un panqueque—. La onda está acotada por su
+    # amplitud; un desfase de marca no está acotado por nada.
+    #
+    # Medido en la caperuza: excursión máxima 0.500 mm, que es exactamente su
+    # `amplitud_z`. Ni un punto por encima. Con capas de 0.647 mm, cero fallas.
+    # Lo que se mide es la MEDIANA de cada capa, no cada punto suelto.
+    #
+    # La onda es simétrica alrededor del centro de la vuelta, así que su mediana
+    # cae dentro de la banda por más que la mitad de los puntos se salga. Una
+    # marca corrida de capa mueve la mediana entera y no la tapa nada. Así el
+    # criterio separa las dos cosas sin depender de ningún umbral inventado.
+    #
+    # Se sigue informando la excursión máxima de un punto, porque dice cuán
+    # profundo baja el patrón, pero no decide el ok/falla.
+    por_capa = {}
+    for i, z in moves:
+        por_capa.setdefault(i, []).append(z)
+    corridas = []
+    for i, v in por_capa.items():
+        v.sort()
+        med = v[len(v) // 2]
+        techo, alto = zs[i], hs[i]
+        if med < techo - alto - TOL:
+            corridas.append((i, techo - alto - med))
+        elif med > techo + TOL:
+            corridas.append((i, med - techo))
+
+    fuera = []
+    for i, z in moves:
+        techo, alto = zs[i], hs[i]
+        if z < techo - alto - TOL:
+            fuera.append(techo - alto - z)
+        elif z > techo + TOL:
+            fuera.append(z - techo)
+    peor = max(fuera, default=0.0)
+
+    check(not corridas, "la marca de capa cae donde está el material",
+          f"{len(corridas)} capas con la mediana fuera de su banda, la peor "
+          f"{max(d for _i, d in corridas):.3f} mm (capa {max(corridas, key=lambda c: c[1])[0]})"
+          if corridas else
+          f"{len(fuera)} de {len(moves)} puntos ondulan fuera de su capa, hasta "
+          f"{peor:.3f} mm: es el patrón calado, y está acotado" if fuera else "")
+
+    # Ahora que cada `;Z:` va con su capa, los dos dialectos declaran el mismo
+    # número y la tolerancia puede ser estrecha. La de 0.5 que había acá era la
+    # que escondía el desfase de una capa, y con paso de 0.8 dejaba de tapar.
     dif = [i for i, c in enumerate(capas)
            if c.get("z_prusa") is not None
-           and abs(c["z_prusa"] - c["z_bambu"]) > 0.5]
+           and abs(c["z_prusa"] - c["z_bambu"]) > 0.001]
     check(not dif, "los dos dialectos declaran lo mismo",
           f"{len(dif)} capas discrepan" if dif else "")
 

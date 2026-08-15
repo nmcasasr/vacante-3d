@@ -175,6 +175,16 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Se fotografía ACÁ, que es lo que Python va a leer del disco al arrancar.
     const toquesUsados = leerToques();
+    // Los flags que llevan `clave=valor` en el argumento siguiente, y que por
+    // eso se sustituyen distinto que los que llevan el valor suelto.
+    //
+    // Es un CONJUNTO EXACTO y no un prefijo a propósito. Estaba escrito como
+    // `flag.startsWith('--p')`, que además de `--p/--pe/--pp/--ps` atrapaba a
+    // `--perfil-escala`, `--piso` y `--piso-refuerzo`: el flag entraba por la
+    // rama de clave=valor, no encontraba el `=`, y el `else` lo rechazaba por
+    // empezar con `--p`. Resultado: el slider se movía, el comando se
+    // relanzaba con el valor viejo y la pieza no cambiaba nunca.
+    const FLAGS_KV = new Set(['--p', '--pe', '--pp', '--ps']);
     const argv = [...receta.args];
     for (const c of receta.controles) {
       const clave = `${c.flag}:${c.clave}`;
@@ -182,9 +192,9 @@ export function activate(context: vscode.ExtensionContext) {
       const v = valores[clave];
       for (let i = 0; i < argv.length - 1; i++) {
         if (argv[i] === c.flag) {
-          if (c.flag.startsWith('--p') && String(argv[i + 1]).startsWith(c.clave + '=')) {
+          if (FLAGS_KV.has(c.flag) && String(argv[i + 1]).startsWith(c.clave + '=')) {
             argv[i + 1] = `${c.clave}=${v}`;
-          } else if (!c.flag.startsWith('--p') && argv[i] === c.flag) {
+          } else if (!FLAGS_KV.has(c.flag)) {
             argv[i + 1] = String(v);
           }
         }

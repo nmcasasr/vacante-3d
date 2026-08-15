@@ -134,6 +134,113 @@ def curvas(ruta: str) -> List[Curva]:
     return out
 
 
+def curva_de_stl(ruta: str, muestras: int = 400) -> Curva:
+    """
+    La silueta de un STL de revolución, como si fuera una curva del DXF.
+
+    Existe porque las formas nuevas llegan modeladas en 3D, no como sección 2D
+    de Fusion, y `curvas()` sobre un STL devuelve cero: no hay entidades DXF que
+    leer. Sin esto, `--perfil caperusa.stl` no tenía forma de entrar al
+    generador.
+
+    Toma el radio MÁXIMO de cada franja de altura, que es la envolvente
+    exterior: si la malla es una cáscara con espesor, el contorno interior es el
+    que modelaste y acá lo reemplaza un cordón — el mismo criterio que
+    `radio_de` aplica a los DXF.
+
+    Solo tiene sentido con formas de revolución. Si el modelo varía con el
+    ángulo, esto lo promedia a su envolvente y se pierde el relieve; el aviso
+    lo da `_cli`, que mide cuánto varía.
+    """
+    import struct
+    d = open(ruta, "rb").read()
+    if d[:5] == b"solid" and b"facet" in d[:2048]:
+        raise ValueError(f"{ruta}: STL ASCII, solo se leen binarios")
+    n = (len(d) - 84) // 50
+    if n <= 0:
+        raise ValueError(f"{ruta}: no parece un STL binario")
+    zs, xs, ys = [], [], []
+    tris = []
+    for i in range(n):
+        o = 84 + i * 50 + 12
+        t = []
+        for k in range(3):
+            x, y, z = struct.unpack_from("<fff", d, o + k * 12)
+            t.append((x, y, z))
+            xs.append(x); ys.append(y); zs.append(z)
+        tris.append(t)
+    cx = (min(xs) + max(xs)) / 2
+    cy = (min(ys) + max(ys)) / 2
+    z0, z1 = min(zs), max(zs)
+    alto = (z1 - z0) or 1.0
+
+    # Radio máximo por franja, midiendo sobre las ARISTAS y no sobre los
+    # vértices.
+    #
+    # Con los vértices solos el perfil sale como un serrucho, y no por poco: la
+    # caperuza daba 42 cambios de signo de pendiente en una campana que debería
+    # tener uno, con escalones de hasta 2.3 mm de radio. En la pieza eso se ve
+    # como anillos: la pared sube a los tirones y la celosía se comprime y se
+    # abre en bandas.
+    #
+    # El motivo es que un triángulo que cruza diez franjas solo aporta dato en
+    # las tres donde caen sus vértices. Las siete del medio se quedan con lo que
+    # les deje otro triángulo, que en general es un radio menor — y como después
+    # se toma el MÁXIMO, el resultado alterna entre "cayó un vértice ancho acá"
+    # y "no cayó ninguno". Es un artefacto del muestreo, no la forma del modelo.
+    #
+    # Interpolando a lo largo de cada arista, toda franja que la arista cruza
+    # recibe su radio real, y la envolvente sale continua.
+    cajas: Dict[int, float] = {}
+
+    def _marcar(k, r):
+        if 0 <= k <= muestras and r > cajas.get(k, 0.0):
+            cajas[k] = r
+
+    for t in tris:
+        for a, b in ((t[0], t[1]), (t[1], t[2]), (t[2], t[0])):
+            ka = int((a[2] - z0) / alto * muestras)
+            kb = int((b[2] - z0) / alto * muestras)
+            _marcar(ka, math.hypot(a[0] - cx, a[1] - cy))
+            _marcar(kb, math.hypot(b[0] - cx, b[1] - cy))
+            if ka == kb:
+                continue
+            lo, hi = (ka, kb) if ka < kb else (kb, ka)
+            for k in range(lo + 1, hi):
+                z = z0 + alto * k / muestras
+                f = (z - a[2]) / ((b[2] - a[2]) or 1.0)
+                _marcar(k, math.hypot(a[0] + (b[0] - a[0]) * f - cx,
+                                      a[1] + (b[1] - a[1]) * f - cy))
+
+    ks = sorted(cajas)
+    pts = [(cajas[k], z0 + alto * k / muestras) for k in ks]
+    return Curva(0, f"stl:{ruta.split('/')[-1]}", "STL", pts)
+
+
+def variacion_angular_stl(ruta: str, franjas: int = 20) -> float:
+    """Cuánto varía el radio con el ángulo. Grande = NO es de revolución."""
+    import struct
+    d = open(ruta, "rb").read()
+    n = (len(d) - 84) // 50
+    verts = []
+    for i in range(n):
+        o = 84 + i * 50 + 12
+        for k in range(3):
+            verts.append(struct.unpack_from("<fff", d, o + k * 12))
+    xs = [v[0] for v in verts]; ys = [v[1] for v in verts]; zs = [v[2] for v in verts]
+    cx = (min(xs) + max(xs)) / 2; cy = (min(ys) + max(ys)) / 2
+    z0, z1 = min(zs), max(zs)
+    peor = 0.0
+    from collections import defaultdict
+    b = defaultdict(list)
+    for x, y, z in verts:
+        b[int((z - z0) / (z1 - z0 or 1) * franjas)].append(math.hypot(x - cx, y - cy))
+    for k, rr in b.items():
+        if len(rr) > 10:
+            peor = max(peor, max(rr) - min(rr))
+    return peor
+
+
 def circulos(ruta: str) -> List[Tuple[str, float, float]]:
     """(capa, z, radio) de cada CIRCLE. De acá salen los huecos."""
     out = []

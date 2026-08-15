@@ -358,6 +358,73 @@
         }
         continue;
       }
+      // Arcos. Orca los emite cuando "Arc fitting" está activo, y son miles: un
+      // corte de la caperuza traía 5107 G2/G3 contra 27957 G1.
+      //
+      // Ignorarlos era peor que no dibujarlos: como tampoco actualizaban la
+      // posición, el G1 siguiente trazaba una recta desde donde había quedado
+      // el cabezal hacía cientos de movimientos. La pieza se veía cruzada de
+      // líneas largas y con zonas vacías, que es el "no se ve bien" del preview.
+      //
+      // Se interpolan en tramos rectos —el visor dibuja líneas de todos modos— y
+      // se reparte la extrusión por igual entre ellos.
+      if (cmd === 'G2' || cmd === 'G3') {
+        const start = { x: pos.x, y: pos.y, z: pos.z };
+        let i = 0, j = 0, ex = pos.x, ey = pos.y, ez = pos.z, de = 0;
+        for (let k = 1; k < t.length; k++) {
+          const c = t[k][0].toUpperCase();
+          const v = num(t[k]);
+          if (isNaN(v)) continue;
+          if (c === 'X') ex = absPos ? v : pos.x + v;
+          else if (c === 'Y') ey = absPos ? v : pos.y + v;
+          else if (c === 'Z') ez = absPos ? v : pos.z + v;
+          else if (c === 'I') i = v;
+          else if (c === 'J') j = v;
+          else if (c === 'F') feed = v;
+          else if (c === 'E') {
+            if (absExt) { de = v - pos.e; pos.e = v; }
+            else { de = v; pos.e += v; }
+          }
+        }
+        const cxA = start.x + i, cyA = start.y + j;
+        const r = Math.hypot(i, j);
+        let a0 = Math.atan2(start.y - cyA, start.x - cxA);
+        let a1 = Math.atan2(ey - cyA, ex - cxA);
+        // G2 es horario, G3 antihorario. El barrido se lleva al signo correcto;
+        // si da cero es una vuelta completa, no un arco nulo.
+        let barrido = a1 - a0;
+        if (cmd === 'G2') { while (barrido > 0) barrido -= 2 * Math.PI; if (barrido === 0) barrido = -2 * Math.PI; }
+        else { while (barrido < 0) barrido += 2 * Math.PI; if (barrido === 0) barrido = 2 * Math.PI; }
+        const largo = Math.abs(barrido) * r;
+        const n = Math.max(2, Math.min(64, Math.ceil(largo / 0.5)));
+        const extruding = de > 1e-6;
+        let px = start.x, py = start.y, pz = start.z;
+        for (let s = 1; s <= n; s++) {
+          const f = s / n;
+          const a = a0 + barrido * f;
+          const qx = cxA + r * Math.cos(a);
+          const qy = cyA + r * Math.sin(a);
+          const qz = start.z + (ez - start.z) * f;
+          V.push(px, py, pz, qx, qy, qz);
+          if (extruding) {
+            tmp.copy(cold).lerp(hot, fan);
+            C.push(tmp.r, tmp.g, tmp.b, tmp.r, tmp.g, tmp.b);
+            bump(px, py, pz);
+            bump(qx, qy, qz);
+          } else {
+            C.push(travelCol.r, travelCol.g, travelCol.b, travelCol.r, travelCol.g, travelCol.b);
+          }
+          ext.push(extruding ? 1 : 0);
+          segZ.push(qz);
+          segBand.push(band());
+          segE.push(extruding ? de / n : 0);
+          segV.push(Math.min(feed / 60, VEL_MAX));
+          segA.push(accel);
+          px = qx; py = qy; pz = qz;
+        }
+        pos.x = ex; pos.y = ey; pos.z = ez;
+        continue;
+      }
       if (cmd === 'G0' || cmd === 'G1') {
         const start = { x: pos.x, y: pos.y, z: pos.z };
         let de = 0;

@@ -40,6 +40,7 @@ Uso:
 import argparse
 import collections
 import math
+import re
 import sys
 
 AREA_FILAMENTO = math.pi * (1.75 / 2) ** 2
@@ -144,13 +145,61 @@ REFERENCIA = {
     #                       fino    contacto   puentes   choque
     #   Squeezy cúpulas     0.11 %    1.88 %      1      12.53 %
     #   jarrón              0.10 %    0.11 %      1      39.51 %
+    #
+    # Estos números salieron pasándole a cada pieza SU cordón. Medirlas con los
+    # defaults que había antes (1.8 x 0.4) las condenaba a todas: la jarra daba
+    # 96.13 % sin apoyo en vez de 0.11 %, y la referencia 45.32 % en vez de
+    # 19.41 %. Por eso el cordón ahora se lee del archivo y, si no está, se
+    # avisa. Si alguno de estos números no reproduce, lo primero a mirar es con
+    # qué cordón se midió.
     "fino": 0.26,
     "sin_apoyo": 1.88,
-    "puentes": 1,
+    "puente_max": PUENTE_MAXIMO,
     # CHOQUE QUEDA FUERA DEL VEREDICTO, y no por conveniencia: marca el 39.51 %
     # del jarrón, que está impreso y funciona. Un criterio que condena a la
     # referencia no sirve para juzgar nada. Se sigue informando —es útil para
     # comparar dos versiones de la misma pieza— pero no decide.
+    "pisado": None,
+}
+
+# La misma referencia medida ENTERA, que es como se imprimió y funciona.
+#
+# Los números de arriba salen de sus CÚPULAS, que son pared maciza. Contra ellos
+# cualquier pieza calada da "NO IMPRIMIBLE" por definición: un calado puentea al
+# aire a propósito, y ahí "sin apoyo" no es un defecto sino el diseño.
+#
+# Medido con este script sobre SU ZONA CALADA (--z 28:70) y con su cordón real,
+# 1.2 x 0.8 mm — que no lo declara, así que hay que pasárselo a mano:
+#
+#     fino 0.06 %  ·  sin apoyo 63.85 %  ·  choque 19.92 %  ·  peor puente 15.2 mm
+#
+# Va la zona calada y no el archivo entero porque el archivo entero es 60 % de
+# pared maciza, que arrastra el promedio a 19.41 % y deja un baremo que ninguna
+# pieza 100 % calada puede cumplir. Y se puede acotar sin sesgo recién ahora:
+# `--z` acota QUÉ SE PUNTÚA, no qué sostiene (ver `medir`). Con el sesgo viejo
+# esta misma medición daba un puente de 4531 mm.
+#
+# El 1.2 x 0.8 no es a ojo: su zona maciza extruye 0.960 mm² por mm, que es
+# exactamente 1.2 x 0.8. Con los defaults de antes (1.8 x 0.4) el mismo archivo
+# daba 45.32 % sin apoyo. Y estos números sí se parecen a los documentados
+# arriba (choque 12.53 %, fino 0.11 %), lo que confirma de dónde venía el
+# desfase.
+#
+# 15.2 mm de puente es mucho, y es real: la referencia cruza huecos de 10.8 mm
+# y se imprime. Lo que lo hace posible es que espera 1.5 s en CADA nodo.
+#
+# Va el archivo ENTERO y no la banda `--z 28:70` a propósito: acotar por altura
+# sesga la medición, porque el material que queda debajo de la banda desaparece
+# del mapa de apoyo y la primera vuelta de la banda sale "al aire". Es lo que
+# hace que `--z 70:97` reporte un puente de 4531 mm que no existe, y casi con
+# seguridad es de dónde salía el 1.88 % de arriba.
+REFERENCIA_CALADA = {
+    "fino": 0.26,
+    "sin_apoyo": 63.85,
+    # EN MILÍMETROS, no en cantidad de tramos. Contar tramos castiga a la pieza
+    # por ser grande: la referencia entera tiene 98 y su propia celosía 95, así
+    # que se condenaba a sí misma. Lo que descuelga un puente es su LARGO.
+    "puente_max": 15.2,
     "pisado": None,
 }
 
@@ -230,13 +279,38 @@ def leer(ruta, ancho, marcador="FIN DEL START GCODE"):
     return segs
 
 
-def medir(segs, ancho, alto_nominal):
+def medir(segs, ancho, alto_nominal, franja=None):
+    """
+    `franja` = (z_min, z_max) acota QUÉ SE PUNTÚA, no qué existe.
+
+    Filtrar los segmentos antes de entrar acá —que es lo que hacía `--z`— borra
+    del mapa de apoyo el material que queda DEBAJO del corte, así que la primera
+    vuelta de la banda sale flotando y arrastra a las siguientes. Sobre la
+    referencia eso inventaba un puente de 4531 mm que el archivo entero no
+    tiene. Acá los segmentos de fuera de la banda siguen sosteniendo; lo único
+    que cambia es que no se los cuenta.
+    """
     if not segs:
         print("no hay segmentos extruidos", file=sys.stderr)
         return 1
 
     z_base = min(min(s[2], s[5]) for s in segs)
     area_nominal = ancho * alto_nominal
+
+    # ¿Es una pieza CALADA? Se detecta del recorrido, no de una etiqueta.
+    #
+    # En una espiral maciza la Z nunca baja mientras se extruye: sube parejo
+    # vuelta tras vuelta. En un calado la boquilla BAJA a propósito en cada
+    # cruce, para morder la vuelta de abajo y soldar ahí. Miles de segmentos
+    # extruyendo cuesta abajo es la firma del patrón, y no la produce ninguna
+    # otra cosa.
+    #
+    # De esto depende contra qué se compara: la celosía de la referencia da
+    # 49.75 % sin apoyo y sus cúpulas 1.88 %. Elegir mal el baremo condena a
+    # cualquier calado, incluida la propia referencia.
+    bajando = sum(1 for s in segs if s[5] - s[2] < -0.05)
+    calada = bajando > 0.01 * len(segs)
+    baremo = REFERENCIA_CALADA if calada else REFERENCIA
 
     # --- 1. fabricabilidad -------------------------------------------------
     finos = collections.Counter()
@@ -281,6 +355,7 @@ def medir(segs, ancho, alto_nominal):
     muestras_pisadas = collections.Counter()
     for i, s in enumerate(segs):
         x1, y1, z1, x2, y2, z2, area, tipo, arco = s
+        puntuar = franja is None or franja[0] <= (z1 + z2) / 2 <= franja[1]
         largo = math.dist((x1, y1, z1), (x2, y2, z2))
         alto = area / ancho
         n_m = max(1, int(math.ceil(largo / MUESTRA)))
@@ -326,6 +401,8 @@ def medir(segs, ancho, alto_nominal):
                         break
                 if apoyado and choque:
                     break
+            if not puntuar:
+                continue
             muestras_tot[tipo] += 1
             if not apoyado:
                 muestras_malas[tipo] += 1
@@ -410,18 +487,22 @@ def medir(segs, ancho, alto_nominal):
     print()
     fab = sum(imposibles.values())
     con = sum(muestras_malas.values())
-    pue = sum(1 for l in largos if l[0] > PUENTE_MAXIMO)
+    pue = max((l[0] for l in largos), default=0.0)
     cho = sum(muestras_pisadas.values())
     n = len(segs)
     n_m = max(1, sum(muestras_tot.values()))
     pc_fino = 100 * sum(mm_fino.values()) / max(sum(mm_tot.values()), 1e-9)
     filas = [
-        (f"línea fina (<{ALTO_MINIMO:.2f}mm)", pc_fino, REFERENCIA["fino"], "%"),
-        ("contacto", 100 * con / n_m, REFERENCIA["sin_apoyo"], "%"),
-        ("choque", 100 * cho / n_m, REFERENCIA["pisado"], "%"),
-        ("puentes", pue, REFERENCIA["puentes"], ""),
+        (f"línea fina (<{ALTO_MINIMO:.2f}mm)", pc_fino, baremo["fino"], "%"),
+        ("contacto", 100 * con / n_m, baremo["sin_apoyo"], "%"),
+        ("choque", 100 * cho / n_m, baremo["pisado"], "%"),
+        ("peor puente", pue, baremo["puente_max"], "mm"),
     ]
-    print("VEREDICTO  (contra Squeezy Fidget Toy.gcode, objeto impreso y viable)")
+    zona = "su CELOSÍA (z 28-70)" if calada else "sus CÚPULAS (pared maciza)"
+    print(f"VEREDICTO  (contra Squeezy Fidget Toy.gcode, objeto impreso y viable)")
+    print(f"   la pieza {'ES calada' if calada else 'es maciza'}: "
+          f"{bajando} de {len(segs)} segmentos extruyen bajando "
+          f"-> se compara contra {zona}")
     ok = True
     filas = [f for f in filas if f[2] is not None]
     for nombre, valor, tope, u in filas:
@@ -429,11 +510,45 @@ def medir(segs, ancho, alto_nominal):
         # este mismo script y su propio número no puede salir "PEOR" que él
         bien = round(valor, 2) <= tope + 1e-9
         ok = ok and bien
-        print(f"   {nombre:>21}: {valor:8.2f}{u:1} contra {tope:6.2f}{u:1} "
+        print(f"   {nombre:>21}: {valor:8.2f} {u:<2} contra {tope:6.2f} {u:<2} "
               f"de la referencia   {'ok' if bien else 'PEOR'}")
     print(f"   -> {'IMPRIMIBLE' if ok else 'NO IMPRIMIBLE'}")
     veredicto = "IMPRIMIBLE" if ok else "NO IMPRIMIBLE"
     return 0 if veredicto == "IMPRIMIBLE" else 2
+
+
+def _cordon_declarado(ruta):
+    """
+    Ancho y alto de cordón que declara el propio g-code, o None.
+
+    Se toma la MEDIANA y no el primero: el alto varía a lo largo de una pieza de
+    paso adaptativo (en la caperuza va de 0.085 a 0.700), y el primero es el de
+    la capa de arranque, que es la menos representativa de todas.
+
+    Los dos dialectos: ';WIDTH:' / ';HEIGHT:' es el de PrusaSlicer, que es el
+    que emite este generador; '; LINE_WIDTH:' / '; LAYER_HEIGHT:' es el de Orca,
+    que es el que agrega el empaquetador. Un archivo empaquetado trae los dos y
+    dicen lo mismo (lo comprueba `verificar_capas.py`).
+    """
+    anchos, altos = [], []
+    pat = re.compile(r"^;\s*(?:LINE_)?WIDTH:\s*([0-9.]+)|^;\s*(?:LAYER_)?HEIGHT:\s*([0-9.]+)")
+    try:
+        with open(ruta, errors="ignore") as fh:
+            for l in fh:
+                if not l.startswith(";"):
+                    continue
+                m = pat.match(l.strip())
+                if not m:
+                    continue
+                if m.group(1):
+                    anchos.append(float(m.group(1)))
+                elif m.group(2):
+                    altos.append(float(m.group(2)))
+    except OSError:
+        return None, None, "?"
+    med = lambda v: sorted(v)[len(v) // 2] if v else None
+    a, h = med(anchos), med(altos)
+    return a, h, "declarado en el archivo" if (a and h) else "?"
 
 
 def _cerca(px, py, o):
@@ -463,24 +578,71 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("gcode")
-    ap.add_argument("--ancho", type=float, default=1.8, help="ancho de cordón, mm")
-    ap.add_argument("--alto", type=float, default=0.4, help="altura de capa, mm")
+    ap.add_argument("--ancho", type=float, default=None,
+                    help="ancho de cordón, mm. Por defecto se lee del archivo "
+                         "(';WIDTH:' / '; LINE_WIDTH:').")
+    ap.add_argument("--alto", type=float, default=None,
+                    help="altura del cordón, mm. Por defecto se lee del archivo "
+                         "(';HEIGHT:' / '; LAYER_HEIGHT:'). NO es un detalle: "
+                         "es el eje que más pesa en el criterio de apoyo, y "
+                         "pasarlo mal da un resultado sin sentido. La jarra "
+                         "medida con 1.8x0.4 daba 96.13 %% sin apoyo; con su "
+                         "cordón real (1.2x0.8) da 3.46 %%.")
     ap.add_argument("--z", default=None, metavar="MIN:MAX",
                     help="acotar a una franja de altura. Hace falta para medir "
                          "`Squeezy Fidget Toy.gcode`: es DOS CÚPULAS con una "
                          "celosía en el medio, y los hilos de la celosía cruzan "
-                         "en el aire por diseño. Medida entera da 27 % sin "
-                         "apoyo; sus cúpulas (--z 70:97) dan 1.5 %.")
+                         # Los %% van dobles: argparse pasa el help por un
+                         # formateo con %, y un % suelto lo hace explotar con
+                         # `ValueError: incomplete format` al pedir --help.
+                         "en el aire por diseño. OJO: acotar SESGA el apoyo. "
+                         "El material que queda debajo del corte desaparece "
+                         "del mapa, así que la primera vuelta de la banda sale "
+                         "'al aire' y arrastra el resto. Sobre la referencia, "
+                         "--z 70:97 inventa un puente de 4531 mm que el "
+                         "archivo entero no tiene. Sirve para COMPARAR dos "
+                         "versiones de la misma pieza en la misma banda, no "
+                         "para juzgar una sola.")
     a = ap.parse_args()
-    segs = leer(a.gcode, a.ancho)
+
+    # El cordón sale del archivo, no de un default.
+    #
+    # Esto fue un agujero caro: con los valores que había por defecto (1.8 x 0.4)
+    # la jarra —que está impresa y funciona— medía 96.13 % del recorrido sin
+    # apoyo y un "puente" de 35 metros. Con su cordón real (1.2 x 0.8) da 3.46 %.
+    # El criterio de apoyo compara la separación vertical contra la ALTURA del
+    # cordón, así que pasarle 0.4 a una pieza de 0.8 declara que ninguna vuelta
+    # toca la de abajo, en toda la pieza. El número salía, se veía plausible, y
+    # no significaba nada.
+    #
+    # Los g-codes de este generador declaran las dos cosas. Los ajenos no, y por
+    # eso ahí se avisa en vez de inventar.
+    ancho, alto, de_donde = _cordon_declarado(a.gcode)
+    if a.ancho is not None:
+        ancho, de_donde = a.ancho, "--ancho/--alto"
+    if a.alto is not None:
+        alto, de_donde = a.alto, "--ancho/--alto"
+    if ancho is None or alto is None:
+        ancho = ancho if ancho is not None else 1.8
+        alto = alto if alto is not None else 0.4
+        print(f"AVISO: {a.gcode} no declara su cordón y no se pasó --ancho/--alto.\n"
+              f"       Se usa {ancho} x {alto} mm, que probablemente no es el de "
+              f"esta pieza.\n"
+              f"       El apoyo y los puentes salen sin sentido si el alto no es "
+              f"el real.", file=sys.stderr)
+        de_donde = "DEFAULT SIN VALIDAR"
+    print(f"cordón {ancho} x {alto} mm ({de_donde})")
+
+    segs = leer(a.gcode, ancho)
+    franja = None
     if a.z:
         lo, hi = (float(v) for v in a.z.split(":"))
-        segs = [q for q in segs if lo <= (q[2] + q[5]) / 2 <= hi]
+        franja = (lo, hi)
     if not segs:
         print(f"{a.gcode}: no se leyó ningún segmento extruido. "
               f"¿El archivo tiene movimientos G1 con E creciente?", file=sys.stderr)
         return 1
-    return medir(segs, a.ancho, a.alto)
+    return medir(segs, ancho, alto, franja)
 
 
 if __name__ == "__main__":

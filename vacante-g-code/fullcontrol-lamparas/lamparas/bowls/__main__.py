@@ -63,6 +63,18 @@ def _cli() -> None:
                    help="recortar el perfil por abajo, en las coordenadas del modelo. Para imprimir "
                         "solo la cabeza de una lampara: --perfil-desde 124.4")
     p.add_argument("--perfil-hasta", type=float, metavar="Z", help="recortar el perfil por arriba")
+    p.add_argument("--perfil-escala", type=float, default=1.0, metavar="K",
+                   help="achicar o agrandar el perfil, radio y altura por igual. Para sacar una "
+                        "prueba chica de una pieza que tarda horas: --perfil-escala 0.35. "
+                        "Uniforme a proposito: el voladizo es un ANGULO y los angulos no cambian "
+                        "con la escala, asi que la version chica pone a prueba la misma geometria. "
+                        "Lo que NO escala es el cordon: con la misma boquilla, la pared de la "
+                        "chica pesa mas en proporcion.")
+    p.add_argument("--perfil-invertir", action="store_true",
+                   help="dar vuelta el perfil de arriba abajo. Un modelo suele venir en la "
+                        "orientacion de la FIGURA, no en la de impresion: la caperuza tiene el "
+                        "encastre arriba en el ensamblaje y tiene que ir contra la cama para poder "
+                        "imprimirse. Sin esto sale al reves y no encastra ni se sostiene.")
     p.add_argument("--perfil-limitar", action="store_true",
                    help="recortar la pendiente del perfil para que ninguna vuelta se corra mas que "
                         "un cordon. Una cupula siempre tiene tangente horizontal en el apice y ahi "
@@ -148,6 +160,18 @@ def _cli() -> None:
                         "sobrevive al empaquetado del .3mf y pisa la del template (que solo sirve para "
                         "el calentado inicial). PETG en patrones calados quiere ~240: mas caliente no "
                         "solidifica y se descuelga en los vanos.")
+    p.add_argument("--temp-cama", type=int, metavar="GRADOS",
+                   help="temperatura de cama. El g-code de referencia usa 70 para PETG, no los 80 "
+                        "que pone --material: diez grados de mas dejan la pieza blanda mas tiempo.")
+    p.add_argument("--temp-primera-capa", type=int, metavar="GRADOS",
+                   help="boquilla SOLO para la primera capa. La referencia arranca a 250 para que "
+                        "agarre y baja a 240 para el cuerpo; el truco es que la de adherencia y la "
+                        "de impresion no tienen por que ser la misma.")
+    p.add_argument("--espera-desde", type=float, default=0.0, metavar="FRACCION",
+                   help="poner las esperas SOLO por encima de esa fraccion de la altura. La "
+                        "referencia las pone unicamente en la zona calada (z28-69.7 de 97), no en "
+                        "la base maciza: abajo no hay puente que cuajar y cada espera lleva una "
+                        "retraccion, o sea una oportunidad de hilo.")
     p.add_argument("--material", choices=["PLA", "PETG"], default="PLA",
                    help="fija boquilla y cama. PETG: 245/80 y ventilador al 40%%, que es lo que "
                         "usan los dos gcodes de referencia; a 100%% el PETG no suelda entre capas "
@@ -201,6 +225,35 @@ def _cli() -> None:
     p.add_argument("--plantilla-3mf", metavar="RUTA",
                    help="plantilla .gcode.3mf con la que se va a empaquetar, solo para avisar si no "
                         "declara todos los slots del AMS que usa la pieza.")
+    p.add_argument("--ventilador-desde", type=float, default=0.0, metavar="FRACCION",
+                   help="prender el ventilador a partir de esa FRACCION de la altura (0.89 = el "
+                        "ultimo 11%%). Es lo mismo que --ventilador-en pero relativo, asi que "
+                        "sigue cayendo donde corresponde cuando se mueve --perfil-escala: con la "
+                        "altura absoluta, una pieza escalada a 1.38 prendia el aire al 65%% en vez "
+                        "del 89%% y soplaba sobre un tercio de pieza que no lo necesita. "
+                        "El porcentaje lo fija --ventilador-desde-pct.")
+    p.add_argument("--ventilador-desde-pct", type=int, default=100, metavar="PCT",
+                   help="a que potencia prende --ventilador-desde (por defecto 100). El g-code de "
+                        "referencia pasa de 0 a 100 de una: el blower tarda 500-1000 ms en cambiar "
+                        "de regimen y no sigue una rampa fina.")
+    p.add_argument("--segundos-vuelta", type=float, default=25.0, metavar="SEG",
+                   help="mantener ESE tiempo por vuelta en toda la pieza, calculando la velocidad "
+                        "sola a partir del perimetro. Es lo que gobierna si el cordon cuaja antes "
+                        "de que le apoyen el siguiente encima: donde la pieza se angosta la vuelta "
+                        "se acorta, y a velocidad fija el cabezal vuelve al mismo punto mucho antes. "
+                        "Medido en la cabeza del hongo: 35 s por vuelta en el ecuador y 3.5 s en el "
+                        "apice. Reemplaza a escribir --velocidad-en a mano, que ademas queda mal "
+                        "en cuanto se cambia --perfil-escala porque son alturas absolutas. "
+                        "La velocidad nunca baja del piso de caudal ni sube de --velocidad. "
+                        "El defecto de 25 s NO es un criterio propio: es lo que mide el g-code de "
+                        "referencia (`Squeezy Fidget Toy.gcode`), 25 s de mediana en sus DOS "
+                        "cupulas, que es una pieza impresa y viable. 0 lo apaga y vuelve a la "
+                        "velocidad fija de --velocidad.")
+    p.add_argument("--caudal-minimo", type=float, default=3.8, metavar="MM3_S",
+                   help="piso de caudal para --segundos-vuelta, en mm3/s (por defecto 3.8). Por "
+                        "debajo de esto la boquilla babea y el material se acumula en vez de "
+                        "correrse: es lo que hizo grumos en el apice de una prueba a 1.2 mm3/s. "
+                        "El 3.8 sale del g-code de referencia, que nunca baja de ahi.")
     p.add_argument("--velocidad-en", action="append", default=[], metavar="ALTURA:MM_MIN",
                    help="cambiar la velocidad a esa altura, repetible. Sirve para hacer una torre "
                         "de calibración: bandas de altura a velocidades crecientes, para ver a "
@@ -237,6 +290,14 @@ def _cli() -> None:
         ajustes.setdefault("temp_boquilla", 245)
         ajustes.setdefault("temp_cama", 80)
         ajustes.setdefault("ventilador", 40)
+    if args.temp_cama is not None:
+        ajustes["temp_cama"] = args.temp_cama
+    # La del PERFIL es la del calentado inicial, o sea con la que se imprime la
+    # primera capa: el `M104` del cuerpo recién baja a la de impresión cuando la
+    # espiral empieza a subir. Por eso `--temp-primera-capa` va acá y no en el
+    # cuerpo. El empaquetador la copia al start g-code de la plantilla.
+    if args.temp_primera_capa is not None:
+        ajustes["temp_boquilla"] = args.temp_primera_capa
     if args.ventilador is not None:
         ajustes["ventilador"] = args.ventilador
     perfil = Perfil(**ajustes)
@@ -348,6 +409,10 @@ def _cli() -> None:
         modulacion["ancho"] = (args.ancho_nodo, w_base)
     if args.espera:
         modulacion["espera"] = (args.espera, args.retraccion, args.espera_cada)
+        # El piso automático —hasta que el patrón llega a amplitud completa— lo
+        # pone `generar_pieza`; esto solo lo sube más.
+        if args.espera_desde:
+            modulacion["espera_desde"] = args.espera_desde
 
     deformacion = None
     if args.estructura:
@@ -386,7 +451,16 @@ def _cli() -> None:
     if args.perfil:
         from .. import perfil as _perfil
         try:
-            cs = _perfil.curvas(args.perfil)
+            # Un STL de revolución entra por el mismo camino que un DXF: se le
+            # saca la envolvente exterior y de ahí sale la misma `radio(t)`.
+            if args.perfil.lower().endswith(".stl"):
+                var = _perfil.variacion_angular_stl(args.perfil)
+                print(f"Perfil desde STL: variacion angular {var:.2f} mm"
+                      + ("" if var < 3.0 else "  <- OJO: no parece de revolucion,"
+                         " se pierde el relieve angular"))
+                cs = [_perfil.curva_de_stl(args.perfil)]
+            else:
+                cs = _perfil.curvas(args.perfil)
             if args.perfil_capa:
                 cs = [c for c in cs if c.capa == args.perfil_capa]
             if args.perfil_idx is not None:
@@ -395,8 +469,22 @@ def _cli() -> None:
                 p.error("--perfil: ninguna curva coincide con --perfil-capa/--perfil-idx")
             curva = _perfil.elegir(cs)
             silueta, info = _perfil.radio_de(curva, args.perfil_desde, args.perfil_hasta)
+            if args.perfil_invertir:
+                _cruda = silueta
+                silueta = lambda t, _f=_cruda: _f(1.0 - t)   # noqa: E731
+                info = {**info, "r_base": info["r_boca"], "r_boca": info["r_base"]}
         except (ValueError, OSError) as e:
             p.error(f"--perfil: {e}")
+        if args.perfil_escala != 1.0:
+            # Se escala DESPUES de recortar y antes de todo lo que mide, para
+            # que el aviso de voladizo y la altura que se le pasa al generador
+            # hablen de la pieza que se va a imprimir y no del modelo.
+            k = args.perfil_escala
+            _crudo = silueta
+            silueta = lambda t, _f=_crudo, _k=k: _f(t) * _k  # noqa: E731
+            info = {**info, "alto": info["alto"] * k,
+                    "r_min": info["r_min"] * k, "r_max": info["r_max"] * k,
+                    "r_base": info["r_base"] * k, "r_boca": info["r_boca"] * k}
         # La altura sale del modelo salvo que la pidas distinta: el DXF ya la
         # dice, y repetirla a mano es la forma más fácil de que no coincidan.
         if not any(a == "--altura" for a in _sys.argv):
@@ -405,6 +493,9 @@ def _cli() -> None:
         print(f"  z {info['z0']:.1f}..{info['z1']:.1f} -> {info['alto']:.1f} mm de alto, "
               f"radio {info['r_min']:.1f}..{info['r_max']:.1f} mm "
               f"(base {info['r_base']:.1f}, boca {info['r_boca']:.1f})")
+        if args.perfil_escala != 1.0:
+            print(f"  escalado x{args.perfil_escala:g}: los radios y la altura de arriba YA son "
+                  f"los de la pieza chica (el z del modelo no, es donde se recorto).")
         if args.perfil_limitar:
             silueta, rec = _perfil.limitar(silueta, info["alto"], perfil.altura_capa, perfil.ancho)
             print(f"  perfil limitado: {rec['tocados']} de {rec['muestras']} muestras recortadas. "
@@ -417,6 +508,69 @@ def _cli() -> None:
                   f"({perfil.ancho:g} mm): ahi la pared no apoya sobre la anterior. La peor, "
                   f"{peor[2]:.2f} mm de separacion ({peor[1]:.0f} grados desde la vertical) "
                   f"en z={info['z0'] + peor[0]*info['alto']:.1f}.")
+
+    # --- velocidad calculada para mantener los segundos por vuelta ----------
+    #
+    # Va acá y no arriba con los otros `--velocidad-en` porque necesita la
+    # silueta ya resuelta: la velocidad de cada altura sale del PERÍMETRO que
+    # tiene la pieza ahí.
+    #
+    # El problema que resuelve: a velocidad fija, el tiempo por vuelta sigue al
+    # perímetro. Medido en la cabeza del hongo, 35 s en el ecuador y 3.5 s en el
+    # ápice — y es justo arriba, donde la pared se acuesta, donde el cordón más
+    # necesita cuajar antes de que le apoyen el siguiente encima.
+    #
+    # Escribirlo a mano con `--velocidad-en` funciona para UN tamaño y queda mal
+    # en cuanto se mueve `--perfil-escala`: son alturas absolutas, así que en una
+    # pieza más grande la rampa arranca a mitad de camino. Medido a escala 1.38:
+    # frenaba al 63 % de la altura, se agotaba con 40 mm por delante y terminaba
+    # igual en 9 s por vuelta.
+    # El ventilador, relativo a la altura por el mismo motivo que la velocidad.
+    if args.ventilador_desde > 0:
+        z_aire = round(altura * min(1.0, args.ventilador_desde), 2)
+        cambios[z_aire] = fc.Fan(speed_percent=args.ventilador_desde_pct)
+        print(f"  ventilador {args.ventilador_desde_pct}% desde z{z_aire:.1f} "
+              f"({100*args.ventilador_desde:.0f}% de los {altura:.1f} mm)")
+
+    if args.segundos_vuelta > 0:
+        import math as _math
+        # SOLO desde donde la pared se acuesta, no en toda la pieza.
+        #
+        # Mantener los segundos por vuelta abajo no sirve: ahí la pared es
+        # vertical, la vuelta apoya entera sobre la anterior y el tiempo de
+        # enfriado no decide nada — sólo se pierde tiempo. Medido: sin este
+        # recorte, la pieza a escala 1.0 frenaba desde el 2 % de la altura
+        # (radio 58 mm, perímetro 366 mm, 366/25 = 14.6 mm/s por debajo del
+        # techo) mientras la de escala 1.38 no frenaba hasta el 94 %. El mismo
+        # criterio daba comportamientos opuestos según el tamaño.
+        #
+        # La referencia lo confirma: `Squeezy` tiene 25 s de MEDIANA pero p10 de
+        # 14 s. No sostiene 25 en todas partes.
+        #
+        # Arranca donde entra el aire, que es el mismo sitio por el mismo
+        # motivo: donde la cúpula empieza a cerrar.
+        desde_t = args.ventilador_desde if args.ventilador_desde > 0 else 0.0
+        area = perfil.ancho * perfil.altura_capa
+        piso_mm_min = args.caudal_minimo / max(area, 1e-9) * 60.0
+        techo_mm_min = float(perfil.velocidad_impresion)
+        PASO_MUESTREO = 2.0     # mm de altura entre escalones
+        n = max(2, int(altura / PASO_MUESTREO))
+        ultimo = None
+        for i in range(n + 1):
+            z = altura * i / n
+            if z < altura * desde_t:
+                continue
+            r = silueta(min(1.0, z / max(altura, 1e-9)))
+            mm_min = 2 * _math.pi * r / args.segundos_vuelta * 60.0
+            mm_min = min(techo_mm_min, max(piso_mm_min, mm_min))
+            mm_min = int(round(mm_min / 20) * 20)     # escalones de 20 mm/min
+            if mm_min != ultimo and z > 0:
+                cambios[round(z, 2)] = fc.Printer(print_speed=mm_min)
+                ultimo = mm_min
+        print(f"  velocidad por perímetro desde {100*desde_t:.0f}% de la altura: "
+              f"{args.segundos_vuelta:g} s por vuelta · "
+              f"piso {piso_mm_min/60:.1f} mm/s ({args.caudal_minimo:g} mm³/s) · "
+              f"techo {techo_mm_min/60:.1f} mm/s · {len(cambios)} escalones")
 
     nombre = args.nombre or f"bowl_{args.diseno}"
     pasos = pasos_bowl(
@@ -438,11 +592,26 @@ def _cli() -> None:
         deformacion=deformacion,
     )
 
-    # Va al principio de los pasos, o sea DESPUES del marcador FIN DEL START
-    # GCODE. Ahi el empaquetador lo deja pasar verbatim; arriba del marcador lo
-    # borraria junto con el calentado de FullControl.
+    # Va DESPUES del marcador FIN DEL START GCODE. Ahi el empaquetador lo deja
+    # pasar verbatim; arriba del marcador lo borraria junto con el calentado de
+    # FullControl.
+    #
+    # Con --temp-primera-capa no va al principio sino en cuanto la espiral
+    # EMPIEZA A SUBIR, o sea con la primera capa ya puesta: asi la adherencia se
+    # hace caliente y el resto de la pieza a la temperatura de impresion. Es lo
+    # que hace el g-code de referencia, medido: M104 S250 en z0.0 (dos veces,
+    # calentado y espera) y M104 S240 en z0.4, o sea al terminar su primera capa.
     if args.temperatura:
-        pasos.insert(0, fc.ManualGcode(text=f"M104 S{args.temperatura} ; temperatura de impresion"))
+        linea = fc.ManualGcode(text=f"M104 S{args.temperatura} ; temperatura de impresion")
+        donde = 0
+        if args.temp_primera_capa is not None:
+            z0 = next((s.z for s in pasos if isinstance(s, fc.Point) and s.z is not None), None)
+            if z0 is not None:
+                donde = next(
+                    (i for i, s in enumerate(pasos)
+                     if isinstance(s, fc.Point) and s.z is not None and s.z > z0 + 1e-6),
+                    0)
+        pasos.insert(donde, linea)
 
     if args.plot:
         previsualizar(pasos)
@@ -469,9 +638,25 @@ def _cli() -> None:
                      for a in p._actions if a.dest != "help"},
             }
             from ..comun import ULTIMO_MAPEO
+            # El tope del slider de escala sale de la CAMA, no de un número
+            # fijo: depende de cuánto mide esta pieza. Se calcula contra el
+            # volumen de la A1 (256 x 256 x 256) dejando 6 mm de margen en
+            # planta — la boquilla necesita lugar para el cordón y el arranque
+            # de la espiral, y las líneas de purga viven en Y 5-6.
+            rangos = None
+            if args.perfil:
+                CAMA_XY, CAMA_Z, MARGEN = 256.0, 256.0, 6.0
+                ancho_actual = 2 * info["r_max"]
+                alto_actual = altura
+                if ancho_actual > 0 and alto_actual > 0:
+                    tope_xy = (CAMA_XY - 2 * MARGEN) / ancho_actual
+                    tope_z = CAMA_Z / alto_actual
+                    tope = round(min(tope_xy, tope_z) * args.perfil_escala, 2)
+                    rangos = {"--perfil-escala": (0.05, max(0.1, tope))}
             guardar_receta(nombre, _sys.argv, "lamparas.bowls", desc,
                            extra={"mapeo": dict(ULTIMO_MAPEO),
-                                  "toques": args.toques or None})
+                                  "toques": args.toques or None},
+                           rangos=rangos)
         print(f"Generado: {ruta} ({len(pasos)} pasos, {len(gcode.splitlines())} líneas)")
 
 

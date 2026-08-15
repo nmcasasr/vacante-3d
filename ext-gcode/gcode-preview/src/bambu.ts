@@ -634,6 +634,43 @@ function patchTail(tail: string[], st: Stats): string[] {
   replaceLine(out, /^; filament used \[mm\]/, `; filament used [mm] = ${st.filamentMm.toFixed(2)}`);
   replaceLine(out, /^; filament used \[cm3\]/, `; filament used [cm3] = ${cm3.toFixed(2)}`);
   replaceLine(out, /^; filament used \[g\]/, `; filament used [g] = ${grams.toFixed(2)}`);
+
+  // Las Z del end g-code son ABSOLUTAS y salen de `{max_layer_z}` — o sea, de la
+  // altura del objeto con el que se exportó la plantilla, no del nuestro.
+  //
+  // Esto ROMPIÓ UNA PIEZA Y GOLPEÓ LA MÁQUINA. Con una plantilla de 25.6 mm, el
+  // end g-code trae `G1 Z26.1 ; lower z a little` seguido de un barrido
+  // `G1 X0 Y128 F18000`. Sobre una pieza de 41.7 mm el cabezal BAJA 15 mm
+  // dentro de la pieza y después la cruza a 300 mm/s. Sobre una de 117 mm baja
+  // 91 mm. Es el mismo problema que el `G29 A1` —un valor de la plantilla que
+  // hay que reapuntar a nuestra pieza— y este no se estaba reapuntando.
+  //
+  // Se corrigen las dos: la de "lower z a little" y el par de subida final.
+  const CAMA_MAX_Z = 256;
+  // Orca deja 0.5 mm acá. Alcanza para una pieza laminada normal, con la cara
+  // de arriba plana y predecible; no para lo que hacemos nosotros. Después de
+  // esta línea el cabezal BARRE la cama a 250 mm/s (`G1 X267 F15000`), y con
+  // 0.5 mm cualquier hilo, un poco de curling o una cúpula que se levantó
+  // convierte el barrido en un golpe. Subirlo no cuesta nada: el eje ya se va
+  // a +100 mm dos instrucciones después.
+  const MARGEN_FIN = 5.0;
+  const lower = st.maxz + MARGEN_FIN;
+  for (let i = 0; i < out.length; i++) {
+    const m = /^(\s*)G1 Z([0-9.]+)( F\d+)? ; lower z a little/.exec(out[i]);
+    if (m) out[i] = `${m[1]}G1 Z${lower.toFixed(2)}${m[3] ?? ''} ; lower z a little`;
+  }
+  // El par que sigue a `M17 Z0.4` sube el eje para dejar la pieza accesible:
+  // la plantilla lo escribe como max_layer_z + 100 y + 98, tope 256.
+  const j = out.findIndex((l) => /^\s*M17 Z0\.4\b/.test(l));
+  if (j >= 0) {
+    const subir = [Math.min(st.maxz + 100, CAMA_MAX_Z), Math.min(st.maxz + 98, CAMA_MAX_Z)];
+    let k = 0;
+    for (let i = j + 1; i < out.length && k < 2; i++) {
+      const m = /^(\s*)G1 Z([0-9.]+)( F\d+)?\s*$/.exec(out[i]);
+      if (m) { out[i] = `${m[1]}G1 Z${subir[k].toFixed(2)}${m[3] ?? ''}`; k++; }
+      else if (/^\s*G[01]\b/.test(out[i])) break;   // otro movimiento: se acabó el par
+    }
+  }
   return out;
 }
 
@@ -737,6 +774,89 @@ export interface PackResult {
   stats: Stats;
   md5: string;
   plateGcode: string;
+  /** Holgura mínima sobre material ya depositado, en movimientos sin extruir. */
+  holgura: { cuerpo: number; cola: number };
+}
+
+// ---- chequeo de choques -----------------------------------------------------
+//
+// Corre sobre el g-code YA ARMADO, justo antes de escribirlo, y aborta si la
+// boquilla atraviesa material ya depositado.
+//
+// Existe porque un archivo de este empaquetador rompió una pieza y golpeó la
+// máquina: el end g-code traía la Z del objeto con el que se exportó la
+// plantilla, y sobre una pieza más alta el cabezal bajaba adentro y la cruzaba
+// a 250 mm/s. Aquel defecto está arreglado, pero un arreglo es una promesa del
+// código; esto es una comprobación del archivo. La diferencia importa: todo lo
+// que se verificaba miraba el cuerpo, y el choque pasaba DESPUÉS del cuerpo.
+
+const CELDA = 1.0;      // mm, lado de la celda del mapa de alturas
+const PASO = 0.5;       // mm, cada cuánto se muestrea un movimiento
+// En modo vaso la Z sube dentro de la vuelta y la boquilla roza la vuelta
+// anterior todo el tiempo; sin holgura eso sería un choque por segmento.
+const TOLERANCIA = 0.5;
+
+export interface Choque { linea: number; texto: string; z: number; techo: number; dentro: number; }
+
+export function revisarChoques(lineas: string[]):
+    { choques: Choque[]; holgura: { cuerpo: number; cola: number } } {
+  const altura = new Map<string, number>();   // solo celdas CON material
+  let x = 0, y = 0, z = 0, e = 0;
+  let eRel = false, xyzRel = false;
+  let fase = 0;                               // 0 start, 1 cuerpo, 2 cola
+  const choques: Choque[] = [];
+  const holgura = { cuerpo: Infinity, cola: Infinity };
+
+  for (let n = 0; n < lineas.length; n++) {
+    const s = lineas[n].trim();
+    if (fase === 0 && s.startsWith('; CHANGE_LAYER')) fase = 1;
+    else if (s.includes('end of grafted body')) fase = 2;
+    if (s.startsWith('M83')) eRel = true;
+    else if (s.startsWith('M82')) eRel = false;
+    else if (s.startsWith('G91')) xyzRel = true;
+    else if (s.startsWith('G90')) xyzRel = false;
+    if (!(s.startsWith('G0') || s.startsWith('G1'))) continue;
+
+    let nx = x, ny = y, nz = z, ne: number | null = null;
+    for (const tok of s.split(/\s+/)) {
+      if (tok.startsWith(';')) break;
+      const v = parseFloat(tok.slice(1));
+      if (!isFinite(v)) continue;
+      switch (tok[0].toUpperCase()) {
+        case 'X': nx = xyzRel ? x + v : v; break;
+        case 'Y': ny = xyzRel ? y + v : v; break;
+        case 'Z': nz = xyzRel ? z + v : v; break;
+        case 'E': ne = v; break;
+      }
+    }
+    const de = ne === null ? 0 : (eRel ? ne : ne - e);
+    const extruye = de > 0;
+    const d = Math.hypot(nx - x, ny - y);
+    const pasos = Math.max(1, Math.floor(d / PASO));
+
+    for (let i = 1; i <= pasos; i++) {
+      const t = i / pasos;
+      const px = x + (nx - x) * t, py = y + (ny - y) * t, pz = z + (nz - z) * t;
+      const clave = `${Math.floor(px / CELDA)},${Math.floor(py / CELDA)}`;
+      const techo = altura.get(clave);
+      if (techo !== undefined) {
+        if (techo - pz > TOLERANCIA) {
+          choques.push({ linea: n + 1, texto: s.slice(0, 70), z: pz, techo, dentro: techo - pz });
+        }
+        // La holgura solo cuenta si la boquilla se MUEVE en X/Y y no está
+        // depositando: parada donde terminó, la holgura es 0 por definición.
+        if (!extruye && d > 0) {
+          const libre = pz - techo;
+          if (fase === 2) holgura.cola = Math.min(holgura.cola, libre);
+          else if (fase === 1) holgura.cuerpo = Math.min(holgura.cuerpo, libre);
+        }
+      }
+      if (extruye) altura.set(clave, Math.max(techo ?? pz, pz));
+    }
+    if (ne !== null) e = ne;
+    x = nx; y = ny; z = nz;
+  }
+  return { choques, holgura };
 }
 
 // Temperaturas que pide la pieza, leídas de su propio preámbulo.
@@ -759,13 +879,59 @@ function temperaturasDe(gcode: string): { boquilla?: number; cama?: number } {
   return out;
 }
 
+// Constantes de MÁQUINA que Orca emite igual en todos los perfiles de la A1.
+// No tienen nada que ver con el material: son pasos del procedimiento.
+//
+//     25   antes del home de Z
+//    140   "prepare to abl" y el `M109` justo antes del `G29`
+//    170   bajar para limpiar la boquilla en el cepillo
+//
+// El 140 es el que más caro sale: la A1 palpa la cama a 140 A PROPÓSITO —
+// tibia para que no haya plástico duro en la punta, fría para que no chorree
+// mientras toca la cama en cada punto. Reescribirlo con los 245 de una pieza de
+// PETG deja la boquilla goteando durante toda la nivelación.
+const TEMP_DE_MAQUINA = new Set([25, 140, 170]);
+
+// La temperatura de material de la plantilla, deducida de sus propios valores.
+//
+// No alcanza con tomar el máximo (es la de purga) ni el último (la primera capa
+// va más caliente que el resto). Se descartan las constantes de máquina y el
+// paso "material − 50" —se reconoce porque su valor + 50 también está en el
+// archivo— y de lo que queda, el mínimo es la temperatura del material.
+function materialDePlantilla(head: string[]): { material?: number; presentes: Set<number> } {
+  const vs: number[] = [];
+  for (const l of head) {
+    const m = /^M10[49]\s+S(\d+)/i.exec(l.trim());
+    if (m) vs.push(parseInt(m[1], 10));
+  }
+  const presentes = new Set(vs);
+  const candidatos = vs.filter(
+    (v) => !TEMP_DE_MAQUINA.has(v) && !presentes.has(v + 50));
+  return { material: candidatos.length ? Math.min(...candidatos) : undefined, presentes };
+}
+
 // Reescribe las temperaturas del start g-code de la plantilla con las de la
 // pieza. Solo las que la pieza declara: si no dice nada, se deja la plantilla.
+//
+// Y solo las de MATERIAL. Antes esto reescribía todos los `M104/M109` del head,
+// incluidos los de procedimiento, y el resultado era una A1 nivelando con la
+// boquilla a temperatura de impresión.
 function conTemperaturas(head: string[], t: { boquilla?: number; cama?: number }): string[] {
   if (t.boquilla === undefined && t.cama === undefined) return head;
+  const { material, presentes } = materialDePlantilla(head);
   return head.map((l) => {
-    if (t.boquilla !== undefined && /^M10[49]\s+S\d+/i.test(l.trim())) {
-      return l.replace(/S\d+/i, `S${t.boquilla}`);
+    const m = /^M10[49]\s+S(\d+)/i.exec(l.trim());
+    if (t.boquilla !== undefined && m && material !== undefined) {
+      const v = parseInt(m[1], 10);
+      // El paso "material − 50" sigue siendo relativo: baja 50 sobre la nuestra.
+      // Se reconoce igual que arriba —su valor + 50 está en el archivo— y no por
+      // `material - 50`: la plantilla lo deriva de SU temperatura de primera
+      // capa, que es más alta que la del material.
+      if (!TEMP_DE_MAQUINA.has(v) && presentes.has(v + 50)) {
+        return l.replace(/S\d+/i, `S${t.boquilla - 50}`);
+      }
+      if (v >= material) return l.replace(/S\d+/i, `S${t.boquilla}`);
+      return l;   // constante de máquina: se deja como la puso Orca
     }
     if (t.cama !== undefined && /^M1[49]0\s+S\d+/i.test(l.trim())) {
       return l.replace(/S\d+/i, `S${t.cama}`);
@@ -818,6 +984,32 @@ export function packBambu3mf(template: Buffer, gcode: string, name = 'gcode-prev
   const plateGcode =
     [...conTemperaturas(patchHead(head, real, name, body), temperaturasDe(gcode)),
      ...cuerpo.lines, ...patchTail(tail, real)].join('\n') + '\n';
+  // Antes de escribir nada: ¿la boquilla atraviesa la pieza en algún momento?
+  // Si choca no se empaqueta. Un falso positivo cuesta un rato de depuración;
+  // un falso negativo ya costó una pieza rota y un golpe a la máquina.
+  // Solo abortan los choques GRAVES, y el umbral no es a ojo.
+  //
+  // Un calado hunde la boquilla en la vuelta de abajo A PROPÓSITO: esa mordida
+  // es lo que suelda los cruces, y sin ella la celosía no se sostiene. Medida
+  // en la caperuza vale 0.71 mm. El choque real que rompió una pieza y golpeó
+  // la máquina medía entre 15.6 y 124.7 mm. Entre los dos hay dos órdenes de
+  // magnitud, así que 1 mm los separa de sobra.
+  //
+  // Abortar ante cualquier hundimiento dejaba sin empaquetar a toda pieza
+  // calada, que es justo la familia para la que existe este generador.
+  const GRAVE_MM = 1.0;
+  const { choques, holgura } = revisarChoques(plateGcode.split('\n'));
+  const graves = choques.filter((c) => c.dentro > GRAVE_MM);
+  if (graves.length) {
+    const peor = graves.reduce((a, b) => (b.dentro > a.dentro ? b : a));
+    throw new Error(
+      `La boquilla choca contra la pieza: ${graves.length} puntos, el peor ` +
+      `${peor.dentro.toFixed(2)} mm dentro del material (Z${peor.z.toFixed(2)} ` +
+      `sobre material de ${peor.techo.toFixed(2)}).\n` +
+      `  línea ${peor.linea}: ${peor.texto}\n` +
+      `No se generó el .3mf. Esto rompería la pieza y golpearía la máquina.`);
+  }
+
   const plateBuf = Buffer.from(plateGcode, 'utf8');
   const md5 = crypto.createHash('md5').update(plateBuf).digest('hex').toUpperCase();
 
@@ -849,5 +1041,5 @@ export function packBambu3mf(template: Buffer, gcode: string, name = 'gcode-prev
     return e; // everything else (thumbnails, settings, rels) rides along untouched
   });
 
-  return { zip: writeZip(next), stats: real, md5, plateGcode };
+  return { zip: writeZip(next), stats: real, md5, plateGcode, holgura };
 }
