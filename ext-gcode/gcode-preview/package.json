@@ -176,7 +176,7 @@
     "watch": "tsc -watch -p ./",
     "package": "npm run compile && npx --yes @vscode/vsce package --allow-missing-repository --skip-license -o gcode-preview.vsix",
     "reinstall": "npm run package && node tools/instalar.js",
-    "test": "npm run compile && node tools/test-choques.js"
+    "test": "npm run compile && node tools/test-choques.js && node tools/test-campo.js"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

@@ -280,6 +280,15 @@ def _espiral_base(forma: Callable[[float], float], perfil: Perfil, paso_arco: fl
     detalle: el hueco existe para que encaje otra pieza, y una pieza no encaja
     en un agujero con forma de silueta.
 
+    **El ancho del anillo NO se elige acá.** Sale de la resta entre el contorno
+    y el hueco, y las dos puntas ya tienen dueño: el contorno lo pone el corte
+    del perfil y el hueco lo pone `--piso`. Hubo una versión con un parámetro
+    de "cuántas vueltas mide el piso" y estaba mal por construcción: para
+    angostar el anillo tenía que mover una de las dos puntas, movía el hueco, y
+    entonces el diámetro del encastre cambiaba cada vez que se tocaba el corte
+    de la base — que es justo el número que tiene que quedarse quieto. Para
+    angostar el piso se baja el corte, que mueve la punta que sí es libre.
+
     Devuelve (puntos, angulo_final) para que la pared arranque justo donde
     termina la base y no quede un salto.
     """
@@ -567,7 +576,8 @@ def generar_pieza(
             for t in (0.0, 0.25, 0.5, 0.75, 1.0)
         )
 
-    variacion_angular = max(_variacion(funcion_radio), _variacion(funcion_dz))
+    onda_dz = _variacion(funcion_dz)          # cuánto sube y baja la Z dentro de la vuelta
+    variacion_angular = max(_variacion(funcion_radio), onda_dz)
 
     # La subida de cada vuelta. La atenuación por transición se aplica SOLO si
     # hay patrón angular que levantar.
@@ -590,21 +600,93 @@ def generar_pieza(
     # media capa dejó la cabeza del hongo 10 mm más alta y abombada.
     def _paso_capa(c: int) -> float:
         crudo = zs[c] - zs[c - 1]
+        if onda_dz > 0.02:
+            # PIEZA CALADA: el piso es `altura_capa`, no PASO_MINIMO.
+            #
+            # Quien se encarga de que el valle de cada vuelta caiga sobre la
+            # cresta de la anterior es `escala_onda`, que ata la ALTURA DEL ARCO
+            # a lo que sube la vuelta siguiente. Acá sólo hace falta que el paso
+            # arranque en algo que dos vueltas macizas puedan apilar.
+            #
+            # Con PASO_MINIMO (0.05) las primeras vueltas subían casi nada y el
+            # arco que les tocaba era igual de raquítico, así que la transición
+            # no transicionaba: se pasaba de plano a arco entero en dos vueltas.
+            #
+            # Se probó interpolar de `altura_capa` al paso final en vez de
+            # recortar, pensando que el codo del recorte era lo que hacía
+            # saltar el barrido de `capas_transicion`. No cambió nada medible;
+            # lo que hace saltar el barrido es pedir más vueltas de transición
+            # que las que tiene la pieza entera (ver el README).
+            return max(perfil.altura_capa, crudo * _mezcla(c))
         if variacion_angular > 0.02:
             crudo = max(PASO_MINIMO, crudo * _mezcla(c))
         return crudo
 
     pasos_capa = [perfil.altura_capa] + [_paso_capa(c) for c in range(1, n_capas + 1)]
 
+    # La MORDIDA nominal del patrón: cuánto le sobresale la cresta de una vuelta
+    # al valle de la siguiente. Sale de comparar la onda que declara el patrón
+    # con el paso que pidió, y es un número en mm, no una fracción.
+    mordida_nominal = max(0.0, onda_dz - paso) if onda_dz > 0.02 else 0.0
+
+    def escala_onda(c: int) -> float:
+        """Cuánto de la onda nominal se aplica en la vuelta c.
+
+        Se probó hacerla variar DENTRO de la vuelta —`base + fraccion*pendiente`,
+        con la pendiente sacada de cuánto cambia el paso de una vuelta a la
+        siguiente— porque la rampa de la espiral desalinea el nudo durante la
+        transición. La cuenta cerraba y el resultado empeoró en todos los casos
+        medidos, así que la idea está mal aunque el álgebra pareciera sana:
+
+            transición   puente sin pendiente   con pendiente
+                 0            7.50 mm              7.45 mm
+                 2            7.50 / 81 graves     7.45 / 128 graves
+                 4            7.50 / 0 graves      7.45 / 25 graves
+                 8           36.65 / 0 choques    75.81 / 0 choques
+
+        Queda escrito para que no se vuelva a intentar sin medir.
+        """
+        # EL ARCO SIGUE AL PASO, no al revés.
+        #
+        # El nudo se forma cuando el valle de la vuelta c+1 aterriza sobre la
+        # cresta de la c. La cresta está `onda(c)` por encima del valle de c, y
+        # el valle de c+1 está `subida` por encima del mismo sitio, así que la
+        # única condición es
+        #
+        #     onda(c) = subida(c+1) + mordida
+        #
+        # Y `subida` NO es constante: `marcha_vertical` acorta el paso donde la
+        # pared se acuesta, para que el cordón no se despegue. Con la onda fija
+        # y el paso encogiéndose, la cresta se pasaba de largo. Medido en la
+        # caperuza a paso 2.5: el paso real caía a 2.30 y la mordida subía de
+        # 0.07 a 0.27, o sea la boquilla arando cuatro veces más de lo previsto,
+        # y peor cuanto más se abría la pieza (de -0.14 abajo a -0.40 arriba).
+        #
+        # Atando la onda al paso, la mordida vale `mordida_nominal` en TODA la
+        # pieza, se abra como se abra, y la transición sale de regalo: donde el
+        # paso está pisado en `altura_capa`, el arco mide `altura_capa + mordida`
+        # y las vueltas se apilan como una pared maciza.
+        if onda_dz <= 0.02:
+            return _mezcla(c)
+        sube = pasos_capa[min(c + 1, len(pasos_capa) - 1)]
+        return min(1.0, max(0.0, (sube + mordida_nominal) / onda_dz))
+
     # --- modulación dentro de la vuelta -------------------------------------
     # La amplitud de la onda se mide muestreándola, en vez de pedírsela al
     # patrón: así esto funciona con cualquier `funcion_dz` sin que el diseño
     # tenga que exponer su amplitud.
-    amplitud_onda = 0.0
+    # Se toman el MÍNIMO y el MÁXIMO, no el valor absoluto máximo. Una onda no
+    # tiene por qué estar centrada en cero: la celosía apoya la suya en el valle
+    # y va de 0 a 2*amplitud_z. Con `max(abs(...))` el valle y la cresta daban
+    # el mismo número y `k` salía comprimido en la mitad alta de su rango, así
+    # que ni la espera ni el escalón de sección ni el de velocidad caían donde
+    # tenían que caer. Con min y max, `k` vale 0 en el valle y 1 en la cresta
+    # sea cual sea el desplazamiento de la onda.
+    onda_min = onda_max = 0.0
     if modulacion and funcion_dz is not None:
-        amplitud_onda = max(
-            abs(funcion_dz(s / 400 * 2 * math.pi, 0.5)) for s in range(401)
-        )
+        muestras = [funcion_dz(s / 400 * 2 * math.pi, 0.5) for s in range(401)]
+        onda_min, onda_max = min(muestras), max(muestras)
+    amplitud_onda = onda_max - onda_min
     modular = bool(modulacion) and amplitud_onda > 1e-9
     ultimo = {"velocidad": None, "ventilador": None, "ancho": None, "k": None, "nodo": 0}
 
@@ -641,7 +723,7 @@ def generar_pieza(
         Se emite solo cuando el valor cuantizado cambia, si no el gcode se
         llenaría de comandos redundantes: son cientos de segmentos por vuelta.
         """
-        k = min(1.0, max(0.0, (dz_crudo / amplitud_onda + 1) / 2))
+        k = min(1.0, max(0.0, (dz_crudo - onda_min) / amplitud_onda))
         salida = []
 
         # Espera en el CRUCE: parar con la boquilla quieta deja que la soldadura
@@ -654,55 +736,84 @@ def generar_pieza(
         # un grumo. En extrusión relativa (M83) el -R y el +R se cancelan, así
         # que la contabilidad de E de FullControl no se entera y queda intacta.
         #
-        # VA EN LA CRESTA, NO EN EL CRUCE. Esto estuvo al revés y es medible.
+        # VA EN LA CRESTA, NO EN EL CRUCE, y es medible en el archivo crudo.
         #
-        # El razonamiento que lo puso en el cruce era: "en el pico el material
-        # está en el aire y la pausa solo le da tiempo de descolgarse". Suena
-        # bien y es falso. Medido sobre `Squeezy Fidget Toy.gcode`, que es el
-        # archivo que sí se imprime:
+        # (Las "fases 0.25 / 0.76" que citaba antes este comentario salían de una
+        # medición mala: el centro de la pieza se calculaba con el min/max de
+        # TODO el archivo, y la línea de purga corre por el borde de la cama, así
+        # que el centro salía en 65.4,100.0 cuando la pieza está en 90.0,90.2.
+        # Con el centro corrido, el corte en vueltas por ángulo devuelve trozos
+        # de arco y cualquier "fase" que se lea de ahí es ruido. Todo lo que
+        # sigue está medido con el centro sacado sólo de puntos por encima de la
+        # purga.)
         #
-        #     su cruce con la vuelta de abajo cae en fase 0.25
-        #     sus 550 esperas caen en fase 0.76 de media
-        #     ninguna, ni una, cae por debajo de fase 0.20
+        # Un nodo de la referencia, tal cual sale en el archivo, son 14
+        # segmentos: 1 plano en el valle con 2.5x de material (la soldadura),
+        # 5 de subida, la PARADA en el vértice, 1 plano arriba, 6 de bajada.
         #
-        # O sea que espera media onda DESPUÉS del cruce. Y tiene sentido: en el
-        # cruce el cordón ya está anclado sobre la vuelta de abajo y no necesita
+        # O sea que para en el punto más alto del arco. Y tiene sentido: en el
+        # valle el cordón ya está anclado sobre la vuelta de abajo y no necesita
         # tiempo. Lo que necesita tiempo es el PUENTE, y el momento de dárselo es
         # cuando ya está tendido y todavía no se le colgó nada encima — o sea
-        # arriba del arco. Parar ahí, con el ventilador al 100 %, es lo que deja
-        # que cuaje antes de seguir cargándolo.
+        # arriba del arco. Parar ahí es lo que deja que cuaje antes de seguir
+        # cargándolo, y además ese vértice es el punto exacto donde una vuelta
+        # más tarde va a bajar el valle de la vuelta siguiente a soldarse.
         #
-        # El desfase se copia de la referencia: +0.51 de fase sobre el cruce.
-        # Como nuestro cruce cae en 0.34, la espera va en 0.85.
+        # VA EN EL ÁPICE EXACTO, no "cerca". El disparo era `previo < 0.85 <= k`,
+        # o sea al cruzar el 85 % de la subida, y eso NO es la cresta: medido en
+        # `test_hueco2.1mm_44min.gcode`, la espera caía en z 24.735 mientras el
+        # pico de ese mismo nodo estaba en z 25.015, cinco segmentos más
+        # adelante. Congelábamos el cordón a un cuarto de nodo ANTES del punto
+        # que necesita congelarse, y después seguíamos subiendo en caliente
+        # justo por la parte que queda al aire.
+        #
+        # La referencia para en el vértice y se ve en el archivo crudo: el
+        # último segmento de subida llega a Z45.248, ahí van el `G1 E-1.5` y el
+        # `G4`, y recién después sale un segmento casi plano a Z45.2532. La
+        # parada parte la meseta del pico por la mitad.
+        #
+        # Se detecta el máximo en vez de un umbral: `k` venía subiendo y ahora
+        # baja. Con ~27 muestras por nodo la muestra del vértice tiene k >= 0.997,
+        # así que el 0.97 solo sirve para no confundirse con ruido del muestreo.
         espera = modulacion.get("espera")
         if espera and capa >= limite_espera["capa"] and z >= limite_espera["z"]:
             ms, retraccion, cada = espera
             previo = ultimo["k"]
-            if previo is not None and previo < 0.85 <= k:
+            if previo is not None and previo >= 0.97 and k < previo:
                 ultimo["nodo"] += 1
                 if ultimo["nodo"] % max(1, cada) == 0:
-                    salida.append(fc.ManualGcode(
-                        text=f"G1 E-{retraccion} F1800\nG4 P{ms} ; esperar a que suelde el cruce\n"
-                             f"G1 E{retraccion} F1800"
-                    ))
-                    # El F ES MODAL. Los dos movimientos de E de arriba dejan la
-                    # máquina en 1800 mm/min, y el primer segmento después de la
-                    # espera no siempre trae F propio: salía a 30 mm/s en vez de
-                    # 8, justo en el cruce que la pausa acababa de dejar cuajar.
-                    # Medido en la caperuza, 3959 segmentos, uno por espera.
+                    # SIN F. La referencia escribe `G1 E-1.5` pelado, así que la
+                    # retracción sale a la velocidad que esté activa —la del
+                    # pico, 4 mm/s— y tarda 0.375 s en sacar 1.5 mm. Nosotros
+                    # poníamos F1800: 30 mm/s, 0.05 s, un tirón que en PETG
+                    # arranca el hilo del ápice que la pausa venía a sostener.
                     #
-                    # Se arregla obligando a que el bloque de velocidad de abajo
-                    # vuelva a declararla —emite solo cuando el valor CAMBIA, y
-                    # acá no cambia—, y si no hay modulación de velocidad, con un
-                    # F explícito.
-                    ultimo["velocidad"] = None
-                    if not modulacion.get("velocidad"):
-                        salida.append(fc.Printer(print_speed=perfil.velocidad_impresion))
+                    # De paso desaparece el problema de F modal que obligaba a
+                    # re-declarar la velocidad acá abajo: si no se toca F, no
+                    # queda nada raro que deshacer.
+                    salida.append(fc.ManualGcode(
+                        text=f"G1 E-{retraccion}\nG4 P{ms} ; dejar cuajar el ápice del arco\n"
+                             f"G1 E{retraccion}"
+                    ))
         ultimo["k"] = k
 
         rango = modulacion.get("velocidad")
         if rango:
-            v = int(round((rango[0] + (rango[1] - rango[0]) * k) / 30.0) * 30)
+            # ESCALÓN EN EL ÁPICE, no rampa a lo largo del nodo.
+            #
+            # Esto era una interpolación lineal de `k`, y dejaba la boquilla
+            # yendo a 4-5 mm/s durante toda la bajada — que es justo el tramo
+            # que va colgado al aire. Cuanto más lento se tiende un puente, más
+            # tiempo tiene de descolgarse: la rampa hacía exactamente lo
+            # contrario de lo que hay que hacer.
+            #
+            # La referencia mantiene F480 (8 mm/s) en TODO el nodo y baja a F240
+            # sólo en el último segmento de subida, la parada y el primero de
+            # bajada. Tiende el puente rápido y frena únicamente para pararse.
+            # Medido en `Squeezy Fidget Toy.gcode`: de los 14 segmentos del nodo,
+            # 11 van a 8.00 mm/s y 3 a 4.00.
+            v = rango[1] if k >= 0.90 else rango[0]
+            v = int(round(v / 30.0) * 30)
             if v != ultimo["velocidad"]:
                 salida.append(fc.Printer(print_speed=v))
                 ultimo["velocidad"] = v
@@ -716,17 +827,26 @@ def generar_pieza(
 
         rango = modulacion.get("ancho")
         if rango:
-            # ESCALÓN, no rampa. Copiado del gcode de "Squeezy Fidget Toy":
-            # cordón fino en todo el vano y un blob gordo justo en el cruce, en
-            # vez de un degradé. Medido ahí: 0.950 mm² en los tramos horizontales
-            # contra 0.501 mm² en los que tienen pendiente — 53 %, un escalón
-            # limpio. Se ve a ojo en el visor de flujo de Orca: puntos verdes
-            # sobre malla azul.
+            # ESCALÓN, no rampa, y CONCENTRADO. Copiado del gcode de "Squeezy
+            # Fidget Toy": cordón fino en todo el vano y un blob gordo justo en
+            # el valle, en vez de un degradé.
+            #
+            # Medido segmento a segmento en la referencia (línea 12353 y
+            # compañía): de los 14 segmentos del nodo, UNO —el plano del fondo
+            # del valle— lleva E0.3996 y los otros trece E0.16. Son 2.6x de
+            # sección en el 7 % del nodo.
+            #
+            # Nosotros repartíamos 1.42x sobre el 25 % del nodo. La masa total
+            # sobrante daba casi igual (0.105 contra 0.112 mm² por mm de nodo),
+            # pero repartida no suelda: engorda todo el fondo del arco en vez de
+            # dejar un remache en el punto que toca la cresta de abajo. Por eso
+            # la ventana baja a k < 0.03 —unos 3 de 27 segmentos— y `--ancho-nodo`
+            # quiere valer ~2.6x `--ancho-linea`, no 1.4x.
             #
             # Gana en los dos frentes al mismo tiempo: menos masa colgando en el
             # puente (descuelga menos y cuaja antes) y más material justo donde
             # tiene que soldar. Una rampa lineal reparte mal las dos cosas.
-            w = rango[0] if k < 0.15 else rango[1]
+            w = rango[0] if k < 0.03 else rango[1]
             w = round(w / 0.05) * 0.05
             if w != ultimo["ancho"]:
                 salida.append(
@@ -824,7 +944,19 @@ def generar_pieza(
         # En una pieza CON patrón la mezcla sigue haciendo falta: ahí lo que se
         # levanta gradualmente es la amplitud angular, no la rampa de la
         # espiral.
-        mezcla = _mezcla(capa) if variacion_angular > 0.02 else 1.0
+        onda_capa = escala_onda(capa) if variacion_angular > 0.02 else 1.0
+        # En una pieza CALADA el radio se atenúa con la MISMA escala que la Z.
+        #
+        # Las dos ondas son la misma cosa vista de perfil y de planta: la de Z
+        # sube la cresta, la de radio la saca hacia afuera, y el nudo se forma
+        # donde las dos coinciden con las de la vuelta de arriba. Atenuarlas por
+        # separado no tiene sentido físico.
+        #
+        # Honestidad sobre lo medido: unificarlas NO cambió ninguna métrica de
+        # los verificadores. Se deja porque es la formulación correcta, no
+        # porque arregle un defecto observado.
+        mezcla = (onda_capa if onda_dz > 0.02 else _mezcla(capa)) \
+            if variacion_angular > 0.02 else 1.0
 
         # Cuánto material lleva ESTA vuelta.
         #
@@ -981,7 +1113,7 @@ def generar_pieza(
             radio_max = max(radio_max, radio)
             z = z_capa + fraccion * subida if rampa else z_capa
             dz_crudo = funcion_dz(angulo, t) if funcion_dz is not None else 0.0
-            z += dz_crudo * mezcla
+            z += dz_crudo * onda_capa
             if modular:
                 puntos.extend(_pasos_modulacion(dz_crudo, capa, z))
             _pintar(angulo, t)
@@ -1039,7 +1171,14 @@ def generar_pieza(
                      segmentos_por_capa + 1, perfil)
     if silueta_referencia is not None:
         radios_medios = [silueta_referencia(capa / n_capas) for capa in range(n_capas + 1)]
-    _verificar_voladizo(radios_medios, paso, perfil.ancho)
+    # Cuánto ondula el radio DENTRO de la vuelta, medido igual que `amplitud_onda`:
+    # muestreando el propio patrón, sin pedirle a nadie que lo declare.
+    amplitud_radial = 0.0
+    if funcion_radio is not None:
+        for t in (0.25, 0.5, 0.75):
+            muestras = [funcion_radio(s / 200 * 2 * math.pi, t) for s in range(201)]
+            amplitud_radial = max(amplitud_radial, (max(muestras) - min(muestras)) / 2)
+    _verificar_voladizo(radios_medios, paso, perfil.ancho, amplitud_radial)
     return pasos
 
 
@@ -1157,7 +1296,8 @@ def _verificar_apoyo(puntos_pared: list, por_vuelta: int, perfil: Perfil) -> Non
         )
 
 
-def _verificar_voladizo(radios_medios: list, paso: float, ancho: float = 0.8) -> None:
+def _verificar_voladizo(radios_medios: list, paso: float, ancho: float = 0.8,
+                        amplitud_radial: float = 0.0) -> None:
     """
     Avisa si la silueta se abre demasiado rápido.
 
@@ -1165,11 +1305,20 @@ def _verificar_voladizo(radios_medios: list, paso: float, ancho: float = 0.8) ->
     que el ancho de línea por vuelta, la vuelta queda colgando en el aire. El
     ángulo se mide desde la vertical: 45° es el límite cómodo, más de 55° suele
     descolgarse.
+
+    `amplitud_radial` descuenta la onda radial del patrón. Sin ella, esto medía
+    la separación entre los radios MEDIOS de dos vueltas y daba un error de
+    voladizo en piezas que sueldan perfectamente: una celosía que se inclina con
+    el cono saca la cresta media onda hacia afuera y mete el valle de la vuelta
+    de arriba media onda hacia adentro, así que en el nudo —el único sitio donde
+    las dos vueltas se tienen que tocar— la distancia real es
+    `salto - 2*amplitud_radial`, no `salto`. Con onda radial automática eso da
+    cero y el paso deja de estar limitado por la apertura de la pieza.
     """
     if len(radios_medios) < 2:
         return
     saltos = [radios_medios[i + 1] - radios_medios[i] for i in range(len(radios_medios) - 1)]
-    salto_max = max(saltos, default=0.0)
+    salto_max = max(max(saltos, default=0.0) - 2 * amplitud_radial, 0.0)
     angulo = math.degrees(math.atan2(salto_max, paso))
     # El número que decide si se cae NO es el ángulo sino cuánto se corre el
     # radio entre dos vueltas contra el ancho del cordón: eso es el solape con
@@ -1238,8 +1387,14 @@ _FLAGS_KV = ("--p", "--pe", "--pp", "--ps")
 # `--perfil-escala` lleva un rango de arranque nomás: su tope de verdad depende
 # del tamaño de la pieza y lo calcula quien la genera, que es el único que sabe
 # cuánto mide. Ver `rangos` en `guardar_receta`.
+#
+# `--perfil-desde` arranca con el rango del modelo entero nomás. El de verdad
+# depende de tres cosas que solo conoce quien genera —el hueco del piso, la
+# escala y la cama—, y sale de `perfil.rango_de_corte`; ver `rangos` en
+# `guardar_receta`.
 _FLAGS_SUELTOS = {
     "--altura": (20.0, 300.0),
+    "--perfil-desde": (0.0, 300.0),
     "--radio-base": (5.0, 110.0),
     "--radio-boca": (5.0, 110.0),
     "--radio-max": (5.0, 110.0),

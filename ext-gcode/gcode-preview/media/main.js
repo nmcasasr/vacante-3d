@@ -1852,6 +1852,106 @@
     params.classList.remove('hidden');
   }
 
+  // El número del encabezado es un CAMPO, no una etiqueta.
+  //
+  // Arrastrar un riel de doscientos píxeles es la peor forma de pedir 124.4: el
+  // paso sale de dividir el rango en 200 y casi nunca cae el valor que uno
+  // quiere. El slider queda para explorar; el campo, para clavar el número.
+  //
+  // Es `type=text` con `inputMode=decimal` y NO `type=number`, por dos motivos
+  // concretos:
+  //
+  //   1. un `number` con el foco puesto GIRA CON LA RUEDA del mouse, así que
+  //      bajar por el panel cambia el último parámetro que quedó enfocado sin
+  //      que nadie lo toque — justo el accidente que este campo viene a evitar;
+  //   2. valida contra `step` y pinta de inválido todo valor que no caiga en la
+  //      grilla del slider, que son casi todos los que uno escribe a mano.
+  //
+  // Fuera del rango de la receta el valor se ACEPTA y el slider se ensancha
+  // para poder representarlo. Esos rangos casi nunca son un límite físico: la
+  // mayoría los adivina `comun._rango` a partir del valor de arranque (`tope =
+  // valor * 3`). Recortar en silencio sería inventar un límite que no existe;
+  // el número queda marcado y el generador se queja si de verdad no se puede.
+  // `original` es el valor con el que se ARMÓ el panel, o sea el que tenía la
+  // pieza al abrirla. Sobrevive a las regeneraciones porque la receta solo se
+  // reenvía al abrir el preview o al cargar una versión guardada, no cada vez
+  // que corre el generador: mover diez sliders y arrepentirse vuelve al punto
+  // de partida, no al penúltimo intento.
+  function campoNumero(sl, fmt, aplicar, original) {
+    const el = document.createElement('input');
+    el.type = 'text';
+    el.className = 'par-num';
+    el.inputMode = 'decimal';
+    el.spellcheck = false;
+    el.autocomplete = 'off';
+    const entero = (parseFloat(sl.step) || 0) >= 1;
+    // El valor vigente se guarda ACÁ y no se lee del slider.
+    //
+    // Un `input[type=range]` CUANTIZA lo que se le asigna a la grilla de su
+    // `step`: con min 55.5 y paso 0.592, pedirle 130 lo deja en 130.092. Si el
+    // campo se recupera de ahí —al revertir un texto ilegible, o al cancelar
+    // con Escape— devuelve el valor pegado a la grilla y no el que había,
+    // justo el redondeo que este campo viene a esquivar. El slider es una
+    // VISTA; el número exacto vive en `actual`.
+    let actual = parseFloat(sl.value);
+    // El botón aparece solo cuando hay algo que deshacer, así se explica solo:
+    // si está, es que tocaste el valor. Se oculta con `visibility` y no con
+    // `display` para que la fila no salte de ancho al aparecer.
+    const reset = document.createElement('button');
+    reset.className = 'par-reset';
+    reset.textContent = '↺';
+    reset.tabIndex = -1;
+    reset.addEventListener('click', () => { mostrar(original); aplicar(original, false); });
+    const mostrar = (v) => {
+      actual = v;
+      el.value = fmt(v);
+      if (original !== undefined) {
+        // Comparados YA formateados: sumar y restar el paso con flechas deja
+        // 124.39999999999999, que es el mismo número para cualquiera que lo mire.
+        reset.classList.toggle('oculto', fmt(v) === fmt(original));
+        reset.title = 'volver a ' + fmt(original);
+      } else {
+        reset.classList.add('oculto');
+      }
+      const mn = parseFloat(sl.min), mx = parseFloat(sl.max);
+      if (v < mn) sl.min = String(v);
+      if (v > mx) sl.max = String(v);
+      sl.value = String(v);
+      el.classList.toggle('fuera', v < mn || v > mx);
+    };
+    // La coma es lo que sale de un teclado latino, y `parseFloat('1,5')` da 1.
+    const leer = () => {
+      const v = parseFloat(String(el.value).replace(',', '.'));
+      return Number.isFinite(v) ? (entero ? Math.round(v) : v) : null;
+    };
+    el.addEventListener('focus', () => el.select());
+    el.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') { ev.preventDefault(); el.blur(); return; }
+      if (ev.key === 'Escape') { ev.preventDefault(); mostrar(actual); el.blur(); return; }
+      if (ev.key === 'ArrowUp' || ev.key === 'ArrowDown') {
+        const v = leer();
+        if (v === null) return;
+        ev.preventDefault();
+        const paso = parseFloat(sl.step) || 1;
+        const n = v + (ev.key === 'ArrowUp' ? paso : -paso);
+        mostrar(n);
+        aplicar(n, true);     // con flecha se repite: conviene esperar
+      }
+    });
+    // `change` cubre Enter y salir del campo, y no salta si Escape ya lo dejó
+    // como estaba. Escuchar `input` regeneraría con el número a medio escribir:
+    // tipear "120" pasa por 1 y por 12.
+    el.addEventListener('change', () => {
+      const v = leer();
+      if (v === null) { mostrar(actual); return; }
+      mostrar(v);
+      aplicar(v, false);
+    });
+    el.mostrar = mostrar;
+    el.reset = reset;
+    return el;
+  }
+
   function filaDe(c) {
       const id = c.flag + ':' + c.clave;
       valores[id] = c.valor;
@@ -1866,17 +1966,21 @@
       // que se desincroniza en cuanto alguien toca el Python.
       fila.title = c.que ? `${c.clave} — ${c.que}` : c.clave;
       if (c.que) nom.style.borderBottom = '1px dotted var(--tinta-tenue)';
-      const val = document.createElement('b');
-      val.textContent = String(c.valor);
-      cab.appendChild(nom); cab.appendChild(val);
       const sl = document.createElement('input');
       sl.type = 'range';
       sl.min = String(c.min); sl.max = String(c.max); sl.step = String(c.paso);
       sl.value = String(c.valor);
+      const fmt = (v) => (c.paso >= 1 ? String(Math.round(v)) : v.toFixed(3).replace(/0+$/, '').replace(/\.$/, ''));
+      const val = campoNumero(sl, fmt, (v, esperar) => {
+        valores[id] = v;
+        pedirRegen(false, esperar ? 400 : undefined);
+      }, c.valor);
+      val.mostrar(c.valor);
+      cab.appendChild(nom); cab.appendChild(val.reset); cab.appendChild(val);
       sl.addEventListener('input', () => {
         const v = parseFloat(sl.value);
         valores[id] = v;
-        val.textContent = c.paso >= 1 ? String(Math.round(v)) : v.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+        val.mostrar(v);
         if (!arrastrando) pedirRegen(false, 400);
       });
       // Al soltar, la buena.
@@ -2447,6 +2551,12 @@
     lados: 6, puntas: 5, hundido: 0.5, grosor: 0.4
   };
 
+  // El pincel no tiene receta de dónde volver: su "estado original" son estos
+  // valores de fábrica. Se congela una copia porque `pincelActual` se pisa al
+  // seleccionar un toque —los sliders pasan a editar ESE toque— y sin la copia
+  // el reset volvería al último toque tocado, que no es volver a nada.
+  const PINCEL_INICIAL = Object.freeze(Object.assign({}, pincelActual));
+
   // Cambiar la forma de un toque ya puesto deja atrás los parámetros de la
   // forma anterior — un círculo con `grosor` de cuando era una cruz. Python es
   // estricto a propósito y lo rechaza ("la forma 'circulo' no acepta grosor"),
@@ -2775,20 +2885,23 @@
     const nom = document.createElement('span');
     nom.textContent = clave === 'radio_grados' ? 'ancho (°)'
       : clave === 'radio_t' ? 'alto (t)' : clave;
-    const val = document.createElement('b');
     const fmt = (v) => (paso >= 1 ? String(Math.round(v)) : v.toFixed(3).replace(/0+$/, '').replace(/\.$/, ''));
-    val.textContent = fmt(pincelActual[clave]);
-    cab.appendChild(nom); cab.appendChild(val);
     const sl = document.createElement('input');
     sl.type = 'range'; sl.min = String(min); sl.max = String(max);
     sl.step = String(paso); sl.value = String(pincelActual[clave]);
+    const val = campoNumero(sl, fmt, (v) => {
+      pincelActual[clave] = v;
+      aplicarASeleccionado(clave, v);
+    }, PINCEL_INICIAL[clave]);
+    val.mostrar(pincelActual[clave]);
+    cab.appendChild(nom); cab.appendChild(val.reset); cab.appendChild(val);
     // Mismo criterio que los sliders de arriba: arrastrar solo mueve el número
     // y el fantasma; la corrida de Python sale al soltar.
     let tecla = null;
     sl.addEventListener('input', () => {
       const v = parseFloat(sl.value);
       pincelActual[clave] = v;
-      val.textContent = fmt(v);
+      val.mostrar(v);
       aplicarASeleccionado(clave, v, true);
       clearTimeout(tecla);
       tecla = setTimeout(() => aplicarASeleccionado(clave, parseFloat(sl.value)), 400);

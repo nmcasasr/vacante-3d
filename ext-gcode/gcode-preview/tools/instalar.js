@@ -55,6 +55,18 @@ for (const base of ['/mnt/c/Users']) {
   }
 }
 dirs.push(path.join(os.homedir(), '.vscode-server', 'extensions'));
+// 3. La instalación LOCAL y normal: macOS, Linux nativo y Windows nativo usan
+//    todos `~/.vscode/extensions`.
+//
+//    Faltaba, y era el caso más común de todos. Al generalizar esto de la ruta
+//    de macOS escrita a mano a "todas las copias de la máquina" se cubrió WSL
+//    —las dos instalaciones— y se perdió justo la que había antes. En una Mac
+//    sin `code` en el PATH —que es lo normal si no se corrió "Shell Command:
+//    Install 'code' command in PATH"— el script no instalaba en ningún lado y
+//    decía "No se pudo instalar", con el .vsix recién construido al lado.
+//    Resultado: la extensión seguía corriendo el código viejo y rechazaba
+//    piezas que el CLI ya empaquetaba bien.
+dirs.push(path.join(os.homedir(), '.vscode', 'extensions'));
 
 for (const dir of dirs) {
   let destinos;

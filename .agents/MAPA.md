@@ -79,6 +79,7 @@ pieza de 180 000 segmentos.
 | `test_verificar.py` | 12 casos de g-code con respuesta conocida | él mismo |
 | `verificar_pieza.py` | línea fina, contacto, choque, puentes | `Squeezy Fidget Toy.gcode` |
 | `verificar_capas.py` | coherencia de las marcas de capa | suma declarada vs altura real |
+| `verificar_piso.py` | Ø del disco de apoyo y del hueco | el disco plano del g-code |
 | `vista_gcode.py` | frontal y planta a PNG | el ojo |
 | `verificar_campo.py` | campo de deformación JS contra Python | uno contra otro |
 | `verificar_ams.py` | bloque de cambio de filamento | un 3mf real de Bambu |

@@ -37,6 +37,11 @@ PASO = 0.5         # mm, cada cuánto se muestrea un movimiento
 # anterior todo el tiempo; sin holgura eso sería un choque en cada segmento.
 HOLGURA = 0.5
 GRAVE = 1.0        # por encima de esto no es roce, es un golpe
+# Material depositado dentro de estos mm de recorrido queda DETRÁS de la
+# boquilla. Una vuelta de estas piezas mide 300 mm o más, así que 8 mm no puede
+# tapar un choque contra la vuelta anterior; lo único que descarta es que un
+# trazo se choque consigo mismo por la resolución de la celda.
+RECIENTE = 8.0
 # Por debajo de esta holgura el archivo no choca, pero pasa demasiado cerca:
 # un hilo, un poco de curling o una pieza que se despegó lo convierten en
 # choque. Orca deja 0.5 mm de fábrica, pensando en una cara superior plana.
@@ -61,7 +66,8 @@ def revisar(lineas):
     # daba 0.0 en todas las demás, y entonces cualquier movimiento a Z negativa
     # —el `G1 Z-5` relativo del home de la A1— parecía un choque de 5 mm contra
     # material inexistente. La cama no es la pieza.
-    altura = {}
+    altura = {}          # celda -> (techo, arco al que se depositó)
+    arco = 0.0           # mm de recorrido acumulado
     x = y = z = 0.0
     e = 0.0
     relativo = False       # M83/M82: extrusión
@@ -115,14 +121,30 @@ def revisar(lineas):
         extruye = de > 0
 
         d = math.hypot(nx - x, ny - y)
+        d3 = math.hypot(d, nz - z)
         pasos = max(1, int(d / PASO))
         for i in range(1, pasos + 1):
             t = i / pasos
             px, py = x + (nx - x) * t, y + (ny - y) * t
             pz = z + (nz - z) * t
+            arco_p = arco + d3 * t
             celda = (int(px // CELDA), int(py // CELDA))
-            techo = altura.get(celda)
-            if techo is not None and techo - pz > HOLGURA:
+            techo, arco_techo = altura.get(celda, (None, 0.0))
+            # El material que se acaba de depositar está DETRÁS de la boquilla,
+            # no delante: no se puede chocar con él.
+            #
+            # Sin esta condición, una celosía de arcos altos se autodenuncia. La
+            # celda mide 1 mm y guarda una sola altura, así que una pata que sube
+            # 58° —la de un arco de 2.5 mm de paso— entra en la celda a z 1.99 y
+            # sale a z 0.95, y al salir se compara contra su propia entrada: 1.04
+            # mm "dentro del material", GRAVE, 188 veces. La pieza está bien; lo
+            # que no da es la resolución del mapa.
+            #
+            # Se descartan sólo los últimos RECIENTE mm de recorrido. Una vuelta
+            # de estas piezas mide 300 mm o más, así que esto nunca puede tapar
+            # un choque contra la vuelta anterior, que es lo que importa.
+            reciente = arco_p - arco_techo < RECIENTE
+            if techo is not None and not reciente and techo - pz > HOLGURA:
                 choques.append((n, s[:60], px, py, pz, techo, techo - pz))
             # Cuánto le sobró. Un archivo que no choca pero pasa a 0.2 mm de la
             # pieza no es seguro: es un choque que todavía no ocurrió. Solo
@@ -131,24 +153,29 @@ def revisar(lineas):
             # Solo cuando la boquilla se MUEVE en X/Y. Parada en el sitio
             # —la retracción del final, con el cabezal donde terminó— la
             # holgura es 0 por definición y no es un peligro.
-            if techo is not None and not extruye and d > 0:
+            if techo is not None and not reciente and not extruye and d > 0:
                 margen.append((pz - techo, n, s[:60], px, py, pz, techo, fase))
             if extruye:
-                altura[celda] = max(techo or pz, pz)
+                if techo is None or pz >= techo:
+                    altura[celda] = (pz, arco_p)
+                else:
+                    altura[celda] = (techo, arco_techo)
 
         # Un movimiento que solo baja/sube en Z tampoco es inocente: puede
         # clavarse sobre material que está justo debajo.
         if d == 0 and nz != z:
             celda = (int(nx // CELDA), int(ny // CELDA))
-            techo = altura.get(celda)
-            if techo is not None and techo - nz > HOLGURA:
+            techo, arco_techo = altura.get(celda, (None, 0.0))
+            if (techo is not None and arco + abs(nz - z) - arco_techo >= RECIENTE
+                    and techo - nz > HOLGURA):
                 choques.append((n, s[:60], nx, ny, nz, techo, techo - nz))
 
+        arco += d3 if d3 else abs(nz - z)
         if ne is not None:
             e = ne if relativo else ne
         x, y, z = nx, ny, nz
 
-    return choques, margen, max(altura.values()) if altura else 0.0
+    return choques, margen, max((h for h, _ in altura.values()), default=0.0)
 
 
 def main():

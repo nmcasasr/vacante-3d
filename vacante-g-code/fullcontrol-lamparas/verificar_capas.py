@@ -32,8 +32,29 @@ Lo que se comprueba:
 
 import re
 import sys
+import zipfile
 
 TOL = 0.02          # mm
+
+
+def lineas_de(ruta):
+    """Las líneas del g-code, sea `.gcode` o `.gcode.3mf`.
+
+    Sin esto, pasarle un `.3mf` —que es lo que de verdad se manda a imprimir—
+    abría el zip como texto, no encontraba ni un `; CHANGE_LAYER` y salía por
+    "no hay marcas". O sea que el verificador que existe para comprobar las
+    marcas de capa NO comprobaba nada justo en el archivo que las lleva, y lo
+    decía con un mensaje que parecía un problema del archivo.
+    """
+    if ruta.lower().endswith(".3mf"):
+        with zipfile.ZipFile(ruta) as z:
+            nombre = next((n for n in z.namelist()
+                           if n.endswith("plate_1.gcode")), None)
+            if nombre is None:
+                raise ValueError(f"{ruta}: no tiene Metadata/plate_1.gcode")
+            return z.read(nombre).decode("utf8", "ignore").splitlines()
+    with open(ruta, errors="ignore") as f:
+        return f.read().splitlines()
 
 
 def leer_marcas(ruta):
@@ -49,7 +70,7 @@ def leer_marcas(ruta):
     # fue de 0.4, la Z de la capa siguiente caía dentro y el desfase no se veía.
     # Con capa de 0.8 —la de la referencia— 52 de 75 capas dieron "discrepan".
     z_prusa_pendiente = None
-    for linea in open(ruta, errors="ignore"):
+    for linea in lineas_de(ruta):
         t = linea.strip()
         m = re.match(r"^;Z:([0-9.]+)", t)
         if m:

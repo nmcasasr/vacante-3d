@@ -338,6 +338,121 @@ def radio_de(curva: Curva, desde_z: Optional[float] = None,
     return radio, info
 
 
+def envolvente(curva: Curva, muestras: int = 400) -> Tuple[List[float], List[float]]:
+    """
+    (z, radio) del contorno exterior de la curva entera, sin recortar.
+
+    Es la misma envolvente que arma `radio_de` —máximo por franja de altura—
+    pero sobre TODO el modelo y devuelta como tabla, porque para decidir DÓNDE
+    cortar hace falta ver lo que queda afuera del tramo elegido.
+    """
+    z0, z1 = min(curva.z), max(curva.z)
+    alto = (z1 - z0) or 1.0
+    cajas: Dict[int, float] = {}
+    for x, z in curva.pts:
+        k = min(muestras, max(0, int((z - z0) / alto * muestras)))
+        cajas[k] = max(cajas.get(k, 0.0), abs(x))
+    ks = sorted(cajas)
+    return [z0 + alto * k / muestras for k in ks], [cajas[k] for k in ks]
+
+
+def espejar(curva: Curva, hasta_z: Optional[float] = None, muestras: int = 1200) -> Curva:
+    """
+    La mitad de abajo pasa a ser el REFLEJO de la de arriba, sobre la panza.
+
+    Existe porque un modelo trae la forma de la FIGURA, no la de la pieza. El
+    hongo, debajo de su radio máximo, no sigue cerrando: se abre en la pollera
+    del sombrero y baja al tronco, y cortar ahí deja un faldón cóncavo que no
+    tiene nada que ver con la cúpula de arriba. Lo que se quiere es un cuerpo
+    ovalado, y esa forma ya está modelada — en la mitad de arriba.
+
+    El eje del reflejo es la PANZA, el radio máximo, y no un z que se elija a
+    mano: es el único punto donde las dos mitades empalman con la misma
+    tangente. Cualquier otra altura deja un pico o un escalón justo en el
+    ecuador, que es donde más se ve.
+
+    `hasta_z` es el techo del tramo que se usa —`--perfil-hasta`—, y hay que
+    pasarlo: lo que se refleja tiene que ser la parte de arriba QUE SE IMPRIME.
+    Reflejando el modelo entero, la mitad de abajo copia unos milímetros de
+    remate que la pieza nunca llega a tener.
+
+    Devuelve una `Curva` como cualquier otra, así que `radio_de`, `envolvente` y
+    `rango_de_corte` siguen funcionando sin enterarse.
+    """
+    zs, rs = envolvente(curva, muestras)
+    if hasta_z is not None:
+        pares = [(z, r) for z, r in zip(zs, rs) if z <= hasta_z + 1e-9]
+        if len(pares) < 3:
+            raise ValueError(f"la curva casi no pasa por debajo de z {hasta_z:.1f}")
+        zs = [z for z, _ in pares]
+        rs = [r for _, r in pares]
+    k = max(range(len(rs)), key=lambda i: rs[i])
+    z_eje = zs[k]
+    if k >= len(zs) - 2:
+        raise ValueError("la panza está en el borde de arriba: no hay mitad superior que reflejar")
+    # (x, z), que es como vienen los puntos de un DXF.
+    arriba = [(rs[i], zs[i]) for i in range(k, len(zs))]
+    abajo = [(r, 2 * z_eje - z) for r, z in reversed(arriba[1:])]
+    return Curva(curva.idx, curva.capa + " (espejo)", curva.tipo, abajo + arriba)
+
+
+def rango_de_corte(curva: Curva, radio_minimo: float = 0.0, escala: float = 1.0,
+                   alto_maximo: float = 0.0, hasta_z: Optional[float] = None,
+                   muestras: int = 400) -> Tuple[float, float]:
+    """
+    Entre qué alturas del modelo tiene sentido cortar la base de la pieza.
+
+    Mover el corte hacia abajo achica el disco del piso y estira la panza: es
+    la forma de pasar de un bol de base ancha a una silueta ovalada, sin tocar
+    el hueco, que es un diámetro absoluto y no depende del perfil.
+
+    El tope de arriba es la **panza**, el radio máximo. Ahí el corte deja de
+    agrandar la base: más arriba la pieza es una cúpula y el diámetro del piso
+    vuelve a bajar, así que el control dejaría de ser monótono y el slider se
+    volvería ambiguo.
+
+    El piso de abajo son tres cosas que ya rompieron una corrida cada una:
+
+    1. El hueco tiene que caber en el disco (`_espiral_base` levanta
+       `ValueError` si no, y el generador muere sin gcode).
+    2. Tiene que quedar anillo de sobra alrededor del hueco: con una sola
+       vuelta, el canto del agujero es un cordón suelto. Quien llama pasa ese
+       ancho mínimo en `radio_minimo`; dos vueltas es lo que se usa.
+    3. Cortar más abajo hace la pieza MÁS ALTA. Con `alto_maximo` se frena
+       donde deja de entrar en la cama.
+
+    Args:
+        curva: la del DXF o el STL, sin recortar.
+        radio_minimo: radio que el disco del piso tiene que superar, en mm de
+            la pieza impresa (ya con la escala aplicada).
+        escala: `--perfil-escala`, para poder comparar contra milímetros de
+            pieza y no del modelo.
+        alto_maximo: altura que la pieza no puede pasar, en mm de pieza. 0 lo
+            desactiva.
+        hasta_z: el techo del tramo, o sea `--perfil-hasta`. De ahí sale la
+            altura que tendría cada corte.
+    """
+    zs, rs = envolvente(curva, muestras)
+    if not zs:
+        raise ValueError("la curva no tiene puntos")
+    techo = max(zs) if hasta_z is None else hasta_z
+    k = max(range(len(rs)), key=lambda i: rs[i])
+    z_panza = zs[k]
+
+    # Se baja DESDE la panza y se para en la primera altura que no sirve. Barrer
+    # todo el modelo y quedarse con el mínimo que cumple daría un tramo del pie
+    # del hongo —que también es ancho— separado del cuerpo por la garganta, y el
+    # slider saltaría a una forma que no tiene nada que ver.
+    z_piso = zs[k]
+    for i in range(k, -1, -1):
+        if rs[i] * escala <= radio_minimo:
+            break
+        if alto_maximo and (techo - zs[i]) * escala > alto_maximo:
+            break
+        z_piso = zs[i]
+    return z_piso, z_panza
+
+
 def voladizo(radio: Silueta, alto: float, altura_capa: float, ancho: float,
              muestras: int = 400) -> List[Tuple[float, float, float]]:
     """

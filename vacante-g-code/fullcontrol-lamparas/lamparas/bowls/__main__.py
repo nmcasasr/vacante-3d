@@ -60,8 +60,11 @@ def _cli() -> None:
     p.add_argument("--perfil-capa", metavar="CAPA", help="forzar una capa del DXF")
     p.add_argument("--perfil-idx", type=int, metavar="N", help="forzar una curva del DXF por su numero")
     p.add_argument("--perfil-desde", type=float, metavar="Z",
-                   help="recortar el perfil por abajo, en las coordenadas del modelo. Para imprimir "
-                        "solo la cabeza de una lampara: --perfil-desde 124.4")
+                   help="donde se corta la base, en las coordenadas del modelo. De aca sale el "
+                        "DIAMETRO DEL PISO: bajarlo achica el disco de apoyo y estira la panza "
+                        "-la silueta se vuelve mas ovalada-, subirlo deja una base mas ancha y "
+                        "chata. No toca el hueco, que es un diametro absoluto (--piso). Para "
+                        "imprimir solo la cabeza de una lampara: --perfil-desde 124.4")
     p.add_argument("--perfil-hasta", type=float, metavar="Z", help="recortar el perfil por arriba")
     p.add_argument("--perfil-escala", type=float, default=1.0, metavar="K",
                    help="achicar o agrandar el perfil, radio y altura por igual. Para sacar una "
@@ -70,6 +73,13 @@ def _cli() -> None:
                         "con la escala, asi que la version chica pone a prueba la misma geometria. "
                         "Lo que NO escala es el cordon: con la misma boquilla, la pared de la "
                         "chica pesa mas en proporcion.")
+    p.add_argument("--perfil-espejo", action="store_true",
+                   help="hacer que la mitad de ABAJO sea el reflejo de la de arriba, sobre la "
+                        "panza. Un modelo trae la forma de la figura, no la de la pieza: debajo "
+                        "de su radio maximo el hongo se abre en la pollera del sombrero y baja al "
+                        "tronco, asi que cortar ahi deja un faldon concavo. Con esto el cuerpo "
+                        "queda ovalado, con la misma curva arriba y abajo, y --perfil-desde elige "
+                        "hasta donde baja.")
     p.add_argument("--perfil-invertir", action="store_true",
                    help="dar vuelta el perfil de arriba abajo. Un modelo suele venir en la "
                         "orientacion de la FIGURA, no en la de impresion: la caperuza tiene el "
@@ -468,6 +478,11 @@ def _cli() -> None:
             if not cs:
                 p.error("--perfil: ninguna curva coincide con --perfil-capa/--perfil-idx")
             curva = _perfil.elegir(cs)
+            # Va ANTES de `radio_de` y no después: lo que se refleja es el
+            # contorno, no la tabla ya recortada por `--perfil-desde`. Al revés,
+            # la mitad de abajo copiaría un tramo que el corte ya se comió.
+            if args.perfil_espejo:
+                curva = _perfil.espejar(curva, args.perfil_hasta)
             silueta, info = _perfil.radio_de(curva, args.perfil_desde, args.perfil_hasta)
             if args.perfil_invertir:
                 _cruda = silueta
@@ -496,6 +511,35 @@ def _cli() -> None:
         if args.perfil_escala != 1.0:
             print(f"  escalado x{args.perfil_escala:g}: los radios y la altura de arriba YA son "
                   f"los de la pieza chica (el z del modelo no, es donde se recorto).")
+        # El diámetro del piso no está en ningún parámetro: SALE del corte. Sin
+        # decirlo, mover `--perfil-desde` es a ciegas — hay que generar, abrir
+        # en Orca y leer la cota. Acá sale ya en milímetros de pieza impresa,
+        # que es lo mismo que mide el visor.
+        #
+        # Los Ø son los del RECORRIDO, que es lo que mide el visor: la cota que
+        # Orca pone debajo de la pieza dio 243.9 para una panza de 2x121.9. El
+        # cordón sobresale medio ancho de cada lado y se anota aparte en vez de
+        # sumarlo, para no tener dos convenciones de diámetro dando vueltas.
+        # `--piso` sí es "lo que queda libre" porque ahí el encastre manda.
+        # El ancho del piso, EN VUELTAS. Es el número que hay que poder dosificar
+        # —cuántas circunferencias concéntricas quedan alrededor del hueco— y no
+        # sale de ningún parámetro: es la resta entre el contorno y el hueco.
+        # En milímetros no dice nada, porque lo que importa es contra cuántas
+        # pasadas se compara; en vueltas se lee directo.
+        hueco_txt = ""
+        if args.piso:
+            from ..comun import radio_de_hueco
+            fusion = perfil.ancho - 0.215 * perfil.altura_capa
+            r_hueco = radio_de_hueco(args.piso, perfil.ancho)
+            vueltas = (info['r_base'] - r_hueco) / fusion
+            hueco_txt = f" · hueco libre Ø{args.piso:g}"
+            aviso_piso = (f"  El piso mide {vueltas:.1f} vueltas alrededor del hueco"
+                          + (f". Bajando --perfil-desde se angosta; el tope del slider son 2."
+                             if vueltas > 2.5 else " — es el mínimo que no queda débil."))
+        print(f"  piso Ø{2*info['r_base']:.1f} · panza Ø{2*info['r_max']:.1f}" + hueco_txt
+              + f" mm (recorrido, cordón {perfil.ancho:g}) · corte en z={info['z0']:.1f} del modelo")
+        if args.piso:
+            print(aviso_piso)
         if args.perfil_limitar:
             silueta, rec = _perfil.limitar(silueta, info["alto"], perfil.altura_capa, perfil.ancho)
             print(f"  perfil limitado: {rec['tocados']} de {rec['muestras']} muestras recortadas. "
@@ -653,6 +697,30 @@ def _cli() -> None:
                     tope_z = CAMA_Z / alto_actual
                     tope = round(min(tope_xy, tope_z) * args.perfil_escala, 2)
                     rangos = {"--perfil-escala": (0.05, max(0.1, tope))}
+                # El corte de la base tiene su propio tope y su propio piso, y
+                # ninguno es un número fijo: dependen del hueco que hay que
+                # dejar libre, de la escala y de la cama. Ver
+                # `perfil.rango_de_corte`.
+                if args.perfil_desde is not None:
+                    from ..comun import radio_de_hueco
+                    # Con el perfil invertido, el que corta la base es
+                    # --perfil-hasta; acá el hueco no manda y solo queda la cama.
+                    r_min = 0.0
+                    if args.piso and not args.perfil_invertir:
+                        # El tope de abajo es DOS VUELTAS de piso alrededor del
+                        # hueco. Es el ancho mínimo que no queda débil: con una
+                        # sola, el canto del agujero es un cordón suelto. Y se
+                        # mide con la distancia de fusión, no con el ancho del
+                        # cordón, porque es lo que separa dos pasadas planas que
+                        # de verdad se pegan (ver `_espiral_base`).
+                        fusion = perfil.ancho - 0.215 * perfil.altura_capa
+                        r_min = radio_de_hueco(args.piso, perfil.ancho) + 2 * fusion
+                    z_lo, z_hi = _perfil.rango_de_corte(
+                        curva, radio_minimo=r_min, escala=args.perfil_escala,
+                        alto_maximo=CAMA_Z, hasta_z=args.perfil_hasta, muestras=1200)
+                    if z_hi - z_lo > 1e-6:
+                        rangos = {**(rangos or {}),
+                                  "--perfil-desde": (round(z_lo, 1), round(z_hi, 1))}
             guardar_receta(nombre, _sys.argv, "lamparas.bowls", desc,
                            extra={"mapeo": dict(ULTIMO_MAPEO),
                                   "toques": args.toques or None},

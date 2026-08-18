@@ -198,6 +198,24 @@ function scan(body: Body): { segs: Seg[]; filamentMm: number; seconds: number; e
       }
       continue;
     }
+    // G4 es TIEMPO DE IMPRESIÓN, no una pausa decorativa.
+    //
+    // Se descartaba junto con todo lo que no fuese G0/G1, y en una celosía eso
+    // no es un detalle: la caperuza tiene 2420 paradas de 1.5 s = 60.5 min,
+    // más que todo el movimiento junto (56.8 min). El empaquetador anunciaba
+    // 56 min para una pieza que Orca —que sí las cuenta— estima en dos horas y
+    // pico. Y `seconds` no es sólo el cartel: alimenta el M73 de progreso, el
+    // `; total estimated time` y el `prediction` del .3mf, así que la barra de
+    // la impresora y el tiempo restante iban mal toda la impresión.
+    if (cmd === 'G4') {
+      for (let i = 1; i < t.length; i++) {
+        const c = t[i][0].toUpperCase(), v = parseFloat(t[i].slice(1));
+        if (isNaN(v)) continue;
+        if (c === 'P') seconds += v / 1000;      // milisegundos
+        else if (c === 'S') seconds += v;        // segundos
+      }
+      continue;
+    }
     if (cmd !== 'G0' && cmd !== 'G1') continue;
 
     const sx = pos.x, sy = pos.y, sz = pos.z;
@@ -217,7 +235,11 @@ function scan(body: Body): { segs: Seg[]; filamentMm: number; seconds: number; e
     // consume filament. extrudedMm only counts moving ones, because it is the
     // denominator of the bead cross-section.
     if (ext) { filamentMm += de; extrudedMm += dist; }
-    if (feed > 0) seconds += (dist / feed) * 60;
+    // Un movimiento que sólo mueve E también tarda, y con F bajo tarda mucho.
+    // La retracción de estas piezas hereda la velocidad del ápice —4 mm/s, que
+    // es lo que hace la referencia— así que sacar y meter 1.5 mm cuesta 0.75 s
+    // por nodo: 30.3 min en la caperuza, contados como cero.
+    if (feed > 0) seconds += ((dist > 1e-9 ? dist : Math.abs(de)) / feed) * 60;
     segs.push({ x1: sx, y1: sy, z1: sz, x2: pos.x, y2: pos.y, z: pos.z, ext, moved: dist > 1e-6 });
   }
   return { segs, filamentMm, seconds, extrudedMm, cum, zAt };
@@ -795,12 +817,18 @@ const PASO = 0.5;       // mm, cada cuánto se muestrea un movimiento
 // En modo vaso la Z sube dentro de la vuelta y la boquilla roza la vuelta
 // anterior todo el tiempo; sin holgura eso sería un choque por segmento.
 const TOLERANCIA = 0.5;
+// Material depositado dentro de estos mm de recorrido queda DETRÁS de la
+// boquilla y no se puede chocar con él. Mismo valor que en
+// `fullcontrol-lamparas/verificar_choques.py`, que hace esta misma cuenta.
+const RECIENTE = 8.0;
 
 export interface Choque { linea: number; texto: string; z: number; techo: number; dentro: number; }
 
 export function revisarChoques(lineas: string[]):
     { choques: Choque[]; holgura: { cuerpo: number; cola: number } } {
-  const altura = new Map<string, number>();   // solo celdas CON material
+  // celda -> { techo, arco al que se depositó }
+  const altura = new Map<string, { techo: number; arco: number }>();
+  let arco = 0;                               // mm de recorrido acumulado
   let x = 0, y = 0, z = 0, e = 0;
   let eRel = false, xyzRel = false;
   let fase = 0;                               // 0 start, 1 cuerpo, 2 cola
@@ -832,14 +860,30 @@ export function revisarChoques(lineas: string[]):
     const de = ne === null ? 0 : (eRel ? ne : ne - e);
     const extruye = de > 0;
     const d = Math.hypot(nx - x, ny - y);
+    const d3 = Math.hypot(d, nz - z);
     const pasos = Math.max(1, Math.floor(d / PASO));
 
     for (let i = 1; i <= pasos; i++) {
       const t = i / pasos;
       const px = x + (nx - x) * t, py = y + (ny - y) * t, pz = z + (nz - z) * t;
+      const arcoP = arco + d3 * t;
       const clave = `${Math.floor(px / CELDA)},${Math.floor(py / CELDA)}`;
-      const techo = altura.get(clave);
-      if (techo !== undefined) {
+      const prev = altura.get(clave);
+      // El material recién depositado está DETRÁS de la boquilla, no delante.
+      //
+      // La celda mide 1 mm y guarda una sola altura, así que la pata de un arco
+      // calado —que con paso 2.5 sube 58°— entra en la celda a z 1.99 y sale a
+      // z 0.95, y al salir se compara contra su propia entrada: 1.04 mm "dentro
+      // del material", GRAVE. Con eso, este empaquetador se negaba a generar el
+      // .3mf de piezas que están bien; la caperuza daba 304 puntos graves.
+      //
+      // Se descartan sólo los últimos RECIENTE mm de recorrido. Una vuelta de
+      // estas piezas mide 250 mm o más, así que esto no puede tapar un choque
+      // contra la vuelta anterior —que es el que importa— ni el de la cola, que
+      // ocurre a miles de mm del último depósito.
+      const reciente = prev !== undefined && arcoP - prev.arco < RECIENTE;
+      if (prev !== undefined && !reciente) {
+        const techo = prev.techo;
         if (techo - pz > TOLERANCIA) {
           choques.push({ linea: n + 1, texto: s.slice(0, 70), z: pz, techo, dentro: techo - pz });
         }
@@ -851,8 +895,11 @@ export function revisarChoques(lineas: string[]):
           else if (fase === 1) holgura.cuerpo = Math.min(holgura.cuerpo, libre);
         }
       }
-      if (extruye) altura.set(clave, Math.max(techo ?? pz, pz));
+      if (extruye && (prev === undefined || pz >= prev.techo)) {
+        altura.set(clave, { techo: pz, arco: arcoP });
+      }
     }
+    arco += d3 || Math.abs(nz - z);
     if (ne !== null) e = ne;
     x = nx; y = ny; z = nz;
   }

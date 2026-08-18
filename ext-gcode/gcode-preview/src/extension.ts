@@ -1215,20 +1215,55 @@ function getHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
     .par { margin-bottom: 9px; }
     .par-fila {
       display: flex; justify-content: space-between; align-items: baseline;
-      font-size: 10px; letter-spacing: .06em; color: var(--tinta);
+      gap: 6px; font-size: 10px; letter-spacing: .06em; color: var(--tinta);
     }
-    .par-fila b { color: var(--tinta-viva); font-weight: 400; font-variant-numeric: tabular-nums; }
+    /* El rótulo se queda con el sobrante para que el reset y el número queden
+       pegados a la derecha, y un nombre largo se recorta en vez de empujarlos. */
+    .par-fila > span {
+      flex: 1 1 auto; min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    /* Volver al valor con el que se abrió la pieza. Aparece solo cuando hay algo
+       que deshacer: si está, es que tocaste el parámetro. Se oculta con
+       visibility y no con display para que la fila no salte al aparecer. */
+    .par-reset {
+      flex: 0 0 auto; padding: 0; line-height: 1;
+      font: inherit; font-size: 11px;
+      color: var(--tinta-tenue); background: transparent;
+      border: none; border-radius: 0; cursor: pointer;
+    }
+    .par-reset:hover { color: var(--acento); }
+    .par-reset.oculto { visibility: hidden; }
+    /* El número del encabezado es un CAMPO: se escribe. Parece una etiqueta
+       hasta que se lo toca —sin caja ni fondo— porque el panel es un plano y
+       una cajita de formulario lo delata. Ver campoNumero en main.js. */
+    .par-fila .par-num {
+      width: 6.5em; padding: 0; text-align: right;
+      font: inherit; font-variant-numeric: tabular-nums;
+      color: var(--tinta-viva); background: transparent;
+      border: none; border-bottom: 1px solid transparent; border-radius: 0;
+      outline: none; cursor: text;
+    }
+    .par-fila .par-num:hover { border-bottom-color: var(--tinta-tenue); }
+    .par-fila .par-num:focus { border-bottom-color: var(--acento); }
+    /* Escrito a mano fuera del rango que sugiere la receta. El slider se
+       ensanchó para poder mostrarlo; la marca avisa que ya no estás dentro de
+       lo que el generador propuso. */
+    .par-fila .par-num.fuera { border-bottom: 1px dotted var(--acento); color: var(--acento); }
     /* Los sliders son cotas: riel de un pixel y un cursor cuadrado, no una
-       pastilla — una perilla redonda de app moderna delata el plano. */
-    .par input {
+       pastilla — una perilla redonda de app moderna delata el plano.
+       El selector va por [type=range] y no por .par input a secas: desde
+       que el valor es un campo, .par tiene DOS inputs, y el ancho del 100 %
+       con altura de un pixel dejaba el campo de texto invisible. */
+    .par input[type=range] {
       width: 100%; -webkit-appearance: none; appearance: none; height: 1px;
       background: var(--tinta-tenue); outline: none; margin: 7px 0 0; cursor: pointer;
     }
-    .par input::-webkit-slider-thumb {
+    .par input[type=range]::-webkit-slider-thumb {
       -webkit-appearance: none; width: 9px; height: 9px; background: var(--papel);
       border: 1px solid var(--tinta-viva); border-radius: 0; cursor: pointer;
     }
-    .par input:hover::-webkit-slider-thumb { background: var(--acento); border-color: var(--acento); }
+    .par input[type=range]:hover::-webkit-slider-thumb { background: var(--acento); border-color: var(--acento); }
 
     /* Una corrida del generador tarda segundos y sin nada que lo diga parece
        que el slider no hizo nada. Una raya que barre, no un spinner: es lo que
