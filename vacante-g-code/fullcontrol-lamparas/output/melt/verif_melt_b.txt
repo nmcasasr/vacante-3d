@@ -1,0 +1,23 @@
+cordón 1.0 x 0.4 mm (--ancho/--alto)
+299250 segmentos extruidos · cordón nominal 1.0 x 0.4 mm (área 0.400 mm²)
+
+1. FABRICABILIDAD  (ancho/alto del cordón que se le pide a la boquilla)
+   referencia validada, hongo.gcode: 10:1 en 13.3 % · 20:1 en 5.5 % · peor 23:1
+           base: fino (>10:1)  0.00 % · irrealizable (>20:1)       0 /  299250 ( 0.00 %) · más fino 0.400 mm (2.5:1)
+
+2. CONTACTO  (núcleos de cordón que se tocan, contra material ya impreso)
+           base:       6 /  418495 muestras sin apoyo ( 0.00 %)
+
+4. CHOQUE  (cordón depositado donde ya hay material: ejes a menos del 70% de la separación de fusión)
+           base:     524 /  418495 muestras pisadas ( 0.13 %)
+
+3. PUENTES  (recorrido seguido al aire; > 12 mm se descuelga)
+   6 tramos al aire · el peor 0.4 mm (base, z 12.4)
+   por encima de 12 mm: 0
+
+VEREDICTO  (contra Squeezy Fidget Toy.gcode, objeto impreso y viable)
+   la pieza es maciza: 0 de 299250 segmentos extruyen bajando -> se compara contra sus CÚPULAS (pared maciza)
+    línea fina (<0.10mm):     0.00 %  contra   0.26 %  de la referencia   ok
+                contacto:     0.00 %  contra   1.88 %  de la referencia   ok
+             peor puente:     0.41 mm contra  12.00 mm de la referencia   ok
+   -> IMPRIMIBLE
