@@ -386,6 +386,7 @@ def generar_pieza(
     refuerzo_hueco: int = 0,
     capas_transicion: int = 6,
     paso_z: Optional[float] = None,
+    paso_fijo: bool = False,
     silueta_referencia: Optional[Callable[[float], float]] = None,
     cambios: Optional[dict] = None,
     modulacion: Optional[dict] = None,
@@ -428,6 +429,11 @@ def generar_pieza(
             en las crestas termina 1 mm por debajo de la vuelta anterior y la
             boquilla vuelve a meterse en material ya impreso. Con paso_z >= 2*A
             las vueltas se tocan en los nodos y nunca se pisan.
+        paso_fijo: desactiva la marcha adaptativa y sube `paso_z` exacto en cada
+            vuelta. Para piezas de pared VERTICAL con relieve angular, donde el
+            criterio de la marcha —pensado para cúpulas— produce una altura de
+            capa que se bandea sin corresponder a ningún rasgo. Ver el bloque
+            donde se usa.
         silueta_referencia: silueta lisa `t -> radio`, solo para medir el
             voladizo. Sin esto la medición usa el radio medio de cada vuelta,
             que en los patrones con relieve variable da falsos positivos.
@@ -481,7 +487,25 @@ def generar_pieza(
     # la Z sube igual, y entre ellas quedan huecos. Con el peor ángulo, el paso
     # se desploma justo donde la pared se tumba y las vueltas se acuestan una
     # contra otra, que es lo que hace imprimible una repisa.
-    N_ANG = 32
+    # Cuántos ángulos se miran para encontrar el peor. NO puede ser una
+    # constante: tiene que resolver el detalle angular que la pieza realmente
+    # tiene, y ese detalle lo declara `segmentos_por_capa`.
+    #
+    # Con 32 fijos, una rosca de 9 caritas por vuelta se muestreaba con 3.5
+    # puntos por cara. La rejilla de 32 y las 9 caras baten entre sí, así que
+    # el "peor ángulo" que salía dependía de dónde cayeran las muestras y no de
+    # la pieza: el factor de extrusión oscilaba un 19.6 % a lo largo de la
+    # pared, en bandas que NO coinciden con los ojos ni con la boca. Es el
+    # bandeado que se ve en el mapa de caudal de Orca.
+    #
+    #     N_ANG=32   pendiente 72.0..173.6   ->  extrusión 1.048..1.253  19.6 %
+    #     N_ANG=128  pendiente 144.6..173.6  ->  extrusión 1.181..1.253   6.1 %
+    #     N_ANG=720  pendiente 168.1..173.6  ->  extrusión 1.239..1.253   1.1 %
+    #
+    # No cambia ninguna pieza SIN variación angular —un sólido de revolución
+    # devuelve el mismo radio en los 32 ángulos que en los 360—, así que el
+    # hongo y su calibración de extrusión quedan intactos.
+    N_ANG = max(32, min(int(segmentos_por_capa or 200), 360))
 
     def _pendiente(t: float, h: float = 5e-3) -> float:
         a, b = min(1.0, t + h), max(0.0, t - h)
@@ -507,8 +531,40 @@ def generar_pieza(
             peor = max(peor, abs(funcion_radio(ang, t2) - funcion_radio(ang, t)))
         return peor
 
-    ts, zs = marcha_vertical(None, altura, paso, pendiente=_pendiente,
-                             delta_radio=_delta_radio)
+    if paso_fijo:
+        # PASO CONSTANTE, sin marcha adaptativa.
+        #
+        # `marcha_vertical` existe para las CÚPULAS: cuando la pared se tumba,
+        # la vuelta siguiente no se apoya encima sino al lado, y hay que acortar
+        # el paso o quedan huecos. En una pieza de pared VERTICAL con relieve
+        # angular el desplazamiento entre vueltas es RADIAL, y ahí el criterio
+        # `hypot(dz, dR) <= altura_capa` mide mal: trata el corrimiento radial
+        # como si fuera vertical, cuando el cordón mide 1.2 mm de ancho radial
+        # contra 0.4 de alto. Un salto radial de 0.4 mm sigue dejando 0.8 mm de
+        # los 1.2 solapados.
+        #
+        # El resultado de aplicarlo igual es una altura de capa que oscila
+        # 0.230-0.383 en bandas que no corresponden a ningún rasgo de la pieza
+        # —el batido entre la hélice del hilo y el patrón angular— y con ella
+        # oscila el caudal. Medido sobre las caritas con paso fijo:
+        #
+        #     dz = 0.30  ->  peor salto radial 0.398 mm  ->  67 % de solape
+        #     dz = 0.40  ->  peor salto radial 0.533 mm  ->  56 % de solape
+        #
+        # Los dos por encima del jarrón, que está impreso y mide 39.5 %.
+        # El paso se REDONDEA para que entre un número entero de veces.
+        #
+        # Marchando de `paso` en `paso` y agregando lo que sobra queda una
+        # última vuelta muñón: en un cupón de 40 mm a 0.30 sobran 0.10, y esa
+        # vuelta de 0.10 mm es un cordón de 12:1 justo en el borde de arriba.
+        # Con el paso ajustado —40/133 = 0.3008— todas las vueltas miden lo
+        # mismo y la pieza cierra exactamente en `altura`.
+        n = max(1, round(altura / paso))
+        ts = [j / n for j in range(n + 1)]
+        zs = [j * altura / n for j in range(n + 1)]
+    else:
+        ts, zs = marcha_vertical(None, altura, paso, pendiente=_pendiente,
+                                 delta_radio=_delta_radio)
     n_capas = max(1, len(ts) - 1)
     angulos = [seg / segmentos_por_capa * 2 * math.pi for seg in range(segmentos_por_capa + 1)]
 
@@ -619,7 +675,41 @@ def generar_pieza(
             # que las que tiene la pieza entera (ver el README).
             return max(perfil.altura_capa, crudo * _mezcla(c))
         if variacion_angular > 0.02:
-            crudo = max(PASO_MINIMO, crudo * _mezcla(c))
+            # El piso de la rampa es MEDIA CAPA, no `PASO_MINIMO`.
+            #
+            # La rampa tiene que estar: es la que hace que la pared nazca del
+            # anillo de base creciendo de a poco. Quitarla deja la primera
+            # vuelta saltando el paso entero y media vuelta sin apoyo — medido,
+            # un puente de 168 mm a z=0.8 en el cupón liso.
+            #
+            # Pero `PASO_MINIMO` (0.05) está por debajo del umbral de cordón
+            # imposible (0.10): un cordón sólo puede ocupar el hueco que sube,
+            # así que esas vueltas salían genuinamente delgadas. Medido sobre
+            # `cupon_v2400.gcode`: una vuelta entera —la de la cama— a 0.069 mm
+            # contra 0.400 nominal, el 17 % del material. Era el ÚNICO motivo
+            # por el que las doce piezas de rosca daban NO IMPRIMIBLE, y la peor
+            # era la lisa sin ningún patrón.
+            #
+            # Media capa (0.20) deja la rampa haciendo su trabajo y mantiene
+            # todos los cordones por encima del umbral. No pisa el paso
+            # adaptativo de `marcha_vertical`, que en la rosca vale 0.306:
+            # poner el piso en `altura_capa` sí lo pisaba y desactivaba el
+            # manejo del voladizo.
+            # El piso acota la RAMPA, no el paso adaptativo.
+            #
+            # `max(0.5*altura_capa, crudo*_mezcla)` a secas también le pone piso
+            # a `crudo`, y eso estira la pieza: donde `marcha_vertical` pide
+            # pasos finos —una rosca con relieve pide hasta 0.20— el piso los
+            # sube y la pared termina más alta que `altura`. Medido sobre unas
+            # caritas de 40 mm: 42.909 mm de pared, 1.0727x, y como la función
+            # de radio calcula la fase del hilo con `z = t*altura`, ese
+            # estiramiento le corre la hélice +2.7 mm en 40 mm — más de un paso
+            # entero en una pieza de 230. El hilo salía repartido por todas las
+            # fases en vez de ser un hilo.
+            #
+            # Con `min(crudo, ...)` el piso nunca sube el paso por encima de lo
+            # que pidió la marcha: sólo impide que la rampa lo hunda.
+            crudo = max(crudo * _mezcla(c), min(crudo, 0.5 * perfil.altura_capa))
         return crudo
 
     pasos_capa = [perfil.altura_capa] + [_paso_capa(c) for c in range(1, n_capas + 1)]
@@ -925,7 +1015,17 @@ def generar_pieza(
         # Es lo que hace el g-code de referencia: `Squeezy Fidget Toy.gcode`
         # pone 149 movimientos a Z 0.800 exacto —la vuelta plana— y recién
         # después arranca a subir de a micras.
-        anillo_plano = espiral and base_solida and capa == 0
+        # Y vale IGUAL sin piso macizo. La condición era `base_solida and
+        # capa == 0`, y una pieza hueca con `capas_base >= 1` también tiene su
+        # primera vuelta plana —`rampa` es falsa mientras `capa < capas_base`—
+        # pero SÍ consumía altura. El resultado: el anillo se imprime a z=0.4 y
+        # la espiral arranca a 0.6, o sea 0.2 mm de aire debajo de toda la
+        # primera vuelta de pared. Medido en las roscas, 146 mm de recorrido
+        # seguido sin apoyo a z=0.7, y estaba en TODAS: es la vuelta que pega
+        # la pieza a la cama.
+        #
+        # Lo que no consume altura no puede descontarse de la altura.
+        anillo_plano = espiral and capa == 0 and (base_solida or capas_base >= 1)
         rampa = espiral and (capa >= capas_base or (base_solida and capa == 0)) \
             and not anillo_plano
         if not anillo_plano:
@@ -1019,6 +1119,18 @@ def generar_pieza(
         tan_v = _pendiente(ts[capa]) / max(altura, 1e-9)
         # `subida` ya viene atenuada por `_mezcla` y con piso en PASO_MINIMO,
         # así que la separación se reconstruye desde ella y no desde `paso`.
+        #
+        # NO cambiar esto por `_delta_radio` (el peor ángulo, que es con el que
+        # `marcha_vertical` elige el paso). Se probó, de las dos formas:
+        #
+        #   sólo _delta_radio  -> baja la extrusión del hongo un 23 %
+        #   max de los dos     -> la sube un 25 %
+        #
+        # El hongo está impreso y su extrusión está contrastada contra
+        # `Squeezy Fidget Toy.gcode` (ver ESTADO.md). Los dos estimadores
+        # discrepan lo bastante como para que cualquier cambio acá mueva esa
+        # calibración, así que un patrón que sub-extruya se arregla en el
+        # patrón, no acá.
         separacion = subida * math.sqrt(1 + tan_v * tan_v)
         # Donde el paso choca contra el piso, la separación se dispara y un
         # cordón solo no llena el hueco. Se extruye lo que se pueda y el

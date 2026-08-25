@@ -1,3 +1,173 @@
+# Sesión del 25-08-2026 — altura de capa, primera vuelta y render sólido
+
+## ARREGLADO: la primera vuelta flotaba 0.2 mm sobre la cama
+
+Estaba en **todas** las roscas y era el único motivo por el que daban NO
+IMPRIMIBLE: 146 mm de recorrido seguido sin apoyo a z 0.7.
+
+`generar_pieza` tenía la guarda
+
+    anillo_plano = espiral and base_solida and capa == 0
+
+Una vuelta plana no consume altura, así que no hay que descontarla de `z_vuelta`.
+Pero la condición sólo contemplaba el piso macizo. Una pieza HUECA con
+`capas_base >= 1` también tiene su primera vuelta plana —`rampa` es falsa
+mientras `capa < capas_base`— y sí descontaba. Resultado: el anillo se imprime a
+z=0.4 y la espiral arranca a 0.6.
+
+Ahora:
+
+    anillo_plano = espiral and capa == 0 and (base_solida or capas_base >= 1)
+
+`cupon_v2400`: de NO IMPRIMIBLE (puente de 153.7 mm) a **IMPRIMIBLE**, 0 de
+96 486 muestras sin apoyo.
+
+**Control:** el hongo se regenera BYTE A BYTE idéntico a `hongo_latest.gcode`
+—el que está impreso— porque tiene `base_solida` y ya entraba por esa rama.
+
+## ARREGLADO: el "peor ángulo" se muestreaba con 32 muestras fijas
+
+`N_ANG = 32` dentro de `generar_pieza` gobierna `_pendiente` y `_delta_radio`.
+Con 9 caritas por vuelta eso son 3.5 muestras por cara: la rejilla de 32 y las
+9 caras baten entre sí y el resultado depende de dónde caigan las muestras, no
+de la pieza.
+
+    N_ANG=32   pendiente  72.0..173.6  ->  extrusión 1.048..1.253   19.6 %
+    N_ANG=128  pendiente 144.6..173.6  ->  extrusión 1.181..1.253    6.1 %
+    N_ANG=720  pendiente 168.1..173.6  ->  extrusión 1.239..1.253    1.1 %
+
+Ese 19.6 % es el bandeado del mapa de CAUDAL de Orca, y explica por qué las
+bandas no coinciden con los ojos ni con la boca: son moiré, no geometría.
+
+Ahora `N_ANG = max(32, min(segmentos_por_capa, 360))`. No mueve ninguna pieza
+sin variación angular —un sólido de revolución devuelve lo mismo en 32 ángulos
+que en 360—, verificado con el hongo byte a byte.
+
+## NUEVO: `paso_fijo` en `generar_pieza`
+
+`marcha_vertical` está pensada para CÚPULAS: acorta el paso donde la pared se
+tumba. En una pared VERTICAL con relieve angular el corrimiento entre vueltas es
+RADIAL, y ahí su criterio `hypot(dz, dR) <= altura_capa` mide mal — trata el
+corrimiento radial como si fuera vertical, cuando el cordón mide 1.2 mm de
+ancho radial contra 0.4 de alto.
+
+Es la misma sospecha que quedó abierta más abajo en este archivo ("la regla
+Δradio por vuelta < ancho de cordón es más estricta que lo que hace la pieza
+real"). `paso_fijo` NO la cierra: es una salida opt-in y medida para las piezas
+donde se puede comprobar que las vueltas siguen solapando.
+
+`gen_rosca.py` decide sola, midiendo el peor salto radial a paso 0.30:
+
+    clásico, perlas, ondas, círculos, cuadros, lienzos   0.27 mm   78 %  FIJO
+    chevron                                              0.32 mm   73 %  FIJO
+    moleteado                                            0.36 mm   70 %  FIJO
+    caritas en relieve                                   0.39 mm   68 %  FIJO
+    sellos de corazón                                    1.92 mm  -60 %  ADAPTATIVO
+    sellos de estrella                                   1.67 mm  -39 %  ADAPTATIVO
+
+Los sellos tienen cantos vivos en `d` —el eje vertical— y ahí ninguna vuelta de
+paso fijo alcanza a solapar: se quedan con la marcha adaptativa. El umbral es
+50 % de solape; el jarrón, impreso y funcionando, mide 39.5 %.
+
+Resultado en las caritas: altura de capa 0.300 mm clavada (desvío 0.0074, era
+0.0275 entre 0.230 y 0.383) y sección extruida plana al 2 % en el 98 % central,
+contra el 0 % del hilo liso.
+
+El paso se REDONDEA para que entre entero (`n = round(altura/paso)`). Marchando
+de `paso` en `paso` y agregando el resto quedaba una última vuelta muñón: en un
+cupón de 40 mm a 0.30 sobraban 0.10, o sea un cordón de 12:1 en el borde de
+arriba.
+
+## ARREGLADO: `verificar_rosca.py` no corría
+
+Dos cosas, las dos de arrastre:
+
+1. El módulo se cargaba por ruta suelta y `rosca.py` hace
+   `from .envolvente_hembra import ...`. Sin paquete padre, el import relativo
+   revienta. Ahora se registra un `lamparas` de mentira con sólo `__path__`, que
+   no ejecuta el `__init__` real (el que arrastra fullcontrol).
+2. El cuerpo hablaba del riel redondo de Ø11 (`perfil_maestro`, `A_MAESTRO`,
+   `R_BARRENO`, `R_CRESTA_MAX`), que ya no existe: la hembra real se midió de
+   `tuerca.stl`. Reescrito contra la envolvente.
+
+Dos trampas al medir, por si vuelve a pasar:
+
+- Hay que pedirle a `rosca()` `ancho_cordon=0`, o sea la SUPERFICIE. Con el
+  medio cordón descontado se mide el eje del recorrido contra el techo del riel
+  y da contención -0.59 mm y apoyo 0.0 % en las nueve variantes.
+- La tolerancia de contención es 0.01 mm, no cero. La envolvente y el perfil
+  clásico son dos tablas de 270 muestras interpoladas y evaluadas en 720
+  ángulos: el propio STL de referencia da +0.0088 mm.
+
+## ARREGLADO: el render sólido rayaba las cúpulas (extensión gcode-preview)
+
+`buildSolid` dibujaba una cinta VERTICAL por segmento. Eso cierra una pared
+vertical y nada más: en una cúpula la vuelta siguiente sube 0.15 mm y se corre
+1.26 en radio, así que la cinta tapa los 0.15 y deja el corrimiento al aire. Por
+eso el rayado aparecía en TODOS los modos de color — el defecto era de la malla.
+
+Ahora la cinta va hasta la vuelta de arriba, con dos correcciones que hacen
+falta y que explican por qué el intento anterior rompió el piso:
+
+- **Sólo las componentes radial y vertical.** El puntero de ángulo acumulado
+  para en el primer punto PASADA la vuelta, o sea hasta un segmento entero de
+  más: sobre R=115 mm son 3 mm de cuerda contra 0.3 de corrimiento radial real.
+  Con el vector crudo la cinta sale torcida de costado por discretización.
+- **Un solo límite, el largo del vector.** La guarda vieja era `dz <= 4*decl`,
+  y donde la pared se acuesta `decl` cae a 0.05 mientras la vuelta de arriba
+  sigue a 0.15: saltaba en unos segmentos sí y otros no, mezclaba cintas
+  inclinadas con verticales que se cruzan, y el z-buffer alternaba. Moteado.
+
+El piso plano (uz = 0) sigue con cinta vertical, igual que antes.
+
+Comprobado ejecutando la `buildSolid` real en node sobre `hongo_latest.gcode` y
+rasterizando con fondo magenta: los agujeros desaparecen, y el piso —que antes
+se veía de canto, o sea nada, mirado desde abajo— ahora es una superficie.
+
+## ABIERTO: el sombreado agrupa mal las capas en piezas de paso adaptativo
+
+La malla está sana —comprobado ejecutando la `buildSolid` real en node sobre
+`hongo_latest.gcode`, con su `computeSombra` y su material, y sale una esfera
+limpia—. Pero el usuario sigue viendo mal el hongo en SOLID, y hay un sitio
+donde mi reproducción no es fiel: **de dónde salen las capas**.
+
+El lector de la extensión NO usa las marcas `;Z:`. Agrupa por Z real con UNA
+sola altura estimada (`estimateLayerHeight`):
+
+    let l = Math.round((segZ[s] - bbox.minz) / layerH);
+
+En el hongo el paso adaptativo va de 0.05 a 0.8 mm. Con una altura única, cerca
+del ápice —donde el paso se desploma— **muchas vueltas caen en la misma capa**.
+Y `computeSombra` se apoya en esa numeración para todo:
+
+- el ajuste de circunferencia por capa (con vueltas de radios distintos
+  mezcladas, el centro no significa nada),
+- `dr/dz`, que toma `zCapa[L] - zCapa[L-1]` del primer segmento que ve,
+- el anillo `(capa, sector)`, que se queda con el radio MÁXIMO del sector.
+
+`buildSolid` no depende de `layerAt` —usa `;HEIGHT:` y el ángulo acumulado— así
+que la malla se salva; lo que se ensuciaría es el COLOR, y sólo en la zona donde
+el paso colapsa.
+
+**Es una hipótesis, no está confirmada.** Falta reproducirla con el binning real
+(quedó a medias: `estimateLayerHeight` llama a `extrusionCentre`, que hay que
+extraer también) y, sobre todo, falta una captura del modo SOLID + SOMBRA para
+saber qué se está viendo.
+
+## LO QUE SIGUE
+
+1. **Imprimir `cupon_v2400`.** 40 mm, ~20 min, ahora sí IMPRIMIBLE. Es el único
+   número que ningún script da: si el hilo hueco de un cordón aguanta. De eso
+   depende que `ondas` (30 % de apoyo) y `perlas` (42 %) sirvan.
+2. `test_verificar.py` tiene 1 de 13 casos fallando —"el piso de altura de
+   cordón se mide sobre el recorrido"— y viene de antes. Hasta arreglarlo, los
+   veredictos de `verificar_pieza.py` cargan esa duda.
+3. El centrado de los rasgos de las caritas en la meseta del riel (v0 = +1.68)
+   mide mejor en todo y DESHACE el dibujo. Sigue sin entenderse; está anotado
+   en `rosca.caritas_relieve`.
+
+---
+
 # Estado al cerrar la sesión del 11-08-2026 (segunda parte)
 
 ## Lo primero: NADA se imprime todavía

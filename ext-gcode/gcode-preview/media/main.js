@@ -265,6 +265,15 @@
     let manual = 0;       // how many manual pauses so far
     const segBand = [];   // segment index -> band (0..3 = AMS slot, 4+ = manual)
     const segE = [];      // segment index -> mm of filament it consumes
+    // Altura declarada del cordón, por segmento. El generador la emite como
+    // `;HEIGHT:` en cada capa y VARÍA dentro de una misma pieza: el paso
+    // vertical es adaptativo, así que en una rosca va de 0.24 a 0.38 mm.
+    // Sin esto el render sólido usa una altura única para todo y donde el paso
+    // real la supera queda un hueco entre cintas: se ven anillos negros
+    // atravesando la pieza, en todos los modos de color, porque el defecto es
+    // de la malla y no del color.
+    const segH = [];
+    let curH = 0;
     const changes = [];   // { seg, kind, from, to, x, y, z }
     const band = () => (manual === 0 ? tool : 3 + manual);
 
@@ -297,6 +306,13 @@
         segObjeto = ext.length;
         bbox.minx = bbox.miny = bbox.minz = Infinity;
         bbox.maxx = bbox.maxy = bbox.maxz = -Infinity;
+      }
+      // `;HEIGHT:` se lee ANTES de descartar el comentario. Los dos dialectos:
+      // `;HEIGHT:` (Prusa) y `; LAYER_HEIGHT:` (Bambu/Orca).
+      const mh = /;\s*(?:HEIGHT|LAYER_HEIGHT)\s*:\s*([\d.]+)/i.exec(raw);
+      if (mh) {
+        const v = parseFloat(mh[1]);
+        if (isFinite(v) && v > 0) curH = v;
       }
       const semi = raw.indexOf(';');
       if (semi >= 0) raw = raw.slice(0, semi);
@@ -418,6 +434,7 @@
           segZ.push(qz);
           segBand.push(band());
           segE.push(extruding ? de / n : 0);
+          segH.push(curH);
           segV.push(Math.min(feed / 60, VEL_MAX));
           segA.push(accel);
           px = qx; py = qy; pz = qz;
@@ -465,11 +482,12 @@
         segZ.push(pos.z);
         segBand.push(band());
         segE.push(extruding ? de : 0);
+        segH.push(curH);
         segV.push(Math.min(feed / 60, VEL_MAX));
         segA.push(accel);
       }
     }
-    return { V, C, ext, segZ, segBand, segE, segV, segA, changes, bbox, segObjeto };
+    return { V, C, ext, segZ, segBand, segE, segH, segV, segA, changes, bbox, segObjeto };
   }
 
   // Estimate layer height so we can bin segments into layers by real Z. Works
@@ -1068,6 +1086,143 @@
     return { colors, escala };
   }
 
+
+  // --- Sombra ---------------------------------------------------------------
+  // Pinta la pared con luz, como la vista de un laminador, en vez de codificar
+  // una magnitud en color.
+  //
+  // Existe porque los otros modos responden "cuánto vale esto acá" y ninguno
+  // responde "cómo se va a ver la pieza". Un relieve de 2 mm sobre un radio de
+  // 50 se lee por su SOMBRA: el mapa de relieve dice dónde sobresale, pero no
+  // deja juzgar si un dibujo se distingue o se pierde en la trama del hilo. Es
+  // la diferencia entre verificar y mirar.
+  //
+  // La normal sale de la superficie r(ángulo, altura) reconstruida del propio
+  // recorrido, no de la geometría de las cintas: la cinta del render sólido
+  // tiene una altura de capa de espesor y su normal es la del segmento, que
+  // para esto no dice nada.
+  //
+  //     n = (r, -dr/dang, -r*dr/dz)   en la base (radial, tangencial, axial)
+  //
+  // La luz es fija en el mundo y no sigue a la cámara. Una luz de casco
+  // (dirección = cámara) deja la normal siempre de frente y la pieza sale
+  // plana, que es justo lo que este modo tiene que evitar.
+  function computeSombra(V, ext, layerAt, layers, travelCol, desde) {
+    const n = ext.length;
+    const colors = new Float32Array(n * 6);
+    const ini = desde || 0;
+    const { centros, cuenta, rad } = ajusteDeCapas(V, ext, layerAt, layers, ini);
+
+    const vale = (i) => ext[i] && i >= ini && cuenta[layerAt[i]];
+
+    // Ángulo de cada punto respecto del centro de SU capa. El centro va por
+    // capa y no global por el mismo motivo que en el relieve: un error de
+    // centro inyecta una sinusoide de vuelta completa, que acá se vería como
+    // un lado iluminado y el otro en sombra sin que la pieza tenga nada.
+    const ang = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      const L = layerAt[i];
+      if (!cuenta[L]) continue;
+      // punto MEDIO del segmento, igual que `rad` en `ajusteDeCapas`: medir el
+      // ángulo en un extremo y el radio en el medio los desacopla y el
+      // sombreado sale corrido medio segmento.
+      const mx = (V[i * 6] + V[i * 6 + 3]) / 2;
+      const my = (V[i * 6 + 1] + V[i * 6 + 4]) / 2;
+      ang[i] = Math.atan2(my - centros[L * 2 + 1], mx - centros[L * 2]);
+    }
+
+    // Radio por (capa, sector angular). Hace falta para dr/dz: el punto de
+    // arriba y el de abajo no están en el mismo índice del recorrido —una
+    // espiral no vuelve a pasar por el mismo sitio— así que se busca por
+    // ángulo.
+    const SECT = 720;
+    const anillo = new Float64Array(layers * SECT);
+    const hay = new Uint8Array(layers * SECT);
+    for (let i = 0; i < n; i++) {
+      if (!vale(i)) continue;
+      const s = ((ang[i] / (2 * Math.PI) + 1) * SECT | 0) % SECT;
+      const k = layerAt[i] * SECT + s;
+      if (!hay[k] || rad[i] > anillo[k]) { anillo[k] = rad[i]; hay[k] = 1; }
+    }
+    const radioEn = (L, s) => {
+      if (L < 0 || L >= layers) return NaN;
+      for (let d = 0; d < 6; d++) {           // tolerar sectores vacíos
+        const a = (s + d) % SECT, b = (s - d + SECT) % SECT;
+        if (hay[L * SECT + a]) return anillo[L * SECT + a];
+        if (hay[L * SECT + b]) return anillo[L * SECT + b];
+      }
+      return NaN;
+    };
+
+    // Z de cada capa, en UNA pasada. Buscarla por capa recorriendo el arreglo
+    // entero sería `layers * n`: en una lámpara de 270 k segmentos y 750
+    // vueltas son doscientos millones de comparaciones para un dato que se
+    // junta de una.
+    const zCapa = new Float64Array(layers);
+    const zVisto = new Uint8Array(layers);
+    for (let i = 0; i < n; i++) {
+      const L = layerAt[i];
+      if (!zVisto[L] && vale(i)) { zCapa[L] = V[i * 6 + 2]; zVisto[L] = 1; }
+    }
+
+    // Luz fija en coordenadas del g-code (Z arriba): de frente, izquierda y
+    // algo por encima.
+    const LZ = [-0.50, -0.66, 0.56];
+    const ln = Math.hypot(LZ[0], LZ[1], LZ[2]);
+    LZ[0] /= ln; LZ[1] /= ln; LZ[2] /= ln;
+    const BASE = [0.86, 0.87, 0.90];          // gris levemente frío, tipo laminador
+
+    for (let i = 0; i < n; i++) {
+      const o = i * 6;
+      let r0, g0, b0;
+      if (!vale(i)) {
+        r0 = travelCol.r; g0 = travelCol.g; b0 = travelCol.b;
+      } else {
+        const L = layerAt[i];
+        const s = ((ang[i] / (2 * Math.PI) + 1) * SECT | 0) % SECT;
+
+        // dr/dang: por diferencia con los vecinos del recorrido que caen en la
+        // misma capa. Es la componente que dibuja el borde de un rasgo, y es la
+        // que más pesa: en el ángulo el radio cambia rápido.
+        let drda = 0;
+        const a1 = i > 0 && vale(i - 1) && layerAt[i - 1] === L;
+        const a2 = i + 1 < n && vale(i + 1) && layerAt[i + 1] === L;
+        if (a1 && a2) {
+          let d = ang[i + 1] - ang[i - 1];
+          while (d > Math.PI) d -= 2 * Math.PI;
+          while (d < -Math.PI) d += 2 * Math.PI;
+          if (Math.abs(d) > 1e-6) drda = (rad[i + 1] - rad[i - 1]) / d;
+        }
+
+        // dr/dz: contra la capa de abajo, en el mismo sector.
+        let drdz = 0;
+        const rAbajo = radioEn(L - 1, s);
+        const dz = L > 0 && zVisto[L - 1] ? zCapa[L] - zCapa[L - 1] : 0;
+        if (!Number.isNaN(rAbajo) && Math.abs(dz) > 1e-6) {
+          drdz = (rad[i] - rAbajo) / dz;
+        }
+
+        const R = rad[i] || 1;
+        let nr = R, nt = -drda, nz = -R * drdz;
+        const m = Math.hypot(nr, nt, nz) || 1;
+        nr /= m; nt /= m; nz /= m;
+        const c = Math.cos(ang[i]), sn = Math.sin(ang[i]);
+        const NX = nr * c - nt * sn;
+        const NY = nr * sn + nt * c;
+
+        const lam = Math.max(0, NX * LZ[0] + NY * LZ[1] + nz * LZ[2]);
+        // El ambiente evita que el lado opuesto a la luz sea negro puro, y el
+        // exponente <1 levanta los medios tonos, que es donde vive el relieve
+        // de un par de milímetros que este modo tiene que dejar ver.
+        const k = 0.16 + 0.84 * Math.pow(lam, 0.65);
+        r0 = BASE[0] * k; g0 = BASE[1] * k; b0 = BASE[2] * k;
+      }
+      colors[o] = r0; colors[o + 1] = g0; colors[o + 2] = b0;
+      colors[o + 3] = r0; colors[o + 4] = g0; colors[o + 5] = b0;
+    }
+    return { colors };
+  }
+
   // --- Solid render ---------------------------------------------------------
   // Draws every extrusion as a ribbon one layer height tall instead of a
   // hairline, so the wall reads as a surface and the relief becomes visible.
@@ -1084,33 +1239,136 @@
   // Non-indexed, 6 vertices per segment: costs memory but keeps the buffer in
   // the same order as the line buffer, so the timelapse draw range is just
   // `revealed · 6` and every colour mode carries over unchanged.
-  function buildSolid(V, ext, segZ, layerH, cx, cy) {
+  function buildSolid(V, ext, segZ, layerH, cx, cy, segH) {
     let n = 0;
     for (let i = 0; i < ext.length; i++) if (ext[i]) n++;
     const pos = new Float32Array(n * 18);
     const nor = new Float32Array(n * 18);
     const mapa = new Int32Array(n * 6);
-    const h = Math.max(0.05, layerH) / 2;
+    // La altura de cada cinta sale del `;HEIGHT:` de SU capa, no de una
+    // estimación única para la pieza.
+    //
+    // Con una altura global, en cualquier pieza de paso adaptativo las vueltas
+    // que suben más que esa altura dejan un hueco contra la de abajo y se ven
+    // anillos negros cruzando la pared. Medido sobre una rosca con relieve:
+    // 132 valores distintos de `;HEIGHT:` entre 0.200 y 0.383 mm en 748 capas,
+    // contra una estimación única de 0.30. Y como el defecto es de la MALLA,
+    // aparece igual en todos los modos de color, que es lo que lo delata.
+    //
+    // Adónde llega cada cinta se MIDE contra la vuelta de arriba, buscada por
+    // ángulo acumulado.
+    //
+    // La anotación `;HEIGHT:` sola no alcanza. Coincide con la subida en
+    // promedio —medido sobre una rosca con relieve, 0.3080 contra 0.3081— pero
+    // en el 20 % de los segmentos la subida real la supera, hasta por 0.11 mm:
+    // la anotación es de SU capa y el hueco hasta arriba lo fija el paso de la
+    // SIGUIENTE, y con paso adaptativo esos dos números no son el mismo. Ahí la
+    // cinta no llega y se ven anillos negros cruzando la pared.
+    const N = ext.length;
+    const acum = new Float64Array(N + 1);
+    {
+      let prev = Math.atan2(V[1] - cy, V[0] - cx), tot = 0;
+      for (let i = 0; i < N; i++) {
+        const a = Math.atan2(V[i * 6 + 4] - cy, V[i * 6 + 3] - cx);
+        let d = a - prev;
+        while (d > Math.PI) d -= 2 * Math.PI;
+        while (d < -Math.PI) d += 2 * Math.PI;
+        tot += d; prev = a;
+        acum[i + 1] = tot;
+      }
+    }
+    // El VECTOR 3D hasta la vuelta de arriba, no sólo su componente en Z.
+    //
+    // Una cinta vertical cierra una pared vertical y nada más. En una cúpula la
+    // vuelta siguiente no se apoya encima sino AL LADO: sube 0.15 mm y se corre
+    // 1.26 en radio. La cinta vertical tapa los 0.15 y deja el corrimiento al
+    // aire, así que entre vuelta y vuelta se ve el fondo. Eso es exactamente
+    // el rayado negro del hongo y de la esfera, y por eso aparece en TODOS los
+    // modos de color: el defecto es de la malla, no del sombreado.
+    //
+    // El intento anterior de tomar el vector entero rompió el piso, y acá está
+    // el motivo: el piso del hongo es una espiral de Arquímedes PLANA, y cerca
+    // de su centro el ángulo da vueltas sobre un radio de milímetros, así que
+    // "una vuelta más adelante" por ángulo acumulado cae en cualquier parte y
+    // las cintas barren el disco. Se distingue sin ambigüedad:
+    //
+    //   - el piso NO sube (uz = 0)            -> cinta vertical, como antes
+    //   - un salto largo no describe vuelta    -> cinta vertical, como antes
+    //   - el resto es pared                    -> cinta hasta la vuelta de arriba
+    //
+    // Con esas dos guardas el piso queda BYTE POR BYTE como estaba y lo único
+    // que cambia es la pared acostada, que es lo que había que cerrar.
+    const hasta = new Float32Array(N * 3);
+    {
+      let j = 0;
+      const vuelta = 2 * Math.PI;
+      for (let i = 0; i < N; i++) {
+        if (j < i) j = i;
+        while (j < N && Math.abs(acum[j + 1] - acum[i + 1]) < vuelta) j++;
+        const decl = segH && segH[i] > 0 ? segH[i] : layerH;
+        // Límite de cordura, y UNO SOLO: el largo del vector.
+        //
+        // La guarda de la versión vertical era `dz <= 4*decl`, sobre la altura.
+        // Acá no sirve y además hace daño: donde la pared se acuesta, `decl`
+        // —que es el `;HEIGHT:` de la capa— cae a 0.05 mientras la vuelta de
+        // arriba sigue a 0.15 en Z, así que la guarda saltaba en unos segmentos
+        // sí y otros no. Eso mezcla cintas inclinadas con cintas verticales
+        // vecinas, que se cruzan entre sí, y el z-buffer alterna: sale un
+        // moteado oscuro sobre toda la cúpula. Con el largo como único
+        // criterio, la decisión es continua a lo largo de la pared.
+        const lim = Math.max(6 * decl, 3.0);
+        let ux = 0, uy = 0, uz = decl;
+        if (j < N) {
+          // Sólo las componentes RADIAL y VERTICAL. La tangencial se tira, y
+          // no es una aproximación: es ruido de cuantización. El puntero para
+          // en el primer punto PASADA la vuelta, así que se pasa hasta un
+          // segmento entero de ángulo — sobre un radio de 115 mm eso son 3 mm
+          // de cuerda, medidos en el hongo, contra un corrimiento radial real
+          // de 0.3. Con el vector crudo la cinta sale torcida de costado por
+          // pura discretización; en el meridiano queda donde tiene que estar.
+          const r1 = Math.hypot(V[i * 6] - cx, V[i * 6 + 1] - cy);
+          const r2 = Math.hypot(V[j * 6] - cx, V[j * 6 + 1] - cy);
+          const dr = r2 - r1;
+          const dzu = V[j * 6 + 2] - V[i * 6 + 2];
+          const largo = Math.hypot(dr, dzu);
+          if (dzu > 1e-6 && largo > 0.02 && largo <= lim && r1 > 1e-6) {
+            ux = dr * (V[i * 6] - cx) / r1;
+            uy = dr * (V[i * 6 + 1] - cy) / r1;
+            uz = dzu;
+          }
+        }
+        hasta[i * 3] = ux; hasta[i * 3 + 1] = uy; hasta[i * 3 + 2] = uz;
+      }
+    }
+    // El 1.06 es un solape mínimo: dos cintas que se tocan exactamente dejan
+    // una costura de un píxel por el z-fighting del borde compartido.
+    const MEDIA = 0.53;
     let v = 0, k = 0;
     for (let i = 0; i < ext.length; i++) {
       if (!ext[i]) continue;
       const o = i * 6;
+      const ux = hasta[i * 3] * MEDIA, uy = hasta[i * 3 + 1] * MEDIA, uz = hasta[i * 3 + 2] * MEDIA;
       const x1 = V[o], y1 = V[o + 1], x2 = V[o + 3], y2 = V[o + 4];
       const z = segZ[i];
       let dx = x2 - x1, dy = y2 - y1;
       const L = Math.hypot(dx, dy) || 1;
       dx /= L; dy /= L;
-      // Normal horizontal, perpendicular al segmento, apuntando hacia AFUERA.
-      let nx = -dy, ny = dx;
-      if ((x1 - cx) * nx + (y1 - cy) * ny < 0) { nx = -nx; ny = -ny; }
-      const a = [x1, y1, z - h], b = [x2, y2, z - h];
-      const c = [x2, y2, z + h], d = [x1, y1, z + h];
+      // Normal = (dirección del segmento) x (dirección de la cinta), orientada
+      // hacia AFUERA. Con la cinta inclinada ya no es horizontal, y es la que
+      // hace que una cúpula se ilumine como una cúpula y no como un tubo.
+      let nx = dy * uz, ny = -dx * uz, nz = dx * uy - dy * ux;
+      const nm = Math.hypot(nx, ny, nz);
+      if (nm < 1e-9) { nx = -dy; ny = dx; nz = 0; }
+      else { nx /= nm; ny /= nm; nz /= nm; }
+      if ((x1 - cx) * nx + (y1 - cy) * ny < 0) { nx = -nx; ny = -ny; nz = -nz; }
+      const a = [x1 - ux, y1 - uy, z - uz], b = [x2 - ux, y2 - uy, z - uz];
+      const c = [x2 + ux, y2 + uy, z + uz], d = [x1 + ux, y1 + uy, z + uz];
       for (const q of [a, b, c, a, c, d]) {
         pos[v] = q[0]; pos[v + 1] = q[1]; pos[v + 2] = q[2];
-        nor[v] = nx; nor[v + 1] = ny; nor[v + 2] = 0;
+        nor[v] = nx; nor[v + 1] = ny; nor[v + 2] = nz;
         v += 3;
       }
-      for (let j = 0; j < 6; j++) mapa[k * 6 + j] = i;
+      for (let j2 = 0; j2 < 6; j2++) mapa[k * 6 + j2] = i;
       k++;
     }
     return { pos, nor, mapa, segmentos: n };
@@ -1159,7 +1417,7 @@
   // Color mode: 'fan', 'overhang' or 'filament'. All three colour arrays are
   // precomputed on load, so switching is a buffer copy and stays instant on a
   // 50k-segment lamp.
-  const MODES = ['fan', 'overhang', 'solape', 'velocidad', 'filament', 'bleed', 'relief'];
+  const MODES = ['fan', 'overhang', 'solape', 'velocidad', 'filament', 'bleed', 'relief', 'sombra'];
   let colorMode = 'fan';
   let fanColors = null;
   let overhangColors = null;
@@ -1172,6 +1430,7 @@
   let bleedDirty = 0;
   let reliefColors = null;
   let reliefScale = 0;
+  let sombraColors = null;
   let maxOverhang = 0;
   let baseInfo = '';
   let tiempo = null;        // { total, porSeg, acum, pausas } — estimación en segundos
@@ -1244,6 +1503,7 @@
         : colorMode === 'filament' ? filamentColors
         : colorMode === 'bleed' ? bleedColors
         : colorMode === 'relief' ? reliefColors
+        : colorMode === 'sombra' ? sombraColors
         : fanColors;
       if (src) {
         lineGeom.getAttribute('color').copyArray(src);
@@ -1365,6 +1625,9 @@
     }
     if (colorMode === 'relief' && reliefColors) {
       s += `  ·  relief ±${reliefScale.toFixed(2)} mm from the layer's mean radius`;
+    }
+    if (colorMode === 'sombra' && sombraColors) {
+      s += '  ·  luz fija: se ve el relieve por su sombra, no por color';
     }
     if (colorMode === 'filament') {
       const ams = filChanges.filter((c) => c.kind === 'ams').length;
@@ -1578,7 +1841,7 @@
 
   function rebuild(text, ruta) {
     const t0 = performance.now();
-    const { V, C, ext, segZ, segBand, segE, segV, segA, changes, bbox, segObjeto } = parse(text);
+    const { V, C, ext, segZ, segBand, segE, segH, segV, segA, changes, bbox, segObjeto } = parse(text);
     tiempo = estimarTiempo(V, segV, segA, changes);
     const travelCol = new THREE.Color(TRAVEL_COL);
 
@@ -1640,6 +1903,7 @@
       const rel = computeRelief(V, ext, layerAt, layers, travelCol, segObjeto);
       reliefColors = rel.colors;
       reliefScale = rel.escala;
+      sombraColors = computeSombra(V, ext, layerAt, layers, travelCol, segObjeto).colors;
     } else {
       overhangColors = null;
       maxOverhang = 0;
@@ -1649,6 +1913,7 @@
       filamentColors = null;
       reliefColors = null;
       reliefScale = 0;
+      sombraColors = null;
       bleedColors = null;
       bleedDirty = 0;
     }
@@ -1674,7 +1939,7 @@
     solidMesh = null; solidMapa = null;
     if (V.length) {
       const [scx, scy] = extrusionCentre(V, ext);
-      const sd = buildSolid(V, ext, segZ, layerH, scx, scy);
+      const sd = buildSolid(V, ext, segZ, layerH, scx, scy, segH);
       if (sd.segmentos) {
         const g = new THREE.BufferGeometry();
         g.setAttribute('position', new THREE.Float32BufferAttribute(sd.pos, 3));
