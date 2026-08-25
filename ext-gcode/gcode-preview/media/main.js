@@ -1119,50 +1119,78 @@
     // capa y no global por el mismo motivo que en el relieve: un error de
     // centro inyecta una sinusoide de vuelta completa, que acá se vería como
     // un lado iluminado y el otro en sombra sin que la pieza tenga nada.
+    // UN SOLO centro para toda la pieza, no uno por capa.
+    //
+    // `ajusteDeCapas` ajusta una circunferencia por capa, y para el relieve eso
+    // está bien. Acá no: `layerAt` no marca vueltas, son bins de altura fija, y
+    // sus centros saltan de bin a bin. Ese salto entra en el ángulo, el ángulo
+    // acumulado lo arrastra, y entonces "una vuelta más arriba" deja de caer
+    // donde debe. Medido sobre `hongo_check.gcode` con centros por capa:
+    // `dr/dz` daba mediana -3.56 y la componente vertical de la normal 0.962,
+    // o sea la normal apuntando casi al cenit en TODA la pieza, cuando en el
+    // flanco de una esfera tiene que ser radial. Eso era el rayado.
+    //
+    // Un sólido de revolución tiene un eje y sólo uno: el centro global sale
+    // del promedio de los ajustes por capa, pesado por cuántos puntos tuvo cada
+    // uno, así que las capas flacas no lo mueven.
+    let CX = 0, CY = 0, peso = 0;
+    for (let l = 0; l < layers; l++) {
+      if (!cuenta[l]) continue;
+      CX += centros[l * 2] * cuenta[l]; CY += centros[l * 2 + 1] * cuenta[l]; peso += cuenta[l];
+    }
+    if (peso > 0) { CX /= peso; CY /= peso; }
+
     const ang = new Float64Array(n);
+    const radio = new Float64Array(n);
     for (let i = 0; i < n; i++) {
-      const L = layerAt[i];
-      if (!cuenta[L]) continue;
-      // punto MEDIO del segmento, igual que `rad` en `ajusteDeCapas`: medir el
-      // ángulo en un extremo y el radio en el medio los desacopla y el
-      // sombreado sale corrido medio segmento.
+      if (!cuenta[layerAt[i]]) continue;
+      // punto MEDIO del segmento: medir el ángulo en un extremo y el radio en
+      // el medio los desacopla y el sombreado sale corrido medio segmento.
       const mx = (V[i * 6] + V[i * 6 + 3]) / 2;
       const my = (V[i * 6 + 1] + V[i * 6 + 4]) / 2;
-      ang[i] = Math.atan2(my - centros[L * 2 + 1], mx - centros[L * 2]);
+      ang[i] = Math.atan2(my - CY, mx - CX);
+      radio[i] = Math.hypot(mx - CX, my - CY);
     }
 
-    // Radio por (capa, sector angular). Hace falta para dr/dz: el punto de
-    // arriba y el de abajo no están en el mismo índice del recorrido —una
-    // espiral no vuelve a pasar por el mismo sitio— así que se busca por
-    // ángulo.
-    const SECT = 720;
-    const anillo = new Float64Array(layers * SECT);
-    const hay = new Uint8Array(layers * SECT);
-    for (let i = 0; i < n; i++) {
-      if (!vale(i)) continue;
-      const s = ((ang[i] / (2 * Math.PI) + 1) * SECT | 0) % SECT;
-      const k = layerAt[i] * SECT + s;
-      if (!hay[k] || rad[i] > anillo[k]) { anillo[k] = rad[i]; hay[k] = 1; }
-    }
-    const radioEn = (L, s) => {
-      if (L < 0 || L >= layers) return NaN;
-      for (let d = 0; d < 6; d++) {           // tolerar sectores vacíos
-        const a = (s + d) % SECT, b = (s - d + SECT) % SECT;
-        if (hay[L * SECT + a]) return anillo[L * SECT + a];
-        if (hay[L * SECT + b]) return anillo[L * SECT + b];
+    // dr/dz contra LA VUELTA DE ARRIBA, buscada por ángulo acumulado.
+    //
+    // Antes se buscaba "la capa de abajo, mismo sector angular". Y `layerAt` no
+    // sirve para esto: el visor reparte los segmentos en capas dividiendo la
+    // altura entre UNA altura estimada. En una pieza de paso adaptativo eso no
+    // describe nada — el hongo estima 0.5115 mm y su paso real va de 0.05 a
+    // 0.80, así que unas capas juntan varias vueltas y otras quedan vacías.
+    // `dr/dz` salía basura, la normal con ella, y el resultado era el rayado
+    // blanco y negro que se veía en la esfera. Reproducido y confirmado
+    // ejecutando esta misma función sobre `hongo_check.gcode`.
+    //
+    // El ángulo acumulado no necesita capas: en una espiral, "una vuelta más
+    // adelante" es exactamente la vuelta de arriba. Es lo mismo que ya hace
+    // `buildSolid` para saber hasta dónde llega cada cinta.
+    const acum = new Float64Array(n + 1);
+    {
+      let prev = 0, tot = 0, hayPrev = false;
+      for (let i = 0; i < n; i++) {
+        if (cuenta[layerAt[i]]) {
+          if (hayPrev) {
+            let d = ang[i] - prev;
+            while (d > Math.PI) d -= 2 * Math.PI;
+            while (d < -Math.PI) d += 2 * Math.PI;
+            tot += d;
+          }
+          prev = ang[i]; hayPrev = true;
+        }
+        acum[i + 1] = tot;
       }
-      return NaN;
-    };
-
-    // Z de cada capa, en UNA pasada. Buscarla por capa recorriendo el arreglo
-    // entero sería `layers * n`: en una lámpara de 270 k segmentos y 750
-    // vueltas son doscientos millones de comparaciones para un dato que se
-    // junta de una.
-    const zCapa = new Float64Array(layers);
-    const zVisto = new Uint8Array(layers);
-    for (let i = 0; i < n; i++) {
-      const L = layerAt[i];
-      if (!zVisto[L] && vale(i)) { zCapa[L] = V[i * 6 + 2]; zVisto[L] = 1; }
+    }
+    const arriba = new Int32Array(n).fill(-1);
+    {
+      let j = 0;
+      const vuelta = 2 * Math.PI;
+      for (let i = 0; i < n; i++) {
+        if (j < i) j = i;
+        while (j < n && Math.abs(acum[j + 1] - acum[i + 1]) < vuelta) j++;
+        arriba[i] = j < n ? j : -1;
+      }
     }
 
     // Luz fija en coordenadas del g-code (Z arriba): de frente, izquierda y
@@ -1178,31 +1206,39 @@
       if (!vale(i)) {
         r0 = travelCol.r; g0 = travelCol.g; b0 = travelCol.b;
       } else {
-        const L = layerAt[i];
-        const s = ((ang[i] / (2 * Math.PI) + 1) * SECT | 0) % SECT;
-
-        // dr/dang: por diferencia con los vecinos del recorrido que caen en la
-        // misma capa. Es la componente que dibuja el borde de un rasgo, y es la
-        // que más pesa: en el ángulo el radio cambia rápido.
+        // dr/dang: por diferencia con los vecinos DEL RECORRIDO.
+        //
+        // Antes exigía además que los dos vecinos cayeran en la misma capa, y
+        // eso es lo que rayaba la esfera. `layerAt` no marca vueltas: son bins
+        // de altura fija —el visor divide la altura entre UNA altura estimada—
+        // que en una pieza de paso adaptativo no coinciden con nada. En cada
+        // borde de bin la condición fallaba y `drda` se iba a 0 sin avisar, o
+        // sea una normal distinta, salpicada por toda la pieza.
+        //
+        // La prueba sobra: en una espiral los vecinos del recorrido son vecinos
+        // en la superficie. Lo que hay que descartar —un viaje, un salto— ya lo
+        // descartan `vale()` y la guarda del ángulo.
         let drda = 0;
-        const a1 = i > 0 && vale(i - 1) && layerAt[i - 1] === L;
-        const a2 = i + 1 < n && vale(i + 1) && layerAt[i + 1] === L;
+        const a1 = i > 0 && vale(i - 1);
+        const a2 = i + 1 < n && vale(i + 1);
         if (a1 && a2) {
           let d = ang[i + 1] - ang[i - 1];
           while (d > Math.PI) d -= 2 * Math.PI;
           while (d < -Math.PI) d += 2 * Math.PI;
-          if (Math.abs(d) > 1e-6) drda = (rad[i + 1] - rad[i - 1]) / d;
+          if (Math.abs(d) > 1e-6) drda = (radio[i + 1] - radio[i - 1]) / d;
         }
 
-        // dr/dz: contra la capa de abajo, en el mismo sector.
+        // dr/dz: contra la vuelta de arriba.
         let drdz = 0;
-        const rAbajo = radioEn(L - 1, s);
-        const dz = L > 0 && zVisto[L - 1] ? zCapa[L] - zCapa[L - 1] : 0;
-        if (!Number.isNaN(rAbajo) && Math.abs(dz) > 1e-6) {
-          drdz = (rad[i] - rAbajo) / dz;
+        const j = arriba[i];
+        if (j > i && vale(j)) {
+          const dz = V[j * 6 + 2] - V[i * 6 + 2];
+          // Un salto que no describe una vuelta —un viaje, el remate del
+          // ápice, un tramo que no gira— no dice nada de la pendiente.
+          if (dz > 1e-4) drdz = (radio[j] - radio[i]) / dz;
         }
 
-        const R = rad[i] || 1;
+        const R = radio[i] || 1;
         let nr = R, nt = -drda, nz = -R * drdz;
         const m = Math.hypot(nr, nt, nz) || 1;
         nr /= m; nt /= m; nz /= m;
