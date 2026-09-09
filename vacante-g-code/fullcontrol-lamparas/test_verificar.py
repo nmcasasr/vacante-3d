@@ -18,6 +18,7 @@ ven en cuatro líneas de g-code con la respuesta sabida de antemano.
 """
 
 import math
+import re
 import subprocess
 import sys
 import tempfile
@@ -140,8 +141,12 @@ def main():
                        ANCHO), ANCHO, ALTO)
     # El criterio informa qué FRACCIÓN DEL RECORRIDO va por debajo del piso, no
     # el peor segmento: una pieza entera de cordón imposible tiene que dar 100 %.
+    # Se lee el NÚMERO de la fila, no un trozo de texto: el informe separa el
+    # valor de la unidad con un espacio ("100.00 %") y buscar "100.00%" fallaba
+    # por el espacio, no por la medición.
     fila = [l for l in salida.getvalue().splitlines() if "línea fina" in l]
-    bien = bool(fila) and "100.00%" in fila[0] and "PEOR" in fila[0]
+    medido = re.search(r":\s*([\d.]+)\s*%", fila[0]) if fila else None
+    bien = bool(medido) and float(medido.group(1)) == 100.0 and "PEOR" in fila[0]
     fallos += not bien
     print(f"  {'ok  ' if bien else 'FALLA'}  el piso de altura de cordón se mide sobre el recorrido")
     if not bien:

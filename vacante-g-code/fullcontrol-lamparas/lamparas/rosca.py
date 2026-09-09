@@ -86,6 +86,46 @@ def perfil_envolvente(d: float) -> float:
     return _tabla(ENVOLVENTE, d)
 
 
+# Holgura radial por lado que se le descontó a la hembra para armar ENVOLVENTE.
+# No es un parámetro que se pueda mover: la tabla ya la trae descontada, así que
+# cambiar este número acá NO afloja el ajuste, sólo desmiente la tabla.
+HOLGURA = 0.20
+
+
+def perfil_hembra(d: float) -> float:
+    """
+    La pared interior de la caperuza a la fase `d`: la envolvente MÁS la holgura.
+
+    Que la holgura se aplique en RADIO y no normal a la superficie no es una
+    suposición: `medir_hembra.py` traza rayos desde el eje contra el barreno de
+    `tuerca.stl` y contrasta esta misma expresión. Da 0.023 mm de RMS sobre
+    57 600 muestras, que es el orden del teselado del STL.
+    """
+    return _tabla(ENVOLVENTE, d) + HOLGURA
+
+
+def perfil_mezcla(f: float) -> Callable[[float], float]:
+    """
+    Perfil intermedio entre el clásico y la envolvente, con `f` de 0 a 1.
+
+    Los dos tienen la MISMA holgura radial —+0.191 el clásico, +0.200 la
+    envolvente— pero muy distinto juego axial: **3.75 mm contra 0.28**. La causa
+    no es el radio sino el ancho del diente: a R51.0 el clásico mide 4.92 mm de
+    los 13.5 del paso y la envolvente 8.23. El diente actual entra en un canal
+    casi del doble de su ancho, y eso es lo que se siente como baile.
+
+    Que la holgura radial no cambie es lo que hace barato el arreglo: engordar
+    el diente en `d` no lo acerca al techo del riel, sólo llena el canal a lo
+    largo. Lo que sí cuesta es tolerancia: con el canal lleno, un flanco impreso
+    gordo topa antes. Por eso esto es un mando graduable y no un interruptor.
+    """
+    def perfil(d: float) -> float:
+        a = perfil_clasico(d)
+        b = perfil_envolvente(d)
+        return a + (b - a) * f
+    return perfil
+
+
 def rosca(patron: Optional[Callable[..., float]] = None,
           altura: float = 230.0,
           perfil: Callable[[float], float] = perfil_clasico,
@@ -257,7 +297,8 @@ D_CRESTA = PASO * max(range(N), key=lambda i: MACHO_ACTUAL[i]) / N
 def caritas_relieve(n_por_vuelta: int = 9, altura: float = 230.0,
                     alto_ojo: float = 3.4, sep_ojos: float = 7.5,
                     alto_boca: float = 2.9, largo_boca: float = 17.0,
-                    comba: float = 2.6,
+                    comba: float = 2.6, ojo_v: Optional[float] = None,
+                    intercalar: bool = False,
                     pend_max: float = 1.0, ancho_cordon: float = 0.0):
     """
     Caritas felices y tristes en RELIEVE, con los ojos en una fila de rosca y la
@@ -293,6 +334,38 @@ def caritas_relieve(n_por_vuelta: int = 9, altura: float = 230.0,
     pieza entera: medido con esferas D4, capa 0.152 mm en vez de 0.306 y 63.5 %
     de cordón pisado. `pend_max` acota la pendiente en `d`, que es el eje caro;
     en el ángulo se puede ser todo lo brusco que se quiera.
+
+    Los dos ejes del ojo
+    --------------------
+    `alto_ojo` es la semiextensión en ARCO —el nombre viene de cuando el ojo era
+    un punto redondo— y `ojo_v` la semiextensión en `d`, que es la VERTICAL de
+    la pieza. Con `ojo_v=None` vale el semiancho de la banda y el ojo sale
+    redondo, como siempre.
+
+    Un ojo de LÍNEA VERTICAL es `alto_ojo` chico y `ojo_v` grande, y eso sale
+    gratis en las dos direcciones:
+
+    - En arco no cuesta nada. Dos vueltas seguidas se llevan 0.30 mm de z al
+      MISMO ángulo, así que el solape entre vueltas lo fija la pendiente en `d`
+      y no la del ángulo. Afinar el ojo en arco no mueve el salto radial.
+    - En `d` la campana se ESTIRA, o sea que la pendiente BAJA: el máximo es
+      `techo*pi/(2*ojo_v)`, 0.67 con ojo_v=4.6 contra 0.92 con el ojo redondo.
+
+    Y de paso apoya mejor. El ojo redondo llega hasta v=±3.36: por abajo se
+    recorta contra el talud (la meseta termina en −1.65) pero por arriba se
+    apaga dentro de la meseta, que llega a +5.00, sin tocar nunca el flanco de
+    arriba. Estirado a ±4.6 el recorte lo lleva hasta el borde de la meseta y
+    el ojo pasa a hacer tope en los dos sentidos, igual que la boca.
+
+    Caras intercaladas
+    ------------------
+    `feliz` sale de la paridad de la FILA de caras, así que sin `intercalar` un
+    anillo entero sale feliz y el de arriba entero triste. Con `intercalar` se
+    le suma el índice de cara y quedan en damero: alternan también alrededor.
+
+    Ojo con `n_por_vuelta` IMPAR — con 9 las caras 8 y 0 son vecinas y tienen la
+    misma paridad, así que queda una costura por anillo donde se repite la cara.
+    Con un número par no hay costura.
     """
     media = ancho_cordon / 2.0
     paso_ang = 2 * math.pi / n_por_vuelta
@@ -327,7 +400,11 @@ def caritas_relieve(n_por_vuelta: int = 9, altura: float = 230.0,
     v0 = 0.0
     rv = (V_HI - V_LO) / 2 + 0.03
 
-    rv_ojo = rv_boca = rv
+    # El ojo puede estirarse en `d` por su cuenta; la boca no, porque su
+    # semieje en `d` es lo que la mantiene dentro de la banda mientras la
+    # parábola la pasea de un talud al otro.
+    rv_boca = rv
+    rv_ojo = rv if ojo_v is None else ojo_v
     ru_ojo, ru_boca = alto_ojo, alto_boca
 
 
@@ -383,7 +460,8 @@ def caritas_relieve(n_por_vuelta: int = 9, altura: float = 230.0,
         d = coordenada_hilo(angulo, z)
         v = (d - D_CRESTA + PASO / 2) % PASO - PASO / 2 - v0
         fila = int(round((z - (d - D_CRESTA)) / PASO))
-        u = (((angulo / paso_ang) - desfase) % 1.0 - 0.5) * ancho_cara
+        celda = (angulo / paso_ang) - desfase
+        u = (celda % 1.0 - 0.5) * ancho_cara
 
         bulto = 0.0
         if fila % 2 == 1:                                  # fila de ojos
@@ -391,7 +469,10 @@ def caritas_relieve(n_por_vuelta: int = 9, altura: float = 230.0,
                 bulto = max(bulto, campana(u - lado * sep_ojos / 2, v,
                                            ru_ojo, rv_ojo))
         else:                                              # fila de boca
-            feliz = (fila // 2) % 2 == 0
+            # `fila // 2` es la fila de CARAS y vale igual para la fila de ojos
+            # (fila k) y la de boca (fila k-1), que son la misma cara.
+            cara = fila // 2 + (int(math.floor(celda)) if intercalar else 0)
+            feliz = cara % 2 == 0
             bulto = campana_curva(u, v, 1.0 if feliz else -1.0)
 
         # El rasgo se RECORTA contra la envolvente, no se escala por ella.
@@ -559,6 +640,546 @@ def sellos_relieve(forma: str = "corazon", n_por_vuelta: int = 16,
         if girar_alternos and int(math.floor(angulo / paso_ang)) % 2:
             v = -v
         return min(envolvente(d), R_NUCLEO + _bulto(u, v, alto)) - media
+
+    return funcion_radio
+
+
+def _centroide(rho, n=2880):
+    """
+    Centro de ÁREA del contorno polar, y su radio circunscrito desde ahí.
+
+    Cx = (1/A) ∫ (rho³/3) cos, Cy = (1/A) ∫ (rho³/3) sin, A = ∫ rho²/2.
+    """
+    a = mx = my = 0.0
+    for i in range(n):
+        fi = 2 * math.pi * i / n
+        r = rho(fi)
+        a += r * r / 2
+        mx += r ** 3 / 3 * math.cos(fi)
+        my += r ** 3 / 3 * math.sin(fi)
+    cx, cy = mx / a, my / a
+    alcance = 0.0
+    for i in range(n):
+        fi = 2 * math.pi * i / n
+        r = rho(fi)
+        alcance = max(alcance, math.hypot(r * math.cos(fi) - cx,
+                                          r * math.sin(fi) - cy))
+    return cx, cy, alcance
+
+
+def _marca_polar(rho):
+    """
+    Distancia hacia ADENTRO del contorno, en mm, para un contorno polar.
+
+    Se centra en el CENTRO DE ÁREA y se escala IGUAL en los dos ejes.
+
+    Las dos cosas eran `_encuadre` antes, y las dos deformaban:
+
+      - **Centrar la caja no centra la figura.** La caja de una estrella con una
+        punta arriba llega a +1.00 arriba y a -0.809 abajo, así que centrar la
+        caja baja la estrella 0.096 de radio. Medido sobre el g-code, con la
+        caja centrada el grabado quedaba a +0.598 mm (corazón) y a -0.256
+        (estrella) del centro del disco: cada figura a una altura distinta, y
+        eso es lo que se ve como "mal centradas" cuando hay 284 en retícula.
+        El centro de ÁREA es el mismo criterio para todas, y en una figura con
+        simetría de giro —la estrella, el círculo— cae exactamente en su centro
+        de simetría.
+
+      - **Escalar por `hx` y `hy` por separado estira la figura.** Mapeaba el
+        círculo de radio `radio` sobre la CAJA, así que cada forma se deformaba
+        hasta llenar un cuadrado: la estrella salía 5.1 % más alta de lo que es
+        y el corazón 4.0 % más bajo. Con un solo factor la forma es la forma.
+        El estirado que sí se quiere —`fig_ancho_rel`, para que las puntas
+        pasen el cordón— entra aparte y en el eje que es gratis.
+
+    Se normaliza contra el CÍRCULO CIRCUNSCRITO, no contra la caja, porque la
+    caja de una estrella o un corazón sobresale del círculo: medido, las puntas
+    llegan a 1.17 veces el radio. Como el grabado se recorta contra la cara
+    plana del disco, esas puntas salían CORTADAS —y salían cortadas en la pieza
+    que ya se imprimió, con `rel_figura` en 0.86 el alcance real era 2.92 mm
+    contra una cara de 2.90—. Por eso la estrella se leía redondeada por más que
+    se afilara. Dividiendo por el alcance, `rel_figura` pasa a significar lo que
+    parece: 0.95 es un 5 % de margen contra el borde, para cualquier forma.
+    """
+    cx, cy, esc = _centroide(rho)
+
+    def dentro(u, v, radio):
+        a, b = cx + u / radio * esc, cy + v / radio * esc
+        q = math.hypot(a, b)
+        lim = rho(math.atan2(b, a)) if q > 0 else 1.0
+        # el borde se mide en MILÍMETROS, no en fracción del radio del contorno:
+        # con fracción, un valle chico —los de una estrella— dispara la pendiente
+        return (lim - q) * radio / esc
+    return dentro
+
+
+# Ningún trazo por debajo de UN CORDÓN.
+#
+# El grabado se lee por el escalón que deja, y un surco más angosto que la
+# boquilla no lo deja: el cordón siguiente lo pisa. Con pastilla de 6.65 mm y
+# figura de 3.8, un trazo de "el 15 % del radio" son 0.29 mm, o sea menos de un
+# tercio de cordón. Las fracciones de acá abajo están puestas para que ningún
+# trazo baje de 1.0 mm con la pastilla por defecto.
+#
+# Las formas MACIZAS (corazón, estrella, círculo) no tienen el problema: hunden
+# un área entera, no un trazo.
+TRAZO_MIN = 0.26          # del radio de la figura, ~1.0 mm
+
+
+# La raya la reemplaza `pastillas` por una versión medida en MILÍMETROS; esta
+# queda como respaldo para quien use `MARCAS` suelto.
+SEMI_RAYA = 0.250
+
+
+def _marca_raya(u, v, radio):
+    """
+    La raya CRUZA la pastilla de lado a lado: no tiene tope en `v`.
+
+    Lo pidió el usuario y además sale gratis. Los tres cierres —corazón,
+    estrella, carita— tienen que quedarse en la meseta porque su borde de
+    ARRIBA es horizontal, y ahí la pendiente del grabado se sumaría a la del
+    chaflán en el mismo punto. La raya no tiene borde de arriba: sus dos
+    límites corren en `u`, que es el eje donde la pendiente no cuenta. Así que
+    puede llegar hasta el filo del disco sin costar una centésima de solape.
+
+    Y de paso se lee mejor: una pastilla partida al medio es lo que hace una
+    ranura de verdad.
+    """
+    return radio * SEMI_RAYA - abs(u)
+
+
+# Marcas que llegan hasta el FILO del disco en vez de quedarse en la meseta.
+AL_BORDE = {"raya"}
+
+
+def _marca_carita(u, v, radio):
+    """
+    Dos ojos de barra y una boca de parábola: la carita, en chico.
+
+    Los ojos van ARRIBA de la boca con un hueco de por medio, y eso hay que
+    medirlo, no dibujarlo a ojo: con los ojos de v=-0.08 a 1.30 y la boca
+    llegando a 0.69, las dos cosas se pisaban y la cara salía como una barra
+    sobre un arco.
+
+    Y hay que medir también CUÁNTO DEL CÍRCULO usa. Corazón, estrella y círculo
+    llenan la caja entera (1.98 de 2.00); la carita llegaba a 1.46, o sea el
+    73 %, y encima corrida 0.06 hacia abajo. Impresa se veía más chica que las
+    otras sin que nada lo dijera. Ahora va de -0.81 a +0.81: centrada y 1.62.
+
+    No llega a 2.00 y no puede: los ojos van arriba, donde el círculo ya se
+    angosta. A v=+0.81 el semiancho disponible es 0.587 y el ojo llega a 0.57.
+    """
+    # EL HUECO entre rasgos es tan trazo como el rasgo.
+    #
+    # Los ojos a ±0.34 con semiancho 0.23 dejan 0.22 de separación, o sea
+    # 0.78 mm: menos de un cordón. Impreso eso no es un hueco, es una BARRA —
+    # los dos ojos se funden. Lo mismo entre los ojos y la boca. Así que la
+    # cuenta va al revés: primero se reparte el hueco y con lo que sobra se
+    # dibuja, no al revés.
+    e = -9.9
+    for lado in (-1.0, 1.0):
+        e = max(e, min(radio * 0.19 - abs(u - lado * radio * 0.38),
+                       radio * 0.21 - abs(v - radio * 0.59)))
+    media = radio * 0.56
+    ue = max(-media, min(media, u))
+    vb = radio * (-0.54 + 0.30 * (ue / media) ** 2)
+    e = max(e, radio * 0.26 - math.hypot(u - ue, v - vb))
+    return e
+
+
+def _centrar_ink(fn, tope: float = 0.97, n: int = 240):
+    """
+    Corre una marca en `v` hasta que su TINTA quede centrada en el disco.
+
+    Las marcas polares se centran en su centro de área (ver `_marca_polar`); las
+    dibujadas a mano —la carita— no tienen dónde hacerlo, así que se mide.
+
+    Medido, la carita quedaba a -0.406 mm del centro con la pastilla redonda:
+    tiene la caja centrada, pero la boca es un arco grueso y los ojos dos barras
+    finas, así que la tinta pesa abajo. Al lado de un corazón y una estrella ya
+    centrados por área, esa cara se lee CAÍDA — y con 284 pastillas en retícula
+    es justo lo que se nota.
+
+    Se mide sobre el disco unidad y se aplica proporcional al radio, así que el
+    corrimiento sigue a la figura si se cambia el tamaño de la pastilla.
+
+    El corrimiento se TOPA contra el borde
+    --------------------------------------
+    Centrar la tinta a secas sube la carita 0.62 mm y le deja los ojos a 0.11 mm
+    de la cara plana — menos de un octavo de cordón, o sea que el ojo se funde
+    con el chaflán. La boca pesa demasiado como para pagarlo entero.
+
+    Así que el corrimiento se recorta para que ningún rasgo pase de `tope` del
+    radio de la figura, que es el mismo presupuesto que gastan las marcas
+    polares (llegan a 1.0 por construcción; la carita, sin correr, llega a
+    0.81). Con 0.97 la carita sube 0.46 de los 0.62 y el centroide queda a
+    -0.06 mm en vez de -0.41: la caída se va y el borde no se toca.
+    """
+    sv = sw = 0.0
+    vmax = -9e9
+    for i in range(n):
+        u = (i + 0.5) / n * 2 - 1
+        for j in range(n):
+            v = (j + 0.5) / n * 2 - 1
+            if u * u + v * v > 1.0:
+                continue
+            e = fn(u, v, 1.0)
+            if e > 0.0:
+                sv += v * e; sw += e
+                vmax = max(vmax, v)
+    dv = sv / sw if sw else 0.0
+    if dv < 0.0:                      # sube la figura: la topa el borde de arriba
+        dv = max(dv, -(tope - vmax))
+
+    def centrada(u, v, radio):
+        return fn(u, v + dv * radio, radio)
+    centrada.corrimiento = dv
+    return centrada
+
+
+def _rho_estrella_recta(puntas: int = 5, valle: float = 0.42, n: int = 720):
+    """
+    Estrella de LADOS RECTOS, como tabla.
+
+    `_rho_estrella` usa `|cos|`, que es suave en los picos: las puntas salen
+    romas y grabada se lee como flor. Comprobado en el render del g-code, con
+    valle 0.45 y con 0.30. Una estrella de verdad tiene lados rectos entre la
+    punta y el valle, y eso no sale de un coseno.
+
+    Se resuelve con la tabla en vez de una fórmula cerrada porque la fórmula
+    hay que derivarla para cada n y acá se puede comprobar de un vistazo: son
+    los vértices del polígono y la interpolación entre ellos.
+    """
+    a = math.pi / puntas
+    vert = []
+    for k in range(2 * puntas):
+        r = 1.0 if k % 2 == 0 else valle
+        fi = math.pi / 2 + k * a
+        vert.append((r * math.cos(fi), r * math.sin(fi)))
+    tabla = []
+    for i in range(n):
+        th = 2 * math.pi * i / n
+        dx, dy = math.cos(th), math.sin(th)
+        mejor = 0.0
+        for j in range(len(vert)):
+            x1, y1 = vert[j]
+            x2, y2 = vert[(j + 1) % len(vert)]
+            # corte del rayo (t*dx, t*dy) con el segmento
+            den = dx * (y1 - y2) - dy * (x1 - x2)
+            if abs(den) < 1e-12:
+                continue
+            t = (x1 * (y1 - y2) - y1 * (x1 - x2)) / den
+            if t <= 0:
+                continue
+            sx = t * dx - x1
+            sy = t * dy - y1
+            ex, ey = x2 - x1, y2 - y1
+            u = (sx * ex + sy * ey) / (ex * ex + ey * ey)
+            if -1e-9 <= u <= 1 + 1e-9:
+                mejor = max(mejor, t)
+        tabla.append(mejor if mejor > 0 else valle)
+
+    def rho(fi):
+        x = (fi % (2 * math.pi)) / (2 * math.pi) * n
+        i = int(x) % n
+        f = x - int(x)
+        return tabla[i] * (1 - f) + tabla[(i + 1) % n] * f
+    return rho
+
+
+# La estrella del grabado NO es la de `FORMAS`.
+#
+# `_rho_estrella` usa `|cos|`, que es suave en los picos, y grabada se lee como
+# FLOR. Bajarle el valle de 0.45 a 0.30 no alcanzó: sigue siendo un coseno.
+# Comprobado las dos veces en el render del g-code. Acá va la de lados rectos.
+MARCAS = {
+    "corazon": _marca_polar(FORMAS["corazon"]),
+    "estrella": _marca_polar(_rho_estrella_recta(5, 0.42)),
+    "circulo": _marca_polar(FORMAS["circulo"]),
+    "raya": _marca_raya,
+    "carita": _centrar_ink(_marca_carita),
+}
+
+
+def pastillas(n_por_vuelta: int = 32, altura: float = 230.0,
+              figuras=("corazon", "estrella", "carita", "raya"),
+              radio: Optional[float] = 4.2, ancho_raya: float = 1.20,
+              borde: float = 1.30, prof: float = 0.45, borde_grabado: float = 0.18,
+              rel_figura: float = 0.95, fig_ancho_rel: float = 1.30,
+              achatado: float = 1.0, ancho_cordon: float = 0.0):
+    """
+    Pastillas: discos que sobresalen, con una figura HUNDIDA en la cara.
+
+    Es `perlas` y `sellos_relieve` cruzados. De `perlas`, que el bulto sea un
+    disco suelto y no un hilo estrangulado; de los sellos, que la figura salga
+    de un contorno y no de un bulto suelto. La diferencia con los dos es que acá
+    el disco y la figura son COSAS DISTINTAS: el disco sube, la figura baja
+    sobre él.
+
+        r = min(envolvente(d), núcleo + disco(u,v) - grabado(u,v))
+
+    Los dos términos son seguros por construcción. El disco se recorta contra la
+    envolvente, así que no puede interferir; el grabado sólo resta.
+
+    El borde del disco es RECTO, no una campana
+    -------------------------------------------
+    La banda que deja la hembra mide 6.65 mm y el relieve 1.97, así que subir y
+    bajar se come casi todo el disco y no queda cara donde grabar. Con borde de
+    coseno la pendiente máxima es `alto*pi/(2*borde)`: para quedarse en el
+    presupuesto (1.6, que es lo que deja 50 % de solape a 0.30 de paso) hace
+    falta borde 1.94 y sobran 1.1 mm de cara. Con borde RECTO la pendiente es
+    `alto/borde`, o sea constante, y con 1.30 quedan 2.0 mm de cara para la
+    figura gastando la misma pendiente.
+
+    Un chaflán recto no es un defecto: es lo que tiene una pastilla de verdad, y
+    lo que importa para imprimir es la pendiente, no la curvatura.
+
+    **1.30 es el mínimo, no una elección cómoda.** Con 1.25 el salto sube a
+    0.502 y la pieza se pasa sola a marcha adaptativa, pero SÓLO con ciertos
+    `n_por_vuelta` —medido: 0.455 con 16, 24, 28 y 32, y 0.502 con 20—. El
+    exceso no lo produce el chaflán solo: cerca del borde del disco el `min`
+    contra la envolvente cambia de rama, y ahí el escalón puede pasar de lo que
+    cae cada término por separado. Por eso el chaflán se prueba contra TODOS los
+    espaciados, no contra uno.
+
+    La figura va DENTRO de la cara plana
+    ------------------------------------
+    `rel_figura` la mantiene sobre la meseta. Si se saliera al chaflán, la
+    pendiente del grabado (`prof/borde_grabado`) se sumaría a la del chaflán en
+    el mismo punto y ahí sí se parte la capa.
+
+    La profundidad la fija el CANTO VIVO, no el borde suave
+    -------------------------------------------------------
+    `borde_grabado` sólo suaviza donde el contorno es manso. En el valle de una
+    estrella o la muesca de un corazón, `e` deja de ser una distancia —dos
+    bordes se juntan— y el grabado sale con la pared VERTICAL en `d`. Ahí el
+    salto radial entre vueltas vale `prof` entero, sin importar qué borde se
+    pida. Medido: con `prof=0.55` el peor salto daba 0.550 clavado y no se movía
+    al tocar el chaflán, que es la señal de que lo medido no era el chaflán.
+
+    Por eso `prof` está en **0.45**: es lo que deja 55 % de solape a paso 0.30,
+    o sea paso FIJO. Con 0.55 la pieza se pasa sola a marcha adaptativa. Es el
+    mismo canto vivo por el que `sellos_relieve` no puede usar paso fijo, pero
+    acá cuesta `prof` y no el relieve entero.
+
+    La figura se ENSANCHA en el ángulo, que es el eje gratis
+    --------------------------------------------------------
+    La meseta mide 4.06 mm y ahí adentro tiene que caber una figura que se lea
+    con un cordón de 1.0. Las puntas de una estrella de 4 mm son más angostas
+    que eso y salen romas: en el render del g-code se leía FLOR, no estrella.
+
+    `fig_ancho_rel` la estira sólo en `u`. La pastilla sigue siendo un CÍRCULO
+    —lo que se estira es el dibujo de adentro— y en `u` la pendiente no cuenta,
+    porque dos vueltas seguidas se llevan 0.30 mm de z al mismo ángulo. A 1.25
+    las puntas pasan de 0.8 a 1.0 mm sin mover el salto radial.
+
+    `borde_grabado` también achica: con 0.40 el desvanecido se comía las puntas
+    enteras, porque una punta más angosta que dos bordes nunca llega al fondo.
+
+    `figuras` rota en DAMERO —índice de pastilla más fila— así que ninguna
+    vecina repite, ni alrededor ni hacia arriba.
+    """
+    media = ancho_cordon / 2.0
+    paso_ang = 2 * math.pi / n_por_vuelta
+    ancho_cara = ARCO_VUELTA / n_por_vuelta
+    alto = max(ENVOLVENTE) - R_NUCLEO
+
+    # La banda útil, igual que en `sellos_relieve`: el disco va CENTRADO en ella,
+    # que es lo que lo deja redondo y tocando los dos taludes.
+    techo = max(ENVOLVENTE)
+    vs = [k / 20 for k in range(-140, 141)]
+    plano = [v for v in vs if envolvente(D_CRESTA + v) >= techo - 0.05]
+    v_lo, v_hi = min(plano), max(plano)
+    v0 = (v_lo + v_hi) / 2
+    # El disco NO está limitado por la meseta: lo limita la ENVOLVENTE, que es
+    # otra cosa. La meseta —donde el riel está a tope— llega a 3.325 del centro,
+    # pero más allá la envolvente baja despacio (1.53 a 3.60, 1.11 a 4.00, 0.78
+    # a 4.40) y el CHAFLÁN del disco ya bajó más rápido que eso. O sea que un
+    # disco más grande no se recorta: sólo su cara plana tiene que caber en la
+    # meseta, y eso pide `radio - borde <= 3.325`.
+    #
+    # Con chaflán 1.30 el tope es radio 4.625, o sea Ø9.25 en vez de Ø6.65. De
+    # ahí para arriba la cara plana se sale de la meseta y el techo se recorta
+    # contra el talud: el disco deja de leerse como disco. `radio=None` toma ese
+    # tope.
+    #
+    # Pero el defecto NO es el tope, y el motivo no es geométrico sino de
+    # ajuste: un disco más ancho llena más el canal del hilo y se come el juego
+    # axial. Medido contra `hembra_v1878`, con el mismo chaflán y la misma
+    # holgura radial (+0.096..0.097 en los cuatro):
+    #
+    #     Ø6.65  n36   juego 2.69 mm (20 %)   apoyo 14.4 %
+    #     Ø7.80  n34   juego 1.54 mm (11 %)   apoyo 19.6 %
+    #     Ø8.40  n32   juego 0.94 mm ( 7 %)   apoyo 21.4 %   <- por defecto
+    #     Ø9.25  n30   juego 0.16 mm ( 1 %)   apoyo 24.7 %
+    #
+    # El par que el usuario ya imprimió y enrosca mide 4.08 mm de juego (30 %) y
+    # "baila un poco"; el máximo teórico —`perfil_envolvente`— da 0.28. O sea
+    # que Ø9.25 queda MÁS APRETADO que el diente más gordo posible y no deja
+    # nada para absorber la variación del plástico. Ø8.40 es un 26 % más de
+    # diámetro y 59 % más de área que el original, y conserva casi un milímetro.
+    #
+    # Y así salió: el usuario imprimió los 240 mm con Ø9.25 y enrosca DURO. La
+    # tabla de arriba lo decía y se eligió el máximo igual, porque las figuras
+    # se leían mejor. Medido sobre el g-code, con n16 y capa 0.25:
+    #
+    #     radio 4.625 (Ø9.25)  juego 0.28 mm     <- lo que se imprimió
+    #     radio 4.40           juego 0.67 mm
+    #     radio 4.20 (Ø8.40)   juego 1.06 mm
+    #     radio 4.00           juego 1.47 mm
+    #
+    # La holgura RADIAL da +0.20 en las cuatro: no es por ahí. Y los machos que
+    # el usuario ya enroscaba sin quejarse —`clasico`, `perlas`,
+    # `caritas_intercalada`— miden 3.2 a 3.7 mm de juego axial. O sea que Ø9.25
+    # tiene DIEZ VECES menos margen que todo lo que funcionó.
+    #
+    # Que el cupón de 40 mm pasara y la pieza entera no, no es contradicción: el
+    # cupón cruza 48 pastillas y los 240 mm cruzan 284. Con 0.28 mm de margen
+    # —menos que la variación del propio plástico— basta una para que agarre.
+    #
+    # `achatado` es la salida sin pagar tamaño: ver su comentario abajo.
+    if radio is None:
+        radio = (v_hi - v_lo) / 2 + borde
+
+    r_fig = (radio - borde) * rel_figura
+    marcas = [MARCAS[f] for f in figuras]
+    topes = [radio if f in AL_BORDE else radio - borde for f in figuras]
+
+    # La raya se mide en MILÍMETROS, no en fracción del radio de la figura.
+    #
+    # Como fracción crecía sola cada vez que se agrandaba el dibujo, y eso ya
+    # deshizo un pedido: quedó en 1.19 mm cuando el usuario la pidió más fina, y
+    # al agrandar la figura volvió a 1.79 —casi los 1.89 que le molestaban— y a
+    # 2.05 con el disco máximo. Un rasgo cuyo ancho es lo único que se ve tiene
+    # que estar en la unidad en la que se lo juzga, que es el cordón.
+    #
+    # Se divide por `fig_ancho_rel` porque el despacho ya le pasa `u` estirado.
+    marcas = [(lambda u_, v_, rad: ancho_raya / 2 / fig_ancho_rel - abs(u_))
+              if f == "raya" else m for f, m in zip(figuras, marcas)]
+
+    # `fila` y `v` salen del MISMO redondeo, y acá es más grave que en
+    # `caritas_relieve`.
+    #
+    # Aquél mide `v` desde la cresta y redondea `fila` desde la cresta también,
+    # y le alcanza: con v0=0 el salto de fila cae en v=+4.75 y su rasgo llega a
+    # 3.36, o sea que nunca se tocan. Una pastilla va CENTRADA EN LA MESETA
+    # (v0=+1.675), y ahí el mismo salto cae en v=+3.075 con el disco llegando a
+    # 3.325: adentro. Como la figura depende de `fila`, la franja de arriba de
+    # cada pastilla salía con la figura de la vecina y quedaba un escalón de
+    # `prof` cruzando el disco en diagonal. Se vio en el render del g-code.
+    #
+    # Con una sola cuenta —posición en pasos respecto del CENTRO DE LA PASTILLA—
+    # la parte entera es la fila y la fraccionaria es `v`, así que el corte cae
+    # siempre a media banda del disco, donde no hay nada dibujado.
+
+    def funcion_radio(angulo: float, t: float) -> float:
+        z = t * altura
+        d = coordenada_hilo(angulo, z)
+        v = (d - D_CRESTA - v0 + PASO / 2) % PASO - PASO / 2
+        # El contador de fila salta donde ENVUELVE `v`, o sea en el punto más
+        # lejano de la pastilla.
+        #
+        # `round((z - d + D_CRESTA)/PASO)` —lo que usa `caritas_relieve`— salta
+        # donde envuelve `d`, que es d=0, y con la pastilla centrada en la
+        # meseta eso cae en v=+3.075 con el disco llegando a 3.325: adentro.
+        # Rebasando `d` para que envuelva medio paso más allá del centro, el
+        # salto cae en |v|=6.75 y ninguna pastilla lo cruza.
+        #
+        # NO sirve sacar la fila del ángulo ACUMULADO: probado, y ahí la fila
+        # cambia una vez por VUELTA en vez de una vez por banda, así que la
+        # misma pastilla sale con una figura distinta en cada capa.
+        d_fila = (d - (D_CRESTA + v0 + PASO / 2)) % PASO
+        fila = int(round((z - d_fila) / PASO))
+        # El índice de pastilla sale del ángulo MÓDULO UNA VUELTA, no del
+        # acumulado, y esto es lo único que hace que la figura sea una función
+        # de la POSICIÓN y no del número de vuelta.
+        #
+        # Una vuelta recorre la banda ENTERA en `d` —es una hélice—, así que
+        # cada pastilla se construye a lo largo de ~30 vueltas, una franja
+        # horizontal por vuelta. Con el ángulo acumulado, `floor(celda)` avanza
+        # `n_por_vuelta` por vuelta y la figura se corre `n_por_vuelta % 4` cada
+        # vez: con n=30 eso son 2 y la misma pastilla salía a rayas con dos
+        # figuras alternadas. Con n=36 daba 0 y no se veía — la versión chica
+        # estaba bien por casualidad, no por estar bien.
+        #
+        # El síntoma que lo delató: dos radios distintos en la misma celda del
+        # render desenrollado, separados exactamente `prof`.
+        celda = (angulo % (2 * math.pi)) / paso_ang
+        u = (celda % 1.0 - 0.5) * ancho_cara
+
+        # `v` se endereza contra la HÉLICE antes de usarlo.
+        #
+        # `v` es la fase, o sea la altura medida DESDE LA CINTA, y la cinta
+        # sube: en el arco que ocupa una pastilla (8.4 mm) el hilo gana
+        # 8.4 * PASO/ARCO_VUELTA = 0.355 mm de altura. Un círculo en (u, v) es
+        # un círculo sobre la cinta, pero sobre la PIEZA sale corrido 0.355 mm
+        # de un borde al otro — se lee como un disco deslizado, y así salió
+        # impreso.
+        #
+        # La altura sobre la pieza es `z - z0 = v + u*PASO/ARCO_VUELTA`, así
+        # que SUMANDO ese término se mide contra la horizontal de la pieza en
+        # vez de contra la cinta, y el disco sale redondo. Restarlo DUPLICA el
+        # deslizamiento en vez de anularlo — medido, 2.81° pasaba a 4.35°.
+        #
+        # No cuesta nada: entre dos vueltas al MISMO ángulo `u` no cambia, así
+        # que el salto radial es exactamente el de antes.
+        v += u * PASO / ARCO_VUELTA
+
+        # `achatado` achica el disco SÓLO en el eje axial.
+        #
+        # Lo que aprieta la rosca no es el tamaño del disco sino cuánto llena el
+        # canal del hilo, y el canal sólo tiene ancho en `v`. En `u` el disco no
+        # le pide nada a nadie: la vuelta de arriba está al mismo ángulo. O sea
+        # que bajar el radio entero paga en las dos direcciones y sólo cobra en
+        # una. Con 0.90 el disco pierde 10 % de alto y nada de ancho, y la
+        # figura conserva su ancho —que es donde se ganó la legibilidad, vía
+        # `fig_ancho_rel`—.
+        #
+        # No es gratis en teoría: `v` es el eje por el que se separan dos
+        # vueltas seguidas, así que dividirlo empina el chaflán en la misma
+        # proporción. Medido, no se nota hasta 0.85: el peor salto radial lo
+        # pone la rampa del GRABADO (prof/borde_grabado = 2.5 por mm), no el
+        # chaflán (alto/borde = 1.52), y el grabado no se toca.
+        #
+        #     achatado 1.00  salto 0.450 (55 %)   juego 0.28 mm
+        #     achatado 0.90  salto 0.450 (55 %)   juego 0.88 mm
+        #     achatado 0.88  salto 0.450 (55 %)   juego 1.01 mm
+        #     achatado 0.85  salto 0.450 (55 %)   juego 1.22 mm
+        #     achatado 0.80  salto 0.473 (53 %)   juego 1.55 mm
+        #
+        # 0.88 da el mismo milímetro de juego que bajar el radio a 4.20, pero el
+        # disco sigue midiendo 9.25 mm de ancho en vez de 8.40 y la figura no
+        # pierde nada de ancho. Por debajo de 0.85 el chaflán empieza a cobrar.
+        if achatado != 1.0:
+            v /= achatado
+        e = radio - math.hypot(u, v)          # mm hacia adentro del disco
+        if e <= 0.0:
+            return R_NUCLEO - media
+        bulto = alto if e >= borde else alto * e / borde
+
+        if r_fig > 0.0:
+            k = (int(math.floor(celda)) + fila) % len(marcas)
+            # El tope entra por el mismo `min`, así que el grabado se desvanece
+            # contra el borde con la misma rampa en vez de cortarse a pico.
+            g = min(marcas[k](u / fig_ancho_rel, v, r_fig),
+                    topes[k] - math.hypot(u, v))
+            if g > 0.0:
+                # Rampa RECTA, no coseno.
+                #
+                # Un coseno alzado sube despacio en las puntas y rápido en el
+                # medio: su pendiente máxima es pi/2 veces la media. Como dos
+                # vueltas distan 0.30 mm en `d`, el salto que importa es el del
+                # tramo más empinado, así que con coseno el grabado salta casi
+                # `prof` entero por hondo que sea el desvanecido — medido, con
+                # `borde_grabado` 0.46 y `prof` 0.70 el salto daba 0.700, o sea
+                # que la rampa no servía de nada.
+                #
+                # Recta, la pendiente es `prof/borde_grabado` en todas partes y
+                # el salto es exactamente `0.30 * prof / borde_grabado`. Eso es
+                # lo que permite grabar más hondo sin perder el paso fijo.
+                bulto -= prof * min(1.0, g / borde_grabado)
+
+        return min(envolvente(d), R_NUCLEO + max(0.0, bulto)) - media
 
     return funcion_radio
 

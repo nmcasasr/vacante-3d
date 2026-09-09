@@ -500,13 +500,39 @@ export function activate(context: vscode.ExtensionContext) {
     sendRecipe();
   }
 
-  const open = vscode.commands.registerCommand('gcodePreview.open', () => {
+  // Qué g-code abrir, en tres intentos.
+  //
+  // No alcanza con `activeTextEditor`: VS Code NO abre en el editor archivos de
+  // más de ~50 MB, así que en una pieza grande la pestaña se ve pero el editor
+  // no existe y el comando respondía "Open a .gcode file first" con el archivo
+  // delante. Una rosca de 240 mm a 1440 segmentos pesa 66 MB, y este visor está
+  // hecho justamente para piezas así.
+  //
+  // La pestaña activa sí conoce su URI aunque el editor no haya podido cargar,
+  // y como último recurso se pregunta.
+  async function gcodeAMostrar(): Promise<vscode.Uri | undefined> {
+    const es = (u?: vscode.Uri) =>
+      !!u && /\.(gcode|gco|g|nc)$/i.test(u.path);
+
     const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      vscode.window.showInformationMessage('Open a .gcode file first, then run this command.');
-      return;
-    }
-    openPreviewForUri(editor.document.uri);
+    if (es(editor?.document.uri)) return editor!.document.uri;
+
+    const tab: any = vscode.window.tabGroups?.activeTabGroup?.activeTab;
+    const uri: vscode.Uri | undefined = tab?.input?.uri ?? tab?.input?.modified;
+    if (es(uri)) return uri;
+
+    const picked = await vscode.window.showOpenDialog({
+      canSelectMany: false,
+      openLabel: 'Ver en el preview',
+      filters: { 'G-code': ['gcode', 'gco', 'g', 'nc'] }
+    });
+    return picked && picked[0];
+  }
+
+  const open = vscode.commands.registerCommand('gcodePreview.open', async () => {
+    const uri = await gcodeAMostrar();
+    if (!uri) return;
+    openPreviewForUri(uri);
   });
   context.subscriptions.push(open);
 
@@ -1043,6 +1069,13 @@ export function activate(context: vscode.ExtensionContext) {
       const name = editor.document.fileName.toLowerCase();
       if (name.endsWith('.gcode') || name.endsWith('.gco') || name.endsWith('.g') || name.endsWith('.nc')) {
         trackedUri = editor.document.uri;
+        // La receta TAMBIÉN, no solo el documento. Cada pieza tiene la suya —o
+        // no tiene— y `receta` es lo que usa `regenerate()` para saber qué
+        // comando relanzar. Sin esto, al pasar de una pieza sin receta a una
+        // con receta el panel seguía diciendo SIN RECETA y no aparecía ningún
+        // slider; y al revés es peor, porque los sliders quedaban mostrando los
+        // de la pieza anterior y moverlos regeneraba y PISABA ESE OTRO ARCHIVO.
+        sendRecipe();
         sendDoc();
       }
     })

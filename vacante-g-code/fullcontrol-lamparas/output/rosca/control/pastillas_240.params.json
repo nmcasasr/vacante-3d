@@ -1,0 +1,92 @@
+{
+ "python": "/Users/nicolas/Desktop/Proyectos/Vacante/vacante-3d/vacante-g-code/fullcontrol-lamparas/venv/bin/python",
+ "cwd": "/Users/nicolas/Desktop/Proyectos/Vacante/vacante-3d/vacante-g-code/fullcontrol-lamparas",
+ "args": [
+  "gen_rosca.py",
+  "pastillas",
+  "--altura",
+  "240",
+  "--paso-z",
+  "0.25",
+  "--pastillas-n",
+  "16",
+  "--pastillas-radio",
+  "4.30",
+  "--material",
+  "PLA",
+  "--ancho",
+  "1.0",
+  "--segmentos",
+  "1440",
+  "--velocidad",
+  "1330",
+  "--carpeta",
+  "rosca/control",
+  "--nombre",
+  "pastillas_240",
+  "--separacion-por-angulo",
+  "--receta"
+ ],
+ "nombre": "rosca/control/pastillas_240",
+ "borrador": [
+  "--segmentos",
+  "120",
+  "--sin-receta"
+ ],
+ "controles": [
+  {
+   "flag": "--altura",
+   "clave": "altura",
+   "valor": 240.0,
+   "min": 20.0,
+   "max": 300.0,
+   "paso": 1.4,
+   "que": "mm de pieza. 40 da un cup\u00f3n de tres vueltas de rosca."
+  },
+  {
+   "flag": "--paso-z",
+   "clave": "paso-z",
+   "valor": 0.25,
+   "min": 0.12,
+   "max": 0.4,
+   "paso": 0.0014000000000000002,
+   "que": "mm por vuelta. Menos = m\u00e1s resoluci\u00f3n vertical y m\u00e1s tiempo."
+  },
+  {
+   "flag": "--pastillas-n",
+   "clave": "pastillas-n",
+   "valor": 16.0,
+   "min": 8.0,
+   "max": 48.0,
+   "paso": 1.0,
+   "que": "pastillas por vuelta. Menos = m\u00e1s hueco entre ellas."
+  },
+  {
+   "flag": "--pastillas-radio",
+   "clave": "pastillas-radio",
+   "valor": 4.3,
+   "min": 2.5,
+   "max": 4.625,
+   "paso": 0.010625,
+   "que": "radio del disco en mm. M\u00e1s grande = menos juego axial."
+  },
+  {
+   "flag": "--ancho",
+   "clave": "ancho",
+   "valor": 1.0,
+   "min": 0.8,
+   "max": 1.6,
+   "paso": 0.004,
+   "que": "mm de cord\u00f3n. En modo vaso ES el espesor de pared."
+  },
+  {
+   "flag": "--velocidad",
+   "clave": "velocidad",
+   "valor": 1330.0,
+   "min": 120.0,
+   "max": 6000.0,
+   "paso": 29.4,
+   "que": "mm/min. El freno de caudal la baja sola si se pasa."
+  }
+ ]
+}

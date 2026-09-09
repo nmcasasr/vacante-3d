@@ -1,0 +1,46 @@
+{
+ "python": "/Users/nicolas/Desktop/Proyectos/Vacante/vacante-3d/vacante-g-code/fullcontrol-lamparas/venv/bin/python",
+ "cwd": "/Users/nicolas/Desktop/Proyectos/Vacante/vacante-3d/vacante-g-code/fullcontrol-lamparas",
+ "args": [
+  "gen_tuerca.py",
+  "../../gcodes/reference/tuerca/mariposa_v3_hembra.stl",
+  "--carpeta",
+  "rosca/control",
+  "--nombre",
+  "hembra_control",
+  "--material",
+  "PLA",
+  "--ancho",
+  "1.0",
+  "--separacion-por-angulo",
+  "--velocidad",
+  "2400",
+  "--receta"
+ ],
+ "nombre": "rosca/control/hembra_control",
+ "borrador": [
+  "--segmentos",
+  "120",
+  "--sin-receta"
+ ],
+ "controles": [
+  {
+   "flag": "--ancho",
+   "clave": "ancho",
+   "valor": 1.0,
+   "min": 0.8,
+   "max": 1.6,
+   "paso": 0.004,
+   "que": "mm de cord\u00f3n. En modo vaso ES el espesor de pared."
+  },
+  {
+   "flag": "--velocidad",
+   "clave": "velocidad",
+   "valor": 2400.0,
+   "min": 120.0,
+   "max": 6000.0,
+   "paso": 29.4,
+   "que": "mm/min. El freno de caudal la baja sola."
+  }
+ ]
+}

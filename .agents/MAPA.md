@@ -83,6 +83,14 @@ pieza de 180 000 segmentos.
 | `vista_gcode.py` | frontal y planta a PNG | el ojo |
 | `verificar_campo.py` | campo de deformación JS contra Python | uno contra otro |
 | `verificar_ams.py` | bloque de cambio de filamento | un 3mf real de Bambu |
+| `verificar_rosca.py` | contención, apoyo y voladizo de la `FuncionRadio` | la envolvente medida |
+| `verificar_encastre.py` | si el macho EMITIDO entra en la hembra, y con cuánto juego | `rosca.perfil_hembra` |
+| `medir_hembra.py` | que `perfil_hembra` reproduzca el barreno real | `tuerca.stl`, por trazado de rayos |
+
+`verificar_encastre.py` mide contra la TABLA `perfil_hembra` por defecto, y contra
+el g-code de la tuerca con `--hembra ARCHIVO`. Los dos números no son iguales:
+la hembra emitida tiene su propia discretización, y sobre el clásico eso son
+0.021 mm (+0.191 contra la tabla, +0.170 contra el archivo).
 
 **La referencia es `Squeezy Fidget Toy.gcode`, no `hongo.gcode`.** El hongo fue
 la referencia una sesión entera y no servía: tenía el 4.07 % del recorrido con
@@ -93,6 +101,19 @@ Y Squeezy hay que medirlo **por sus cúpulas** (z 0..28 y z 70..97): el medio es
 una celosía cuyos hilos cruzan en el aire por diseño, y el ángulo no avanza de
 forma monótona, así que cualquier detección de vueltas sobre la pieza entera da
 basura.
+
+## El centro de una pieza no sale de la caja envolvente
+
+Vale para cualquier medidor que lea un g-code y convierta a radio. La caja
+envolvente sólo da el eje si la pieza llega a su radio máximo en TODAS las
+direcciones. Un patrón que depende del ángulo no lo hace, y la caja sale corrida
+justo lo que después aparece como error de radio: sobre `cuadros` la corre
+0.99 mm y la pieza da NO ENTRA por 0.99 mm.
+
+Ajustar un círculo a todos los puntos tampoco alcanza — el hilo mueve el radio
+2 mm y deja 0.05 mm de sesgo. Hay que ajustar sobre una parte de la pieza que sea
+un círculo exacto; en las roscas es el NÚCLEO, que existe en todos los ángulos y
+en todas las variantes porque el patrón ni se aplica ahí. Ver `verificar_encastre.centro`.
 
 ## Cómo derivar el cordón de un g-code ajeno
 
