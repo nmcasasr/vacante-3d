@@ -94,6 +94,36 @@ una celosía cuyos hilos cruzan en el aire por diseño, y el ángulo no avanza d
 forma monótona, así que cualquier detección de vueltas sobre la pieza entera da
 basura.
 
+## Un verificador tiene que mirar las vueltas QUE SE IMPRIMEN
+
+`generar_pieza` medía el voladizo sobre `silueta(capa/n_capas)`: la silueta
+repartida pareja en `t`. Pero `marcha_vertical` acorta el paso donde la pared se
+tumba, así que las vueltas se AMONTONAN en `t` justo ahí — que es donde el
+voladizo decide. Los puntos que se medían no los visitaba ninguna vuelta.
+
+Sobre el gusanito daba **0.86 mm de salto radial y 28 % de solape** ("no esperes
+que salga") contra los **0.64 mm y 46 %** que emite el recorrido de verdad. Se
+arregla muestreando en los `t` que devuelve `marcha_vertical`, que ya están ahí
+mismo en la función. Es el mismo error que `marcha_vertical` documenta al final
+de su docstring, del otro lado de la frontera: dos copias de la misma cuenta
+describiendo recorridos distintos.
+
+El aviso es solo un `print`: comprobado regenerando el jarrón antes y después,
+0 líneas de máquina distintas.
+
+## Al ápice de una cúpula el "choque" le da siempre alto, y no significa nada
+
+`verificar_pieza` marca "pisado" cuando dos ejes quedan a menos del 70 % de la
+separación de fusión. En el ápice la pared está acostada y las vueltas apoyan AL
+LADO, no encima: la separación sobre la superficie es el paso, y contra un
+cordón de 1.2 eso cae debajo del umbral en cuanto el paso baja de ~0.73.
+
+O sea que la MISMA pieza pasa de 1.5 % a 8.6 % de choque bajando la capa de 0.8
+a 0.6 sin que cambie nada físico — la razón `área ÷ avance` es idéntica. El
+hongo, impreso y bueno, da 4.25 %. Antes de creerle a ese número hay que
+preguntarle DÓNDE: si está todo en la banda del ápice, es el cierre de la
+cúpula, no un defecto.
+
 ## Cómo derivar el cordón de un g-code ajeno
 
 Sin suponer nada, y la circularidad acá ya costó una calibración entera:

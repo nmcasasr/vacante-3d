@@ -1170,7 +1170,15 @@ def generar_pieza(
     _verificar_apoyo(solo_puntos[len(solo_puntos) - n_capas * (segmentos_por_capa + 1):],
                      segmentos_por_capa + 1, perfil)
     if silueta_referencia is not None:
-        radios_medios = [silueta_referencia(capa / n_capas) for capa in range(n_capas + 1)]
+        # En los `t` de las vueltas REALES, no repartidos parejo. `ts` sale de
+        # `marcha_vertical`, que acorta el paso donde la pared se tumba, así que
+        # las vueltas se amontonan en `t` justo ahí — que es donde el voladizo
+        # decide. Con `capa/n_capas` se mide la silueta en puntos que ninguna
+        # vuelta visita: sobre el gusanito daba 0.86 mm de salto y 28 % de
+        # solape, contra los 0.64 mm y 46 % que emite el recorrido. Es el mismo
+        # error que `marcha_vertical` documenta al final de su docstring, del
+        # otro lado de la frontera.
+        radios_medios = [silueta_referencia(t_capa) for t_capa in ts]
     # Cuánto ondula el radio DENTRO de la vuelta, medido igual que `amplitud_onda`:
     # muestreando el propio patrón, sin pedirle a nadie que lo declare.
     amplitud_radial = 0.0

@@ -597,6 +597,12 @@ def _cli() -> None:
         area = perfil.ancho * perfil.altura_capa
         piso_mm_min = args.caudal_minimo / max(area, 1e-9) * 60.0
         techo_mm_min = float(perfil.velocidad_impresion)
+        # `silueta` es un CALLABLE cuando vino de un DXF y el NOMBRE de una del
+        # catalogo cuando no. `pasos_bowl` acepta las dos y resuelve sola; este
+        # bloque necesita evaluar el radio, asi que la resuelve tambien. Sin
+        # esto, --segundos-vuelta reventaba con cualquier silueta del catalogo.
+        fn_silueta = (silueta if callable(silueta)
+                      else _SILUETAS[silueta](**parametros_silueta))
         PASO_MUESTREO = 2.0     # mm de altura entre escalones
         n = max(2, int(altura / PASO_MUESTREO))
         ultimo = None
@@ -604,7 +610,7 @@ def _cli() -> None:
             z = altura * i / n
             if z < altura * desde_t:
                 continue
-            r = silueta(min(1.0, z / max(altura, 1e-9)))
+            r = fn_silueta(min(1.0, z / max(altura, 1e-9)))
             mm_min = 2 * _math.pi * r / args.segundos_vuelta * 60.0
             mm_min = min(techo_mm_min, max(piso_mm_min, mm_min))
             mm_min = int(round(mm_min / 20) * 20)     # escalones de 20 mm/min

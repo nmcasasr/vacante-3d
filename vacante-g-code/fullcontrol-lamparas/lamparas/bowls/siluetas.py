@@ -233,6 +233,74 @@ def trompeta(
     return silueta
 
 
+def gusanito(
+    radio_max: float = 30.0,
+    lobulos: int = 5,
+    cintura: float = 0.69,
+    apoyo: float = 0.12,
+) -> Silueta:
+    """
+    Una pila de esferas achatadas: la cabeza del hongo repetida a lo largo del
+    eje. Es la forma del "gusanito", y es la misma familia que Squeezy Fidget
+    Toy —dos bulbos con una cintura— con más lóbulos y la cintura más suave.
+
+    Cada lóbulo es un elipsoide de semieje horizontal `radio_max` y semieje
+    vertical `b`, y el contorno es el MÁXIMO de todos: donde dos lóbulos se
+    cruzan queda una arista en V, que es lo que en la referencia se lee como
+    dos círculos superpuestos y no como una onda. Suavizar ese cruce borraría
+    justo el rasgo que hace que la pieza se lea como una pila.
+
+    **Todo está en `t`, no en milímetros, y eso es a propósito.** La silueta no
+    conoce la altura de la pieza: la recibe el generador. Al parametrizarla por
+    la CINTURA —una proporción— la forma sale igual a cualquier altura, y el
+    achatamiento de cada lóbulo cae solo de cuántos entren. Con 5 lóbulos en
+    150 mm y Ø60 el semieje vertical da 21.8 mm contra 30 de radio: 0.73, la
+    misma proporción que la referencia dibujada.
+
+    El único voladizo serio está en la cintura, que es donde la pared más se
+    tumba (el resto del lóbulo se endereza hacia el ecuador). Con `cintura`
+    0.69 son 57 grados desde la vertical; Squeezy, que está impreso y sale
+    bien, tiene 76 en la suya. Bajar `cintura` estrangula más y empeora ese
+    número — es la perilla que hay que mirar antes de mandar a imprimir.
+
+    Args:
+        radio_max: radio del ecuador de los lóbulos, o sea el punto más ancho
+            de la pieza. 30 = Ø60.
+        lobulos: cuántas esferas se apilan. Es lo que decide el achatamiento:
+            más lóbulos en la misma altura = lóbulos más chatos.
+        cintura: radio del cuello como FRACCIÓN de `radio_max`. 0.69 es el de
+            la referencia; 0.37 es el de Squeezy, mucho más estrangulado.
+        apoyo: cuánto se corta por debajo del ecuador del lóbulo de abajo, en
+            fracción del semieje vertical. 0 corta justo en el ecuador y deja
+            la pared arrancando vertical; 0.12 baja un poco más y da una base
+            apenas acampanada, como la referencia. Es lo único que se abre
+            hacia arriba en toda la pieza, y con 0.12 son 5 grados.
+    """
+    if lobulos < 1:
+        raise ValueError("gusanito: 'lobulos' tiene que ser 1 o más")
+    if not 0.0 < cintura < 1.0:
+        raise ValueError("gusanito: 'cintura' va entre 0 y 1 (fracción de radio_max)")
+
+    # medio paso entre lóbulos, en unidades del semieje vertical: el cuello cae
+    # a mitad de camino entre dos centros, así que cintura = sqrt(1 - (p/2b)^2)
+    medio = math.sqrt(1.0 - cintura * cintura)
+    # la pieza va desde `apoyo·b` debajo del primer centro hasta el ápice del
+    # último, o sea `apoyo·b + (n-1)·2·medio·b + b = 1`
+    b = 1.0 / (apoyo + 1.0 + 2.0 * medio * (lobulos - 1))
+    paso = 2.0 * medio * b
+    centros = [apoyo * b + i * paso for i in range(lobulos)]
+
+    def silueta(t: float) -> float:
+        r = 0.0
+        for c in centros:
+            u = (t - c) / b
+            if -1.0 < u < 1.0:
+                r = max(r, radio_max * math.sqrt(1.0 - u * u))
+        return r
+
+    return silueta
+
+
 SILUETAS = {
     "bol": bol,
     "trompeta": trompeta,
@@ -242,4 +310,5 @@ SILUETAS = {
     "platillo": platillo,
     "campana": campana,
     "candelero": candelero,
+    "gusanito": gusanito,
 }
