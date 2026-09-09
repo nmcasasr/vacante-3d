@@ -1016,10 +1016,28 @@ def generar_pieza(
         # ancho disparatado. Con el nombre correcto son dos cosas independientes.
         puntos.append(fc.ManualGcode(text=f"; LINE_WIDTH: {perfil.ancho:.3f}"))
 
-        tan_v = _pendiente(ts[capa]) / max(altura, 1e-9)
-        # `subida` ya viene atenuada por `_mezcla` y con piso en PASO_MINIMO,
-        # así que la separación se reconstruye desde ella y no desde `paso`.
-        separacion = subida * math.sqrt(1 + tan_v * tan_v)
+        # La separación es la MISMA cuenta que hace `marcha_vertical._separacion`
+        # para elegir el paso: la hipotenusa entre lo que sube la vuelta y lo que
+        # se corre el radio en ese tramo, con `_delta_radio`, sin derivada.
+        #
+        # Antes esto derivaba con `_pendiente`, y ahí había dos sesgos que
+        # `marcha_vertical` ya documenta del otro lado de la frontera:
+        #
+        # 1. La ventana de `_pendiente` es FIJA, ±0.005 en `t` — sobre una pieza
+        #    de 150 mm son ±0.75 mm de z. En un cuello donde dos lóbulos se
+        #    cruzan, esa ventana agarra las DOS caras y la resta da casi cero:
+        #    la pared está a 55° y la cuenta la declara vertical. Medido sobre el
+        #    gusanito: una vuelta con 0.449 mm² contra 0.731 de sus vecinas, el
+        #    61 % del material, y se ve en el laminador como una banda hundida
+        #    justo en el cuello. La de abajo salía con 0.793, gorda.
+        # 2. Se evaluaba en el ARRANQUE de la vuelta y no a lo largo de ella.
+        #
+        # `subida` ya viene atenuada por `_mezcla` y con piso en PASO_MINIMO, así
+        # que el tramo se toma de ella y no de `paso`: lo que se mide es el
+        # corrimiento del radio en el tramo que esta vuelta sube DE VERDAD.
+        dt_capa = subida / max(altura, 1e-9)
+        separacion = math.hypot(
+            subida, _delta_radio(ts[capa], min(1.0, ts[capa] + dt_capa)))
         # Donde el paso choca contra el piso, la separación se dispara y un
         # cordón solo no llena el hueco. Se extruye lo que se pueda y el
         # voladizo lo denuncia `_verificar_voladizo`; seguir subiendo la sección

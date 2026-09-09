@@ -112,6 +112,62 @@ Se arregla corriendo el escalón de velocidad una centésima; a la escala de una
 vuelta no cambia nada. Pero la lección general es: **antes de creerle al log del
 generador, buscar el `M106` en el g-code emitido.** Lo que vale es el archivo.
 
+## La extrusión se derivaba con una ventana más ancha que el detalle
+
+La sección depositada se escala con la SEPARACIÓN, y la separación salía de
+`subida * sqrt(1 + tan²)` con la pendiente de `_pendiente`, que deriva con una
+**ventana fija de ±0.005 en `t`** — sobre una pieza de 150 mm, ±0.75 mm de z.
+
+Donde el perfil tiene un detalle más angosto que esa ventana, la resta agarra
+las dos caras y da casi cero: la cuenta declara vertical una pared que está a
+55°. En el cuello del gusanito eso dejó **una vuelta con 0.449 mm² contra 0.731
+de sus vecinas —el 61 % del material— y la de abajo con 0.793, gorda**. Se ve en
+el laminador como una banda hundida y una saliente; no lo cazó ningún
+verificador, lo cazó el usuario mirando la pieza.
+
+`radio_de` ya avisaba de la misma trampa del otro lado ("la derivada de una
+escalera es ruido") y por eso suaviza la tabla del DXF. Pero una silueta
+analítica no pasa por ahí.
+
+**El arreglo es no derivar.** `marcha_vertical` ya elige el paso con
+`_delta_radio` —el radio evaluado en los dos extremos del tramo, sin ventana— y
+la extrusión ahora usa la misma cuenta:
+
+    separacion = hypot(subida, _delta_radio(t, t + subida/altura))
+
+Las dos caras de la frontera hacen la misma cuenta, que es lo que este archivo
+viene pidiendo desde arriba. Medido:
+
+| | antes | después | Squeezy |
+|---|---|---|---|
+| gusanito, cuello | 0.449..0.793 mm² | **0.720 clavado** | — |
+| hongo, área p10..p90 | 0.892..1.018 | **0.960..0.960** | 0.968..0.969 |
+| hongo, caudal tope | 19.97 mm³/s | **15.36** | 10.44 |
+
+**El hongo cambia**, y hay que saberlo: el RECORRIDO es idéntico —86 346
+movimientos, 0 con X/Y/Z distinto— y lo único que cambia es cuánto material sale.
+Le desaparece un pico de caudal del 30 % y queda con la sección constante, que
+es lo que hace la referencia. Sigue dando IMPRIMIBLE y su choque baja de 4.25 a
+3.99 %.
+
+## Dos superficies solo empalman bien donde comparten la tangente
+
+`espejar()` lo dice para la base del hongo: el eje del reflejo es la panza
+porque "es el único punto donde las dos mitades empalman con la misma tangente;
+cualquier otra altura deja un pico o un escalón". Vale igual para el gusanito,
+que es el MÁXIMO de varios elipsoides: donde dos lóbulos se cruzan las tangentes
+valen ±55° y queda un pico. Impreso se lee como un corte.
+
+Por eso `gusanito` combina los lóbulos con un máximo SUAVE y no con `max()`. El
+filete es local —fuera de su ventana devuelve el máximo duro, así que no toca ni
+el ecuador ni el ápice— y ensancha el cuello exactamente `redondeo/4`.
+
+Lo que NO hay que hacer es compensar ese ensanche descontándoselo a la V antes
+de resolver la geometría: con la altura fija, una V más profunda obliga a un
+paso más largo y **achata todos los lóbulos**. Medido, corría el perfil hasta
+2.6 mm a media altura — un filete de 4 mm reformando la pieza entera. Se compensa
+por afuera, bajando `cintura`.
+
 ## Un verificador tiene que mirar las vueltas QUE SE IMPRIMEN
 
 `generar_pieza` medía el voladizo sobre `silueta(capa/n_capas)`: la silueta

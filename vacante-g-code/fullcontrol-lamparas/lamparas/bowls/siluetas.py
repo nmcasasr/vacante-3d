@@ -238,6 +238,7 @@ def gusanito(
     lobulos: int = 5,
     cintura: float = 0.69,
     apoyo: float = 0.12,
+    redondeo: float = 6.0,
 ) -> Silueta:
     """
     Una pila de esferas achatadas: la cabeza del hongo repetida a lo largo del
@@ -245,10 +246,16 @@ def gusanito(
     Toy —dos bulbos con una cintura— con más lóbulos y la cintura más suave.
 
     Cada lóbulo es un elipsoide de semieje horizontal `radio_max` y semieje
-    vertical `b`, y el contorno es el MÁXIMO de todos: donde dos lóbulos se
-    cruzan queda una arista en V, que es lo que en la referencia se lee como
-    dos círculos superpuestos y no como una onda. Suavizar ese cruce borraría
-    justo el rasgo que hace que la pieza se lea como una pila.
+    vertical `b`, y el contorno los combina con un máximo SUAVE.
+
+    **El máximo duro no sirve, y se vio recién en la pieza.** Dos elipsoides
+    cruzados dejan una arista en V, que en el dibujo se lee como dos círculos
+    superpuestos y queda bien; impresa, esa arista es un cambio de pendiente de
+    -1.44 a +1.44 entre dos vueltas, y se ve como un CORTE. Peor: en el fondo
+    exacto de la V la pendiente vale cero, así que `marcha_vertical` gasta un
+    paso vertical entero ahí, y la vuelta siguiente tiene que salir 0.71 mm
+    hacia afuera en vez de 0.64 — una vuelta más flaca y corrida, visible en el
+    laminador antes que en cualquier verificador.
 
     **Todo está en `t`, no en milímetros, y eso es a propósito.** La silueta no
     conoce la altura de la pieza: la recibe el generador. Al parametrizarla por
@@ -275,14 +282,38 @@ def gusanito(
             la pared arrancando vertical; 0.12 baja un poco más y da una base
             apenas acampanada, como la referencia. Es lo único que se abre
             hacia arriba en toda la pieza, y con 0.12 son 5 grados.
+        redondeo: cuánto se redondea el cuello, en mm de DIFERENCIA DE RADIO
+            entre los dos lóbulos. Se traduce a altura dividiendo por la
+            pendiente del cruce: con 6 mm el empalme ocupa unos ±2 mm de z, o
+            sea tres o cuatro vueltas, que es lo que hace falta para que se lea
+            como cuello y no como corte. 0 vuelve a la V dura.
+
+            Ensancha el cuello exactamente `redondeo/4`: el filete llena el
+            fondo de la V. O sea que el cuello terminado mide
+            `radio_max·cintura + redondeo/4`, y para un diámetro de cuello
+            dado hay que bajar `cintura` esa cuenta. Se deja así a propósito —
+            ver el comentario en el código— porque descontarlo de la V achata
+            todos los lóbulos.
+
+            No toca el ecuador ni el ápice: ahí el lóbulo vecino ya no está
+            definido y el máximo suave devuelve el duro.
     """
     if lobulos < 1:
         raise ValueError("gusanito: 'lobulos' tiene que ser 1 o más")
     if not 0.0 < cintura < 1.0:
         raise ValueError("gusanito: 'cintura' va entre 0 y 1 (fracción de radio_max)")
+    if redondeo < 0:
+        raise ValueError("gusanito: 'redondeo' no puede ser negativo")
 
     # medio paso entre lóbulos, en unidades del semieje vertical: el cuello cae
     # a mitad de camino entre dos centros, así que cintura = sqrt(1 - (p/2b)^2)
+    #
+    # `redondeo` NO entra en esta cuenta, y eso se probó al revés primero:
+    # descontarle `redondeo/4` a la V para que el cuello terminado midiera
+    # exactamente `cintura` obliga a un paso más largo, y con la altura fija eso
+    # achata todos los lóbulos. Medido, corría el perfil hasta 2.6 mm a media
+    # altura — un filete de 4 mm reformando la pieza entera. El redondeo tiene
+    # que ser LOCAL: los lóbulos son los mismos con o sin él.
     medio = math.sqrt(1.0 - cintura * cintura)
     # la pieza va desde `apoyo·b` debajo del primer centro hasta el ápice del
     # último, o sea `apoyo·b + (n-1)·2·medio·b + b = 1`
@@ -290,12 +321,34 @@ def gusanito(
     paso = 2.0 * medio * b
     centros = [apoyo * b + i * paso for i in range(lobulos)]
 
+    def _smax(a: float, c: float) -> float:
+        """
+        Máximo suave polinómico (el `smin` de Quilez, dado vuelta).
+
+        Es C1: la pendiente pasa de una rama a la otra sin salto, que es
+        exactamente lo que le faltaba a la V. Fuera de la ventana `redondeo`
+        devuelve el máximo duro sin tocarlo, así que no contamina el resto de
+        la silueta.
+        """
+        if redondeo <= 0:
+            return max(a, c)
+        h = max(0.0, redondeo - abs(a - c)) / redondeo
+        return max(a, c) + h * h * redondeo * 0.25
+
     def silueta(t: float) -> float:
-        r = 0.0
+        # Solo los lóbulos DEFINIDOS en esta altura. Uno que no llega no vale 0:
+        # vale nada, y mezclarlo como 0 inflaría el ápice, donde el lóbulo de
+        # arriba está solo y la pieza tiene que cerrar en punta.
+        vivos = []
         for c in centros:
             u = (t - c) / b
             if -1.0 < u < 1.0:
-                r = max(r, radio_max * math.sqrt(1.0 - u * u))
+                vivos.append(radio_max * math.sqrt(1.0 - u * u))
+        if not vivos:
+            return 0.0
+        r = vivos[0]
+        for otro in vivos[1:]:
+            r = _smax(r, otro)
         return r
 
     return silueta
