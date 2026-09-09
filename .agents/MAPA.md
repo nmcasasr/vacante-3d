@@ -94,6 +94,24 @@ una celosía cuyos hilos cruzan en el aire por diseño, y el ángulo no avanza d
 forma monótona, así que cualquier detección de vueltas sobre la pieza entera da
 basura.
 
+## `cambios` es un dict POR ALTURA, y dos cosas en la misma z se pisan
+
+El ventilador, los cambios de color, `--velocidad-en`, `--ventilador-en` y los
+~50 escalones de `--segundos-vuelta` escriben todos en el mismo `cambios{z: bloque}`.
+El que pisa es el último, porque cae en una grilla de 2 mm y son muchos:
+
+    --ventilador-desde 0.08 sobre 150 mm  ->  aire a z12.00, que es de la grilla
+    el escalón de velocidad de z12.00 le gana  ->  la pieza sale SIN VENTILADOR
+
+Y no avisa nada: el CLI imprime "ventilador 100% desde z12.0" igual, porque lo
+imprime cuando lo escribe, no cuando sobrevive. **El hongo zafó de casualidad**
+—su `0.89 x 182.1` da 162.07, que no es múltiplo de 2— así que el defecto
+esperó a la primera pieza cuya altura por la fracción cayera redonda.
+
+Se arregla corriendo el escalón de velocidad una centésima; a la escala de una
+vuelta no cambia nada. Pero la lección general es: **antes de creerle al log del
+generador, buscar el `M106` en el g-code emitido.** Lo que vale es el archivo.
+
 ## Un verificador tiene que mirar las vueltas QUE SE IMPRIMEN
 
 `generar_pieza` medía el voladizo sobre `silueta(capa/n_capas)`: la silueta

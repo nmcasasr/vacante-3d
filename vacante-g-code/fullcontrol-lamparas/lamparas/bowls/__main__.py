@@ -615,7 +615,20 @@ def _cli() -> None:
             mm_min = min(techo_mm_min, max(piso_mm_min, mm_min))
             mm_min = int(round(mm_min / 20) * 20)     # escalones de 20 mm/min
             if mm_min != ultimo and z > 0:
-                cambios[round(z, 2)] = fc.Printer(print_speed=mm_min)
+                # `cambios` es un dict POR ALTURA, así que dos cosas distintas
+                # que quieran la misma z se pisan. Estos escalones caen en una
+                # grilla de 2 mm y son ~50, o sea que son los que pisan: con
+                # `--ventilador-desde 0.08` sobre 150 mm el aire va a z12.00,
+                # que es de la grilla, y el gusanito salió SIN VENTILADOR.
+                # El hongo zafó de casualidad — su z era 162.07.
+                #
+                # Se corre el escalón una centésima en vez de mezclarlos: a la
+                # escala de una vuelta no cambia nada, y no hay que enseñarle a
+                # `_insertar_cambios` a recibir listas.
+                clave = round(z, 2)
+                while clave in cambios:
+                    clave = round(clave + 0.01, 2)
+                cambios[clave] = fc.Printer(print_speed=mm_min)
                 ultimo = mm_min
         print(f"  velocidad por perímetro desde {100*desde_t:.0f}% de la altura: "
               f"{args.segundos_vuelta:g} s por vuelta · "
