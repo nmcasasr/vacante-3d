@@ -112,6 +112,28 @@ Se arregla corriendo el escalón de velocidad una centésima; a la escala de una
 vuelta no cambia nada. Pero la lección general es: **antes de creerle al log del
 generador, buscar el `M106` en el g-code emitido.** Lo que vale es el archivo.
 
+## Las rayas oscuras entre cordones del visor NO son huecos
+
+Se ven en Orca en cuanto la pared se acuesta, y asustan: parece que las vueltas
+no se tocan. Orca dibuja cada cordón con el ancho de `; LINE_WIDTH:` y el alto de
+`; LAYER_HEIGHT:`, y `; LAYER_HEIGHT:` lleva la SUBIDA de la vuelta. Pero el
+cordón real está ROTADO con la pared, y su extensión vertical es
+`separacion·cos(θ) + ancho·sin(θ)`, que en un flanco a 55° vale 1.19 mm contra
+una subida de 0.48. **El visor lo pinta a la mitad de lo que mide.**
+
+Medido, en el gusanito y en el hongo, la subida entre vueltas y el
+`; LAYER_HEIGHT:` declarado coinciden hasta la milésima: los cordones dibujados
+quedan exactamente tangentes, 0.000 mm de hueco. Lo que se ve es el surco entre
+dos cilindros tangentes pintados más flacos de lo que son.
+
+**El hongo, que está impreso y sale bien, da lo mismo** (dibujado 0.19..0.80
+contra 0.85..1.44 reales). Antes de perseguir un hueco del visor, medir la
+separación sobre la superficie contra el ancho del cordón: eso es lo que decide,
+y `verificar_pieza` ya lo hace.
+
+Y a Squeezy esta medición no se le puede hacer: no tiene marcas de capa, y su
+tramo del medio rompe cualquier detección de vueltas (ver más arriba).
+
 ## La extrusión se derivaba con una ventana más ancha que el detalle
 
 La sección depositada se escala con la SEPARACIÓN, y la separación salía de
