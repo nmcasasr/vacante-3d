@@ -132,6 +132,16 @@ def _cli() -> None:
                         "Subirlo hace que el calado entre más despacio: en las primeras vueltas los "
                         "picos quedan al aire sin nada debajo, y con pocas capas de transición "
                         "arrancan demasiado alto para agarrarse de la base.")
+    p.add_argument("--paso-fijo", choices=["no", "auto", "si"], default="no",
+                   help="altura de capa CONSTANTE en vez de la marcha adaptativa. "
+                        "'auto' lo decide midiendo cuanto solapan dos vueltas seguidas. "
+                        "La marcha adaptativa esta pensada para cupulas: acorta el paso "
+                        "donde la pared se tumba. En una pared VERTICAL con relieve "
+                        "angular -un tubo con puas- el corrimiento entre vueltas es "
+                        "RADIAL, y ahi lo lee como si fuera vertical y frena de mas: el "
+                        "cordon mide 1.0 mm de ancho radial contra 0.4 de alto, o sea que "
+                        "un salto radial de 0.4 sigue dejando 0.6 solapados. Por defecto "
+                        "'no', que es lo que hacen todas las piezas anteriores.")
     p.add_argument("--capas-base", type=int, default=1, metavar="N",
                    help="primeras vueltas sin rampa de Z (anillos cerrados apilados, por defecto 1). "
                         "Le da al calado algo macizo de donde arrancar en vez de un solo cordón.")
@@ -641,6 +651,8 @@ def _cli() -> None:
         modulacion=modulacion or None,
         pintura=pintura,
         deformacion=deformacion,
+        paso_fijo=(True if args.paso_fijo == "si"
+                   else "auto" if args.paso_fijo == "auto" else False),
     )
 
     # Va DESPUES del marcador FIN DEL START GCODE. Ahi el empaquetador lo deja

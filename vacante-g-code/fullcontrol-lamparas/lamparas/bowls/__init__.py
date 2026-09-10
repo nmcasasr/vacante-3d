@@ -20,7 +20,7 @@ porque además mueve la Z dentro de la capa.
 
 from typing import Optional
 
-from ..comun import Perfil, a_gcode, generar_pieza, guardar_gcode
+from ..comun import Perfil, a_gcode, conviene_paso_fijo, generar_pieza, guardar_gcode
 from . import celosia, cesta, malla, ondas, puas, rizos, siluetas, tramado, zigzag
 from .siluetas import SILUETAS
 
@@ -53,6 +53,7 @@ def pasos_bowl(
     modulacion: Optional[dict] = None,
     pintura: Optional[dict] = None,
     deformacion=None,
+    paso_fijo=False,
 ) -> list:
     """
     Arma los pasos de FullControl de un bowl.
@@ -73,6 +74,13 @@ def pasos_bowl(
         capas_transicion: capas en las que el patrón nace desde un círculo liso.
         capas_base: primeras vueltas sin rampa de Z (anillos cerrados), para que
             el calado arranque desde algo macizo en vez de desde un solo cordón.
+        paso_fijo: True fuerza altura de capa constante, False deja la marcha
+            adaptativa, y `"auto"` lo decide midiendo cuánto solapan dos vueltas
+            seguidas (ver `comun.conviene_paso_fijo`). Es para las piezas de
+            pared VERTICAL con relieve angular —un tubo con púas, una rosca—,
+            donde el criterio de `marcha_vertical`, que está pensado para
+            cúpulas, lee el corrimiento RADIAL como si fuera vertical y acorta
+            el paso sin que haga falta. Ver el bloque en `generar_pieza`.
     """
     if diseno not in DISENOS:
         raise ValueError(f"diseño desconocido: {diseno!r}. Opciones: {sorted(DISENOS)}")
@@ -106,9 +114,23 @@ def pasos_bowl(
             deformacion.patron = patron
         fn_radio = lambda a, t: patron(a, t) + deformacion(a, t)  # noqa: E731
 
+    if paso_fijo == "auto":
+        # Se decide MIDIENDO sobre la función de radio ya armada —patrón,
+        # estructura y todo— y se dice en voz alta, porque cambia la altura de
+        # capa de la pieza entera y eso tiene que quedar en el log de la corrida
+        # y no adivinarse después mirando el g-code.
+        alto_capa = (perfil or Perfil()).altura_capa
+        ancho_cordon = (perfil or Perfil()).ancho
+        paso_fijo, solape = conviene_paso_fijo(fn_radio, altura, paso_z or alto_capa,
+                                               ancho_cordon)
+        print(f"  paso fijo {paso_z or alto_capa:.2f} mm -> las vueltas solapan "
+              f"{solape*100:.0f}% del cordón -> "
+              f"{'FIJO' if paso_fijo else 'ADAPTATIVO'}")
+
     return generar_pieza(
         fn_radio,
         altura=altura,
+        paso_fijo=bool(paso_fijo),
         perfil=perfil,
         segmentos_por_capa=segmentos_por_capa or segmentos,
         funcion_dz=fn_dz,

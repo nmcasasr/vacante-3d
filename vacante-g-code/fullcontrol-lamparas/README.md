@@ -217,7 +217,9 @@ lamparas/
     tramado.py   # entramado diagonal
     zigzag.py    # textura de diente de sierra que dibuja una máscara
     ondas.py     # anillos horizontales ondulados, tipo cerámica torneada
+    puas.py      # tubo cubierto de púas, con la figura en las zonas lisas
 verificar_ams.py # compara el cambio de AMS contra un .3mf real de Bambu Studio
+vista_relieve.py # la pieza DESENROLLADA a PNG: para ver el dibujo antes de imprimir
 output/          # .gcode y .html generados (gitignored)
 requirements.txt
 ```
@@ -246,6 +248,7 @@ python -m lamparas.bowls --help
 | `rizos` | bucles que sobresalen, tipo candelero "Dream of Glow" | trocoide: el trazo **retrocede** en ángulo y cierra un bucle, en vez de solo ondular |
 | `zigzag` | textura en diente de sierra que **dibuja una figura** sobre la pared | el radio va y viene en triángulo dentro de la vuelta, y la vuelta siguiente va lisa. Solo donde una máscara lo pide |
 | `ondas` | anillos horizontales ondulados, tipo cerámica torneada | el radio ondula con la **altura**, no con el ángulo; y la fase corre con el ángulo, así los anillos suben y bajan al dar la vuelta |
+| `puas` | tubo cubierto de púas, con la figura **en las zonas lisas** | la boquilla sale y entra en cada púa, siempre hacia afuera y siempre en la misma fase, así que las púas se apilan en columnas. Donde la máscara lo pide, no hay púa |
 
 Los parámetros propios de cada patrón van con `--p clave=valor` (repetible) y
 están documentados en el `construir()` de cada módulo.
@@ -600,6 +603,121 @@ python -m lamparas.bowls zigzag --silueta cilindro --altura 90 --radio-base 45 \
        --p mascara=caritas --p dientes=60 --p amplitud=0.6 \
        --slot-inicial 1:PLA --cambio-ams 22:3:PETG --cambio-ams 68:1:PLA
 ```
+
+## El florero de púas
+
+<img src="recetas/florero_puas/v001/relieve.png" alt="el florero desenrollado" width="760">
+
+Un tubo cubierto de púas, con flores dibujadas en las zonas donde la púa se
+apaga. La técnica es la que describió el usuario: **sacar y meter levemente la
+boquilla** a lo largo de la vuelta, 150 veces, y hacerlo a lo largo de todo el
+tubo.
+
+```bash
+python -m lamparas.bowls puas --silueta cilindro --altura 200 --radio-base 34 \
+       --ancho-linea 1.0 --capas-transicion 0 --paso-fijo auto \
+       --p puas=150 --p amplitud=1.0 \
+       --p cantidad=11 --p tamano=52 --p corazon=0.55 \
+       --segundos-vuelta 0 --velocidad 900 --nombre florero_puas
+```
+
+La receta completa está en `recetas/florero_puas/v001/`.
+
+### Las tres cosas que hacen que se imprima
+
+**1. La púa va sólo HACIA AFUERA.** El valle vale exactamente la silueta, así
+que la pared sigue siendo un cilindro limpio y todo el relieve queda del lado de
+afuera. Por dentro el florero es liso, como el de la foto.
+
+**2. Todas las vueltas llevan púa y en la misma fase.** Es la diferencia con
+`zigzag`, que alterna una vuelta con dientes y otra lisa para que el cordón liso
+marque el borde. Acá cada púa cae encima de la de la vuelta anterior y se apilan
+en una columna continua: eso es lo que se ve y se toca. Torcerlas (`deriva`)
+rompe el apilado y desploma el paso vertical — el módulo lo mide y avisa.
+
+**3. El borde de la flor se desvanece EN VERTICAL, y eso no es estético.** En
+modo vaso el paso vertical es uno solo por vuelta, y `marcha_vertical` lo achica
+mirando el peor ángulo. El borde de una flor es donde la púa deja de existir:
+con borde duro, dos vueltas vecinas se llevan el milímetro entero de diferencia
+en ese ángulo y el paso de **la pieza entera** se desploma.
+
+Suavizar la máscara en el plano no alcanza, y la cuenta dice por qué: entre dos
+pétalos el contorno corre casi horizontal, así que subir 0.4 mm lo corre 1.7 mm
+de costado. Harían falta ~11 mm de desvanecido, o sea una flor sin contorno — y
+el próximo dibujo volvería a romperlo.
+
+Lo que hace `puas.py` en cambio es **promediar la máscara a lo largo de 5
+alturas repartidas en 5 mm**. Eso acota por construcción cuánto puede cambiar el
+peso al subir una vuelta, sea cual sea la figura, y deja intactos los bordes
+verticales, que no cuestan nada. Medido sobre este florero:
+
+| | salto de radio por vuelta |
+|---|---|
+| máscara evaluada punto a punto | **0.550 mm** |
+| promediada en 5 mm de altura | **0.140 mm** |
+
+Y encima es lo que se ve en la pieza de referencia: las púas se van acortando al
+acercarse a la flor en vez de cortarse de golpe.
+
+### Por qué `--paso-fijo` y `--capas-transicion 0`
+
+Las dos apagan maquinaria pensada para otra pieza.
+
+`marcha_vertical` está hecha para **cúpulas**: acorta el paso donde la pared se
+tumba. Un tubo con púas no se tumba nunca — su corrimiento entre vueltas es
+RADIAL, y el cordón mide 1.0 mm de ancho radial contra 0.4 de alto. `--paso-fijo
+auto` lo mide y lo dice antes de generar (ver `comun.conviene_paso_fijo`, el
+mismo criterio que usa `gen_rosca.py`):
+
+```
+paso fijo 0.40 mm -> las vueltas solapan 87% del cordón -> FIJO
+```
+
+87 % contra el 39.5 % del jarrón, que está impreso y funciona. Resultado: altura
+de capa **0.4000 mm con desvío de 0.0001** en las 492 vueltas, en vez de bandearse.
+
+`capas_transicion` hace nacer el patrón desde un círculo liso durante las
+primeras vueltas, y de paso atenúa el paso vertical. Acá no hay nada que
+atenuar: la textura ya nace sola desde el zócalo, en milímetros (`desde` y
+`suave_mm`). Dejándola encendida, las primeras vueltas subían 0.067 mm —cordones
+de 15:1, el anillo imposible en la base que ya está documentado en
+`.agents/ESTADO.md`— por un patrón que a esa altura todavía no existe.
+
+### Verificado
+
+Los tres criterios juntos, sobre el g-code generado, contra `Squeezy Fidget
+Toy.gcode`:
+
+```
+línea fina (<0.10mm):    0.00 %  contra   0.26 %  de la referencia   ok
+            contacto:    0.00 %  contra   1.88 %  de la referencia   ok
+         peor puente:    0.00 mm contra  12.00 mm de la referencia   ok
+-> IMPRIMIBLE
+```
+
+**No está impresa.** Lo verificado es el g-code.
+
+Queda un 0.2 % de "choque" y está **todo en los 3 mm de abajo**: es la vuelta
+plana que arranca la pared, que se deposita encima de la última pasada de la
+espiral del piso, en el mismo radio y la misma Z. No lo trae este patrón — un
+cilindro completamente liso generado con el mismo código da 4.99 % en esa misma
+franja. Está sin arreglar a propósito: tocarlo es tocar el traspaso piso-pared
+de `generar_pieza`, que afecta a todas las piezas del proyecto.
+
+### Ver el dibujo antes de imprimirlo
+
+```bash
+python vista_relieve.py output/florero_puas.gcode relieve.png --ancho 1.0
+```
+
+Desenrolla el cilindro: el ángulo en horizontal, la altura en vertical, y el
+brillo es cuánto sobresale la superficie. Los dos ejes van a la misma escala en
+mm — sin eso las flores, que son redondas, se ven como manchas estiradas y uno
+termina decidiendo sobre una deformación del visor. Al lado va un sector de una
+vuelta en planta, que es donde se ve la forma de la púa.
+
+De paso cuenta las púas que hay **en el g-code**, no las que se pidieron.
+Calibrado: sobre una pieza sin figura, con `puas=150`, cuenta 150.
 
 ### Por qué el zigzag es radial y no vertical
 

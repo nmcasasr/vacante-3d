@@ -81,8 +81,17 @@ pieza de 180 000 segmentos.
 | `verificar_capas.py` | coherencia de las marcas de capa | suma declarada vs altura real |
 | `verificar_piso.py` | Ø del disco de apoyo y del hueco | el disco plano del g-code |
 | `vista_gcode.py` | frontal y planta a PNG | el ojo |
+| `vista_relieve.py` | la pieza DESENROLLADA a PNG, y el período de la textura | el ojo, y el conteo contra una pieza sin figura |
 | `verificar_campo.py` | campo de deformación JS contra Python | uno contra otro |
 | `verificar_ams.py` | bloque de cambio de filamento | un 3mf real de Bambu |
+
+`vista_gcode.py` no sirve para una pieza texturada: de frente, un tubo cubierto
+de púas es un rectángulo gris y en planta las 500 vueltas se pisan. Ahí va
+`vista_relieve.py`, que dibuja lo que en esas piezas hay que mirar —cuánto
+sobresale la superficie en cada (ángulo, altura)— y se compara a ojo con lo que
+dibuja `lamparas.superficie`. Ojo: `ver_rosca.py`, que vino con la rama de la
+rosca, hace casi lo mismo. Ver el punto 2 de "lo que queda abierto" en
+`ESTADO.md`.
 
 **La referencia es `Squeezy Fidget Toy.gcode`, no `hongo.gcode`.** El hongo fue
 la referencia una sesión entera y no servía: tenía el 4.07 % del recorrido con

@@ -1,3 +1,149 @@
+# Sesión del 10-09-2026 — el florero de púas
+
+## Lo primero: NO ESTÁ IMPRESO
+
+Lo que está verificado es el g-code. `output/florero_puas.gcode` (y su receta en
+`recetas/florero_puas/v001/`) pasa los tres criterios contra
+`Squeezy Fidget Toy.gcode`:
+
+    línea fina    0.00 %   contra 0.26 % de la referencia
+    contacto      0.00 %   contra 1.88 %
+    peor puente   0.00 mm  contra 12.00 mm
+    -> IMPRIMIBLE
+
+Y los 453 973 segmentos extruyen la sección nominal exacta: el más fino mide
+0.400 mm, 2.5:1. No hay un solo cordón comprometido en la pieza.
+
+## Qué se pidió y qué es
+
+Réplica de un FLORERO de las fotos —no una lámpara— : un tubo Ø68 x 200 mm
+cubierto de púas, con flores dibujadas en las zonas donde la púa se apaga. La
+técnica es la que dijo el usuario y es exactamente lo que hace el g-code: sacar
+y meter levemente la boquilla, 150 veces por vuelta, a lo largo de todo el tubo.
+
+Piezas nuevas:
+
+- `lamparas/bowls/puas.py` — el patrón. `--p puas` por vuelta, `--p amplitud` en
+  mm, `--p ocupacion` y `--p filo` la forma del pulso.
+- `superficie.flores()` — la máscara, en MILÍMETROS de superficie y no en grados
+  como `carita()`: una flor tiene que salir redonda en cualquier diámetro.
+- `vista_relieve.py` — la pieza desenrollada a PNG, para ver el dibujo antes de
+  imprimirlo.
+
+## Lo que decidió que la pieza saliera: el borde de la figura
+
+En modo vaso el paso vertical es **uno solo por vuelta** y `marcha_vertical` lo
+achica mirando el peor ángulo. El borde de una flor es donde la púa deja de
+existir, así que con borde duro dos vueltas vecinas se llevan el milímetro
+entero de diferencia en ese ángulo y el paso de LA PIEZA ENTERA se desploma. No
+es un defecto local: es la propiedad del paso.
+
+Suavizar la máscara en el plano NO alcanza, y la cuenta dice por qué: entre dos
+pétalos el contorno corre casi horizontal, así que subir 0.4 mm lo corre 1.7 mm
+de costado. Harían falta ~11 mm de desvanecido —una flor sin contorno— y encima
+dependería de la forma de cada figura, así que el próximo dibujo lo rompe otra
+vez.
+
+La salida es promediar la máscara a lo largo de N alturas repartidas en
+`suave_borde` milímetros. Eso **acota por construcción** cuánto puede cambiar el
+peso al subir una vuelta, sea cual sea la figura, y deja intactos los bordes
+verticales, que no cuestan nada porque el ángulo no cambia entre vueltas.
+
+    máscara punto a punto        0.550 mm de radio por vuelta
+    promediada en 5 mm           0.140 mm
+
+Y es lo que se ve en la foto de referencia: las púas se acortan al acercarse a
+la flor en vez de cortarse de golpe.
+
+## Se trajo la rama `rosca-paso-fijo`, y hacía falta
+
+El usuario avisó que ahí ya estaba resuelto, y tenía razón: sus cuatro arreglos
+de `comun.py` son exactamente lo que le pasa a una pared vertical con relieve
+angular, que es este florero.
+
+- **`paso_fijo`**. `marcha_vertical` está pensada para cúpulas; acá el
+  corrimiento entre vueltas es RADIAL y lo lee como si fuera vertical. Con
+  `--paso-fijo auto` la altura de capa queda en **0.4000 mm con desvío 0.0001**
+  en las 492 vueltas, en vez de bandearse.
+- **`N_ANG` adaptativo**. Con 32 ángulos fijos y 150 púas por vuelta el "peor
+  ángulo" era moiré, no pieza.
+- El **anillo plano** y el **piso de la rampa** en media capa.
+
+Copiar esos hunks en vez de traer la rama habría dejado dos versiones del mismo
+arreglo en el mismo archivo, que es la trampa que abre `MAPA.md`.
+
+Lo que se agregó encima: el criterio de si conviene el paso fijo estaba dentro
+de `gen_rosca.py`. Ahora vive en `comun.conviene_paso_fijo()` y lo usan los dos,
+porque una regla calibrada duplicada se separa. `gen_rosca.py` da el mismo
+número que antes.
+
+## `capas_transicion` había que apagarla, y el motivo importa
+
+Con la transición encendida, las primeras vueltas del florero subían 0.067 mm
+—cordones de 15:1, el mismo anillo imposible en la base que este archivo ya
+documenta más abajo— y de ahí salían el único puente de 29.4 mm y el 0.13 % de
+línea fina de la pieza.
+
+El motivo: la transición atenúa el paso para que el patrón nazca de a poco, pero
+en esta pieza el patrón **a esa altura todavía no existe** — las púas arrancan
+en `desde` y suben en `suave_mm`, en milímetros. La transición estaba atenuando
+por un patrón que no estaba. Con `--capas-transicion 0`: puente 0.00, línea fina
+0.00.
+
+## Dos controles que se corrieron
+
+- **El hongo sale byte a byte idéntico.** Regenerado desde
+  `hongo_latest.params.json` con todo lo de esta sesión adentro: 0 instrucciones
+  distintas contra `hongo_latest.gcode`, que es el que está impreso. Sólo cambia
+  el comentario de receta del encabezado.
+- **El contador de púas está calibrado.** Sobre una pieza sin figura generada
+  con `puas=150`, `vista_relieve.py` cuenta 150. Antes contaba 33, y el roto era
+  el medidor: sus filas medían 0.09 mm de alto contra los 0.4 que sube una
+  vuelta, así que cada fila veía un cuarto de vuelta. Una fila = una vuelta.
+
+## ARREGLADO: la CLI de los bowls no generaba NINGUNA pieza del catálogo
+
+`'str' object is not callable` en `__main__.py:607`. La silueta seguía siendo el
+NOMBRE cuando `--segundos-vuelta` —que viene encendido por defecto— le pedía el
+radio a una altura. El propio comentario de esa línea decía "silueta ya
+resuelta" y no lo estaba. Sólo se salvaban las piezas que vienen de un
+`--perfil`, que es por donde entra el hongo. Ahora la silueta se resuelve a
+función apenas se elige.
+
+## ARREGLADO: `test_verificar.py` daba 12 de 13, y era el banco
+
+Es el punto 2 de "LO QUE SIGUE" de la sesión de la rosca. El caso buscaba
+`"100.00%"` pegado y `verificar_pieza` lo imprime `"100.00 %"` con la unidad
+separada. El criterio estaba bien desde siempre. **13 de 13.**
+
+Un banco con un rojo permanente enseña a ignorarlo, que es lo contrario de para
+lo que existe.
+
+## Lo que queda abierto
+
+1. **El choque de la base, sin arreglar y a propósito.** El florero mide 0.21 %
+   y está TODO en los 3 mm de abajo: la vuelta plana que arranca la pared se
+   deposita encima de la última pasada de la espiral del piso, mismo radio y
+   misma Z. **No lo trae este patrón** — un cilindro liso generado con el mismo
+   código da 4.99 % en esa franja (control corrido). Arreglarlo es tocar el
+   traspaso piso-pared de `generar_pieza`, que afecta a todas las piezas; no se
+   hace de paso en una pieza nueva.
+2. **`ver_rosca.py` y `vista_relieve.py` se pisan.** Los dos desenrollan un
+   g-code a PNG y los dos llegaron por su cuenta a "una fila de píxeles por
+   vuelta". `vista_relieve.py` no depende de numpy ni de PIL, mide el relieve
+   contra la pared de cada vuelta (no contra el radio global), respeta la escala
+   en los dos ejes y cuenta el período de la textura; `ver_rosca.py` tiene el
+   paso de la rosca metido adentro. Habría que quedarse con uno. No se borró
+   ninguno porque el de la rosca es de un trabajo en curso ajeno.
+3. **El tiempo de impresión no está estimado, y el estimador del injerto va a
+   mentir.** Son 900 segmentos por vuelta de 0.14 mm cada uno: a esa longitud
+   manda la ACELERACIÓN de la máquina, no el `F` que se le pide, y
+   `bambu.ts` calcula largo/velocidad. El número que anuncie va a salir corto.
+4. **El florero es de una pared de un cordón.** Que aguante agua no está
+   medido y no se afirma.
+
+---
+
 # Sesión del 25-08-2026 — altura de capa, primera vuelta y render sólido
 
 ## ARREGLADO: la primera vuelta flotaba 0.2 mm sobre la cama

@@ -372,6 +372,37 @@ def _espiral_base(forma: Callable[[float], float], perfil: Perfil, paso_arco: fl
 ULTIMO_MAPEO: dict = {}
 
 
+SOLAPE_MINIMO = 0.5      # del ancho de cordón. El jarrón, impreso, mide 0.395.
+
+
+def peor_salto_radial(funcion_radio, altura: float, dz: float, n_ang: int = 360) -> float:
+    """Cuánto se corre el radio entre dos vueltas seguidas, en el peor ángulo."""
+    angs = [k / n_ang * 2 * math.pi for k in range(n_ang)]
+    peor = 0.0
+    z = 0.0
+    while z + dz <= altura:
+        t, t2 = z / altura, (z + dz) / altura
+        peor = max(peor, max(abs(funcion_radio(a, t2) - funcion_radio(a, t)) for a in angs))
+        z += dz
+    return peor
+
+
+def conviene_paso_fijo(funcion_radio, altura: float, dz: float, ancho: float):
+    """
+    Si a paso `dz` las vueltas siguen solapando lo suficiente, devuelve
+    `(True, solape)`; si no, `(False, solape)` y hay que dejar la marcha
+    adaptativa.
+
+    Vive acá, y no en quien lo use, por el mismo motivo que `marcha_vertical`:
+    ya lo usan dos —`gen_rosca.py` y la CLI de los bowls— y con una copia en
+    cada lado se van a separar. El criterio está calibrado en `gen_rosca.py`
+    contra el jarrón, que está impreso y mide 39.5 % de solape.
+    """
+    salto = peor_salto_radial(funcion_radio, altura, dz)
+    solape = (ancho - salto) / max(ancho, 1e-9)
+    return solape >= SOLAPE_MINIMO, solape
+
+
 def generar_pieza(
     funcion_radio: FuncionRadio,
     altura: float,

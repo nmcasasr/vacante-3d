@@ -19,7 +19,8 @@ import math
 import sys
 sys.path.insert(0, '.')
 import fullcontrol as fc
-from lamparas.comun import Perfil, generar_pieza, a_gcode, guardar_gcode
+from lamparas.comun import (Perfil, a_gcode, conviene_paso_fijo, generar_pieza,
+                            guardar_gcode, peor_salto_radial)
 from lamparas import rosca
 
 ALTURA = 230.0
@@ -117,27 +118,13 @@ else:
 # gusto: se mide el peor salto radial entre dos vueltas consecutivas y se usa
 # paso fijo solo si queda cordón solapado de sobra.
 PASO_FIJO_Z = 0.30       # mm; es la media que venía dando la marcha adaptativa
-SOLAPE_MINIMO = 0.5      # del ancho de cordón. El jarrón, impreso, mide 0.395.
-
-
-def peor_salto_radial(fr, dz, n_ang=360):
-    """Cuánto se corre el radio entre dos vueltas seguidas, en el peor ángulo."""
-    angs = [k / n_ang * 2 * math.pi for k in range(n_ang)]
-    peor = 0.0
-    z = 0.0
-    while z + dz <= altura:
-        t, t2 = z / altura, (z + dz) / altura
-        peor = max(peor, max(abs(fr(a, t2) - fr(a, t)) for a in angs))
-        z += dz
-    return peor
-
-
+# El criterio de si conviene el paso fijo vive en `lamparas/comun.py`: lo usa
+# también la CLI de los bowls, y dos copias de una regla calibrada se separan.
 paso_fijo = args.paso_fijo == "si"
 paso_z = PASO_FIJO_Z if args.paso_fijo != "no" else None
 if args.paso_fijo == "auto":
-    salto = peor_salto_radial(funcion_radio, PASO_FIJO_Z)
-    solape = (base.ancho - salto) / base.ancho
-    paso_fijo = solape >= SOLAPE_MINIMO
+    salto = peor_salto_radial(funcion_radio, altura, PASO_FIJO_Z)
+    paso_fijo, solape = conviene_paso_fijo(funcion_radio, altura, PASO_FIJO_Z, base.ancho)
     print(f"  paso fijo {PASO_FIJO_Z:.2f} mm -> peor salto radial {salto:.3f} mm, "
           f"solape {solape*100:.0f}% -> {'FIJO' if paso_fijo else 'ADAPTATIVO'}",
           flush=True)
