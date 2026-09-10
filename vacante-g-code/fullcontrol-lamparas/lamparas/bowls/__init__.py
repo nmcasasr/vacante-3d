@@ -110,8 +110,13 @@ def pasos_bowl(
         fn_silueta = SILUETAS[silueta](**(parametros_silueta or {}))
     # Contrato de construir(): devuelve al menos
     #   (funcion_radio, funcion_dz, segmentos, paso_z)
-    # y opcionalmente un quinto elemento, funcion_dangulo, que solo usan los
-    # patrones cuyo trazo vuelve sobre sí mismo (rizos).
+    # y opcionalmente dos más:
+    #   [4] funcion_dangulo, que sólo usan los patrones cuyo trazo vuelve sobre
+    #       sí mismo (rizos);
+    #   [5] funcion_flujo, el factor de SECCIÓN punto a punto, que sólo usan
+    #       los que engordan su relieve sin moverlo (puas).
+    # Los dos son posicionales y opcionales, así que un patrón que quiera el
+    # [5] y no el [4] tiene que devolver None en el medio.
     # La boquilla no es un parámetro del dibujo, pero hay patrones que no se
     # pueden calcular sin ella: `peine` elige cuántas líneas entran a partir de
     # cuál es la más fina que el cordón todavía resuelve. Se le pasa sólo a
@@ -132,6 +137,9 @@ def pasos_bowl(
     resultado = DISENOS[diseno].construir(fn_silueta, altura=altura, **par_patron)
     fn_radio, fn_dz, segmentos, paso_z = resultado[:4]
     fn_dangulo = resultado[4] if len(resultado) > 4 else None
+    # sexto elemento opcional: el factor de SECCIÓN punto a punto. Sólo lo
+    # devuelven los patrones que engordan su relieve sin moverlo (`puas`).
+    fn_flujo = resultado[5] if len(resultado) > 5 else None
 
     # La deformación de estructura se suma ENCIMA del radio que devolvió el
     # patrón, envolviéndolo. Así compone con todos los patrones sin que ninguno
@@ -178,6 +186,7 @@ def pasos_bowl(
         segmentos_por_capa=segmentos_por_capa or segmentos,
         funcion_dz=fn_dz,
         funcion_dangulo=fn_dangulo,
+        funcion_flujo=fn_flujo,
         base_solida=base_solida,
         hueco=hueco,
         refuerzo_hueco=refuerzo_hueco,

@@ -1,3 +1,161 @@
+# Sesión del 10-09-2026 (b) — el florero de turupes, y las dos ramas juntas
+
+## Lo primero: NADA ESTÁ IMPRESO
+
+Lo verificado es el g-code. Las tres piezas de `output/florero-kadzi/` pasan los
+tres criterios contra `Squeezy Fidget Toy.gcode`, y ninguna salió de la
+impresora todavía. Los dos cupones existen justamente para eso.
+
+## Qué pidió el usuario, en tres correcciones
+
+La técnica quedó definida a lo largo de la sesión y las dos primeras versiones
+estaban mal. Vale la pena el orden, porque cada corrección tiró abajo una
+suposición:
+
+1. **El dibujo lo hacen los turupes**, no las zonas lisas. En modo vaso, vueltas
+   normales, y donde va la figura la boquilla sale y entra.
+2. **El pulso está en TODA la pieza**; lo que cambia es la INTENSIDAD. En la
+   figura sale más, en el fondo sale menos. Con el fondo liso el dibujo queda
+   flotando y se ve el recuadro — que es exactamente lo que decía el encabezado
+   de `bowls/peine.py`, escrito por la otra rama. Se leyó tarde.
+3. **Se alternan vueltas lisas y vueltas con patrón**: 3 y 2 en la foto. Las
+   lisas son las costillas continuas que atan las columnas entre sí.
+
+Y una cuarta, mirando el primer cupón: **los turupes eran demasiado cortos para
+verse**. 0.6 mm no se percibe. El rango subió a 1.2..3.6 mm y las púas bajaron
+de 150 a 70-95 para que quede valle.
+
+## Lo que decidió que la pieza se imprimiera: el grumo CRECE
+
+Con la cadencia encendida, la primera vuelta con patrón se corre la amplitud
+entera respecto de la vuelta lisa de abajo. Con 1.30 mm contra un cordón de 1.0
+la punta del grumo queda al aire, y está medido:
+
+    salto entero de una vez     contacto 5.90 %   -> NO IMPRIMIBLE
+    repartido en 2 vueltas      contacto 1.38 %   -> IMPRIMIBLE
+
+(la referencia mide 1.88 %). `crecida()` reparte la amplitud a lo largo de las
+`con_patron` vueltas de la banda. La BAJADA de vuelta a la pared lisa no
+necesita rampa: correrse hacia adentro no deja nada al aire.
+
+De ahí sale la regla de tamaño de esta pieza: **el salto por vuelta es
+`amplitud / con_patron`, y tiene que caber en un cordón.** Con cordón de 1.2 y
+`con_patron=3`, la amplitud máxima es 3.6 mm.
+
+## ARREGLADO: el aviso medía |Δ| y gritaba sobre una pieza sana
+
+`_avisar` comparaba `abs(radio(t2) - radio(t))`. Cuando la banda de patrón
+termina, la vuelta lisa de arriba se corre 1.3 mm HACIA ADENTRO, y eso no deja
+nada al aire: se apoya en el valle, que vale la silueta en todas las vueltas.
+Con `abs()` los dos sentidos daban 1.30 y el aviso salía igual con la pieza ya
+arreglada. Ahora mide el salto CON SIGNO, hacia afuera, que es el único que
+produce voladizo.
+
+**El mismo `abs()` está en `comun.peor_salto_radial`, y ahí NO se tocó.** Es
+criterio compartido con `gen_rosca.py` y calibrado contra el jarrón. Se
+comprobó que cambiarlo sería seguro —las nueve variantes de rosca deciden lo
+mismo con `abs` y con signo, la diferencia es 0.269 contra 0.263— pero es una
+decisión que no corresponde tomar de paso en una pieza nueva. Ver "lo que
+queda abierto".
+
+## ARREGLADO: la banda empezaba a media vuelta de donde cierra la espiral
+
+`int(t/dt_capa + 0.5)` cambia de capa en `t = (k+0.5)·dt_capa`, o sea medio giro
+corrido del punto donde el recorrido ya tiene su costura. Eso agrega un SEGUNDO
+escalón helicoidal en vez de esconder el cambio en el que ya existe. Con
+`math.floor` los dos coinciden.
+
+## NUEVO: `funcion_flujo` en `generar_pieza`
+
+Multiplicador del ancho de cordón punto a punto, `(angulo, t) -> factor`. Es
+cuánto material se deposita, no dónde va la boquilla: engorda el turupe sin
+moverlo. Se emite como `ExtrusionGeometry` sólo cuando el factor CAMBIA —
+emitirlo en cada punto duplicaría las líneas del archivo para repetir el mismo
+número.
+
+Con None no emite nada: el hongo se regenera BYTE A BYTE idéntico al impreso, y
+el peine también.
+
+**Ojo con el preview.** `; LINE_WIDTH:` sigue llevando el ancho nominal
+constante, que es lo que `MAPA.md` fija como contrato con Orca. O sea que el
+cupón de extrusión se va a ver de ancho uniforme en el preview aunque la E sí
+varíe. Medido sobre el archivo: banda 1 pico 0.2993, banda 5 pico 0.4789, que
+es exactamente 1.6x. Lo que se imprime está bien; lo que se ve, no.
+
+## NUEVO: `verificar_continuidad.py`
+
+El usuario preguntó si los cambios de capa son fluidos y no había con qué
+contestarle: `verificar_pieza.py` mide apoyo y sección, y `verificar_capas.py`
+lee las marcas `; CHANGE_LAYER`, que las emite el INJERTO y no el cuerpo.
+
+Sobre el florero: **el cuerpo entero es UNA línea de 453 973 movimientos
+seguidos**, 0 viajes, 0 retracciones, 0 bajadas de Z, y la subida es 0.00044 mm
+pareja. El paso de XY máximo es el turupe y nada lo excede.
+
+Las dos trampas al escribirlo, las dos pisadas primero:
+
+- **La extrusión es RELATIVA** (`M83`). Cada `E0.166` es lo que se empuja en ese
+  segmento, no la posición del filamento. Comparando contra el `E` anterior
+  salían 90 299 "retracciones" en una pieza que tiene dos.
+- **El cuerpo no empieza en la primera línea.** Adelante hay purga y homing, y
+  esos son los movimientos MÁS GRANDES del archivo: descartarlos por tamaño
+  escondería el defecto que se busca. Ahora el cuerpo se define por lo que es,
+  la tirada más larga de movimientos que extruyen seguidos.
+
+Es la tercera vez en la sesión que el número raro era el medidor y no la pieza.
+
+## Las dos ramas juntas: `feature/florero-kadzi-final`
+
+`kadzi1` hizo las púas, `kadzi2` el peine, y las dos tocaron los mismos tres
+registros. Los dos g-code se regeneran byte a byte después de juntarlos. Lo que
+se unificó está en el mensaje del commit del merge; lo que importa acá:
+
+- **El modelo del cordón de kadzi2 se conectó a las púas.** Contesta la
+  pregunta del usuario —"cuánto se ve"— con un número en vez de una regla. El
+  aviso viejo era `paso < 1.0 mm`, y a 180 púas, donde ya se pierde la mitad
+  del relieve, no decía nada.
+- **El hallazgo de kadzi1 (`--capas-transicion 0`) cura la pieza de kadzi2.** El
+  peine nunca pasó por `verificar_pieza.py` y daba NO IMPRIMIBLE, con un puente
+  de 21.2 mm. Con la transición apagada: 0.00 e IMPRIMIBLE.
+- **`caritas`, `feliz` y `triste` reventaban en la rama de kadzi2.** Un
+  `**kwargs` que reenvía no es una promesa de aceptar todo.
+
+## Los dos cupones, que es lo que hay que imprimir
+
+Ø50 x 36 mm, cordón 1.2, ~21 min de recorrido cada uno (contá 25-35 reales: son
+40 000 segmentos cortos y ahí manda la aceleración, no el `F`).
+
+- `cupon_largos.gcode` — cinco bandas de 7.2 mm con el turupe a 1.2, 1.8, 2.4,
+  3.0 y 3.6 mm. La quinta está a propósito en el límite: salto 1.2 contra
+  cordón 1.2, 0 % de solape, y es la única con tramos al aire (0.15 %, el peor
+  0.65 mm). Si esa banda sale y las otras también, el techo es más alto de lo
+  que dice el modelo.
+- `cupon_extrusion.gcode` — amplitud fija en 2.4 y el flujo del turupe a 1.0,
+  1.2, 1.4, 1.6 y 1.8. IMPRIMIBLE en las cinco.
+
+Los dos van con `--p mascara=ninguna`: son para leer el turupe, no el dibujo.
+
+## Lo que queda abierto
+
+1. **`comun.peor_salto_radial` mide `abs()`.** Está comprobado que pasarlo a
+   signo no mueve ninguna decisión de la rosca, pero es criterio compartido y
+   calibrado: la decisión es del usuario. Mientras tanto, el florero necesita
+   `--paso fijo` a mano; con `--paso medir` da ADAPTATIVO y la pieza se rompe
+   (fue medido: puentes de 92 mm).
+2. **`SOLAPE_MINIMO` es 0.5 y el jarrón impreso mide 0.395.** El umbral es más
+   estricto que una pieza que funciona, así que `medir` va a decir ADAPTATIVO
+   en cosas que se imprimen bien. Es el mismo punto 1 visto de costado.
+3. **El contador de púas de `vista_relieve.py` da 0 en los cupones.** Con la
+   cadencia encendida su detección de "vuelta más texturada" no encuentra el
+   período. Da bien en el florero (75) y en una pieza sin cadencia (150 clavadas
+   sobre `puas=150`). Es el medidor, no la pieza.
+4. **El choque del arranque, 0.2 %, sigue sin arreglar y a propósito.** Está
+   todo en los 3 mm de abajo y no lo trae este patrón: un cilindro liso
+   generado con el mismo código da 4.99 % en esa franja.
+5. **Que la pared de un cordón aguante agua no está medido.**
+
+---
+
 # Sesión del 10-09-2026 — el florero de púas
 
 ## Lo primero: NO ESTÁ IMPRESO

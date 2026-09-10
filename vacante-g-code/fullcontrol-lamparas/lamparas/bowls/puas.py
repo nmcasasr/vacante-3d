@@ -1,12 +1,43 @@
 """
-Tubo cubierto de púas: la boquilla sale y entra en cada púa, y el dibujo
-aparece donde las púas se apagan.
+El dibujo lo hacen los TURUPES: la pared da vueltas normales y la boquilla
+sale y entra sólo donde va la figura.
 
-Es la lámpara de referencia. Vista de lejos parece un tejido o un cepillo;
-de cerca son cientos de columnas de material que sobresalen de la pared, y
-las flores no están pintadas ni caladas: **están lisas**. Es el mismo truco
-de `bowls/zigzag.py` —la figura se dibuja cambiando la PIEL y no el color—
-llevado a una textura mucho más densa. Ver `lamparas/superficie.py`.
+La pieza se imprime en modo vaso como cualquier otra —una espiral, una vuelta
+por capa— y el patrón no cambia la Z ni el recorrido: cambia el RADIO dentro
+de la vuelta. Donde la máscara dice que no hay dibujo, el radio es la silueta
+y la boquilla va derecha. Donde dice que sí, el radio pulsa `puas` veces por
+vuelta y cada pulso deposita un grumo que sobresale. Vista en planta, la
+vuelta es un círculo liso con las púas asomando en el sector dibujado, que es
+el croquis que describe la técnica.
+
+Que las púas se APILEN es lo que convierte los grumos sueltos en dibujo: todas
+las vueltas pulsan en la misma fase, así que cada púa cae encima de la de la
+vuelta anterior y arma una columna continua. Es el mismo truco de
+`bowls/zigzag.py` —la figura se dibuja cambiando la PIEL y no el color— pero
+con el relieve concentrado en la figura en vez de repartido por la pared. Ver
+`lamparas/superficie.py`.
+
+## La perilla es `amplitud`, y no es lineal
+
+Cuánto se ve el dibujo es cuánto sale la boquilla. Pero lo que se ve no es lo
+que se pide: la boquilla deposita una cinta de un cordón de ancho, y esa cinta
+no entra en un valle más angosto que ella, así que parte del vuelo se rellena
+sola. `construir()` lo calcula antes de generar nada con el modelo de
+`lamparas/cordon.py`. Con 150 púas sobre Ø68 y cordón de 1.0:
+
+    amplitud pedida   0.60   0.80   1.00   1.30   1.60   2.00
+    relieve impreso   0.60   0.76   0.86   1.02   1.18   1.39
+
+Salir más se ve más, pero cada décima extra rinde menos. Y a `puas` fijas hay
+un techo: lo que falta a partir de ahí es VALLE, no altura.
+
+## Las dos lecturas de la misma máscara
+
+`invertir=0` —lo de arriba, y el valor por defecto— pone el relieve en la
+figura. `invertir=1` lo pone en el fondo y deja la figura lisa, que es como se
+lee la lámpara de referencia: la pared entera es un cepillo y las flores son
+los claros. El dibujo es el complemento, pero la pieza no: con 0 la boquilla
+oscila sólo en la fracción de la vuelta que ocupa la figura.
 
 ## Qué hace distinto a `zigzag`
 
@@ -15,8 +46,8 @@ otra lisa: el cordón liso de arriba marca el borde de los de abajo y se lee
 como una raya. Acá se busca lo contrario, una púa que se APILE:
 
 - La onda va **solo hacia afuera**. El valle vale exactamente la silueta, así
-  que la superficie interior queda limpia y todo el relieve se va para afuera,
-  que es lo que se ve en la referencia: por dentro el tubo es liso.
+  que la superficie interior queda limpia y todo el relieve se va para afuera:
+  por dentro el tubo es liso, y por eso sigue sirviendo para agua.
 - **Todas las vueltas llevan púa y en la misma fase** (`deriva` en 0). Cada púa
   cae encima de la de la vuelta anterior y se apilan en una columna continua.
   Alternando, no habría columna: habría raya.
@@ -48,6 +79,7 @@ dice.
 import math
 from typing import Optional, Tuple
 
+from ..cordon import sobrevive
 from ..superficie import Mascara, resolver
 from .siluetas import Silueta
 
@@ -97,16 +129,53 @@ def _ventana(t: float, desde: float, hasta: float, suave: float) -> float:
     return u * u * (3 - 2 * u)
 
 
+def _lista(texto: str):
+    """Los valores de un barrido, o () si no hay barrido."""
+    if not str(texto).strip():
+        return ()
+    return tuple(float(v) for v in str(texto).replace(" ", "").split(",") if v)
+
+
+def _bandas(texto: str, por_defecto: float):
+    """
+    `"0.6,0.9,1.2"` -> una función de t que devuelve el valor de su banda.
+
+    Las bandas parten la altura en tramos IGUALES y el corte es duro: la gracia
+    de un cupón es poder decir "la tercera banda se ve bien y la cuarta no", y
+    con un degradé entre bandas no hay una tercera banda, hay un continuo del
+    que no se puede leer un número.
+
+    Que el corte sea duro cuesta apoyo en la juntura —el radio salta la
+    diferencia entre dos bandas de una vuelta a la otra— y por eso `construir()`
+    mide el salto sobre la función de radio ya armada, que es la que ve las
+    junturas. Con las bandas ordenadas de menor a mayor, cada salto es una sola
+    diferencia entre vecinas y no el rango entero.
+    """
+    if not str(texto).strip():
+        return lambda t: por_defecto
+    vals = list(_lista(texto))
+    if not vals:
+        return lambda t: por_defecto
+    n = len(vals)
+    return lambda t: vals[min(n - 1, max(0, int(t * n)))]
+
+
 def construir(
     silueta: Silueta,
     altura: float,
     puas: int = 150,
     amplitud: float = 0.9,
+    amplitud_fondo: float = 0.35,
+    barrido: str = "",
+    flujo: float = 1.0,
+    flujo_barrido: str = "",
     ocupacion: float = 0.5,
     filo: float = 0.34,
+    lisas: int = 3,
+    con_patron: int = 2,
     muestras: int = 6,
     mascara="flores",
-    invertir: int = 1,
+    invertir: int = 0,
     suave_borde: float = 5.0,
     tomas: int = 5,
     deriva: float = 0.0,
@@ -114,6 +183,7 @@ def construir(
     hasta: float = 0.99,
     suave_mm: float = 5.0,
     altura_capa: float = 0.4,
+    ancho_cordon: float = 0.8,
     **par_mascara,
 ) -> Tuple[callable, Optional[callable], int, Optional[float]]:
     """
@@ -124,7 +194,40 @@ def construir(
             PASO que resulta, `2·pi·radio / puas`: por debajo de un cordón las
             púas vecinas se funden y vuelve a ser una pared ondulada. El módulo
             imprime el paso en mm para que no haya que hacer la cuenta.
-        amplitud: cuánto sobresale la púa, en mm.
+        amplitud: cuánto sale la boquilla en la FIGURA, en mm. Es la perilla
+            de "cuánto se ve el dibujo".
+        amplitud_fondo: cuánto sale en el resto de la pared, en mm. **No es 0**
+            a propósito: el pulso está en toda la pieza y lo que dibuja es la
+            DIFERENCIA de intensidad entre el fondo y la figura. Con 0 el
+            dibujo queda flotando sobre una pared lisa y se ve el recuadro, que
+            es otra pieza. Lo que se lee es `amplitud - amplitud_fondo`.
+        barrido: bandas de AMPLITUD a lo alto, para calibrar contra la pieza
+            impresa: `"0.6,0.9,1.2,1.5"` parte la altura en cuatro tramos
+            iguales y le da a cada uno su vuelo. Vacío = `amplitud` en toda la
+            pieza. Es lo que convierte una prueba en un cupón: en vez de
+            imprimir cuatro piezas para saber qué largo se ve bien, se imprime
+            una y se mira.
+        flujo: cuánto material se deposita EN EL TURUPE, como factor del ancho
+            de cordón. 1.0 es el nominal. Sube la sección sin mover la
+            boquilla, que es la otra forma de que el turupe se vea más: más
+            lleno en vez de más largo. El fondo siempre va a 1.0.
+        flujo_barrido: bandas de `flujo` a lo alto, igual que `barrido`:
+            `"1.0,1.2,1.4,1.6"`. Vacío = `flujo` en toda la pieza.
+
+            Los dos barridos son independientes y se pueden usar juntos, pero
+            conviene no hacerlo: con los dos a la vez, una banda que sale mal
+            no dice cuál de las dos cosas la arruinó.
+        lisas: cuántas vueltas seguidas van DERECHAS, sin pulsar.
+        con_patron: cuántas vueltas seguidas pulsan, después de las lisas. El
+            ciclo `lisas + con_patron` se repite hasta arriba. Con `lisas=0` el
+            patrón está en todas las vueltas.
+
+            Las vueltas lisas son las costillas continuas que se ven en la
+            pieza de referencia entre fila y fila de grumos, y son las que
+            atan las columnas entre sí: sin ellas cada columna se sostiene
+            sola. Cuesta apoyo —el radio salta la amplitud entera al pasar de
+            una vuelta lisa a una con patrón— así que `construir()` lo mide y
+            lo dice antes de generar.
         ocupacion: qué fracción del paso ocupa la púa (0..1). 1 no deja valle:
             las púas se tocan y la textura desaparece. Se llama así y no
             "ancho" porque `--ancho-linea` ya es un ancho en mm y son cosas
@@ -136,8 +239,17 @@ def construir(
             también es lo que fija el tamaño del archivo.
         mascara: dónde va la figura. Por defecto 'flores'. Para mirar la
             textura sola, sin figura: `mascara=ninguna invertir=0`.
-        invertir: 1 = la figura es la zona LISA y la púa es el fondo, que es lo
-            que hace la pieza de referencia. 0 = al revés.
+        invertir: **0 (por defecto) = la figura son los TURUPES**: la pared da
+            vueltas normales y la boquilla sale y entra sólo donde va el
+            dibujo. Es la técnica tal como se pidió, y es lo que se ve en el
+            croquis de planta: un círculo liso con las púas asomando en el
+            sector dibujado. 1 = al revés, la figura queda lisa y la púa es el
+            fondo, que es como se lee la lámpara de referencia.
+
+            El costo de imprimir NO es el mismo en los dos sentidos aunque el
+            dibujo sea el complemento: con 0 la boquilla oscila sólo en la
+            fracción de la vuelta que ocupa la figura, y el resto del tiempo
+            va derecha.
         suave_borde: en cuántos mm de ALTURA se desvanece el borde de la figura,
             y `tomas` con cuántas muestras. No es un parámetro estético: es lo
             que acota el salto de radio por vuelta. Ver abajo.
@@ -149,6 +261,9 @@ def construir(
             rampas. En mm y no en fracción a propósito: ver `_ventana`.
         altura_capa: solo para el aviso — cuánto sube una vuelta. No cambia la
             pieza, la altura real la fija `--altura-capa`.
+        ancho_cordon: el ancho del cordón, para predecir cuánto del turupe
+            sobrevive. Lo pone `bowls.pasos_bowl` desde el perfil de impresión;
+            no se pide por `--p`. No cambia la pieza: sólo el aviso.
         **par_mascara: se le pasan a la máscara (para 'flores': cantidad,
             petalos, tamano, corazon, borde_mm, semilla...).
 
@@ -191,6 +306,7 @@ def construir(
     desplazamientos = [(k - (n - 1) / 2) * dt_borde for k in range(n)]
 
     def peso(angulo: float, t: float) -> float:
+        """Cuánto de FIGURA hay en ese punto: 0 = fondo, 1 = dibujo."""
         m = 0.0
         for d in desplazamientos:
             m += fn(angulo, min(1.0, max(0.0, t + d)))
@@ -199,20 +315,105 @@ def construir(
             m = 1.0 - m
         return m * _ventana(t, desde, hasta, suave_mm / max(altura, 1e-9))
 
-    def radio(angulo: float, t: float) -> float:
-        p = peso(angulo, t)
-        if p <= 0.0:
-            return silueta(t)
+    # --- la cadencia vertical: vueltas lisas y vueltas con patrón ---------
+    #
+    # No todas las vueltas pulsan. El ciclo es `lisas` vueltas derechas y
+    # después `con_patron` vueltas pulsando, y se repite hasta arriba. Es lo
+    # que se ve en la pieza de referencia y no es decorativo: la columna de
+    # púas necesita algo de dónde agarrarse. Las vueltas lisas son una pared
+    # continua que ata las columnas entre sí; sin ellas cada columna es un
+    # hilo suelto sostenido sólo por sí mismo.
+    #
+    # Cuesta apoyo y por eso hay que medirlo: entre una vuelta lisa y la
+    # siguiente con patrón el radio salta la amplitud entera EN ESE ÁNGULO.
+    # El grumo apoya sobre la vuelta lisa de abajo y vuela hacia afuera, que
+    # es exactamente lo que se ve en la foto — el grumo asomando por encima
+    # de las costillas lisas.
+    dt_capa = altura_capa / max(altura, 1e-9)
+    ciclo = max(0, int(lisas)) + max(1, int(con_patron))
+
+    def pulsa(capa: int) -> bool:
+        """True si a esa vuelta le toca patrón."""
+        if lisas <= 0:
+            return True
+        return (capa % ciclo) >= int(lisas)
+
+    def crecida(capa: int) -> float:
+        """
+        Qué fracción de la amplitud le toca a esa vuelta DENTRO de su banda.
+
+        El grumo no sale entero de una vez: crece a lo largo de las
+        `con_patron` vueltas de la banda, así que con 2 vueltas la primera sale
+        a la mitad y la segunda entera.
+
+        No es estético, es lo único que hace que la banda se apoye. Saliendo
+        entero de golpe, la primera vuelta con patrón se corre la amplitud
+        COMPLETA respecto de la vuelta lisa de abajo, y con 1.30 mm contra un
+        cordón de 1.0 la punta del grumo queda al aire: medido, 5.90 % de
+        muestras sin apoyo contra el 1.88 % de la referencia, o sea NO
+        IMPRIMIBLE. Repartido en dos vueltas el salto es la mitad y cada una
+        apoya sobre la anterior.
+
+        La bajada de vuelta a la pared lisa no necesita rampa: correrse hacia
+        ADENTRO no deja nada al aire — la vuelta lisa se apoya en el valle,
+        que vale la silueta en todas las vueltas.
+        """
+        if lisas <= 0:
+            return 1.0
+        k = (capa % ciclo) - int(lisas)          # 0 .. con_patron-1
+        return (k + 1) / max(1, int(con_patron))
+
+    amp_de = _bandas(barrido, amplitud)
+    flujo_de = _bandas(flujo_barrido, flujo)
+
+    def funcion_flujo(angulo: float, t: float) -> float:
+        """El factor de sección en ese punto: nominal en el fondo, `flujo` en el turupe."""
+        f = flujo_de(t)
+        if f == 1.0:
+            return 1.0
+        capa = math.floor(t / dt_capa)
+        if not pulsa(capa):
+            return 1.0
+        # Sigue la forma del pulso, no un escalón: el turupe se engorda donde
+        # está y el valle queda con la sección nominal. Con un escalón, el
+        # cambio de sección cae en mitad del flanco y se lee como un anillo.
         fase = angulo * puas / TAU + deriva * t * puas
-        return silueta(t) + amplitud * p * _pulso(fase % 1.0, ocupacion, filo)
+        return 1.0 + (f - 1.0) * _pulso(fase % 1.0, ocupacion, filo)
 
-    _avisar(silueta, altura, radio_medio, peso, puas, amplitud, deriva, altura_capa)
+    def radio(angulo: float, t: float) -> float:
+        base = silueta(t)
+        # `floor` y no `round`: la banda tiene que empezar donde la espiral
+        # cierra la vuelta, no a media vuelta de ahí. Con `round` el cambio de
+        # lisa a patrón caía en t = (k+0.5)·dt_capa, o sea medio giro corrido
+        # del punto donde el recorrido ya tiene su costura, y eso agrega un
+        # SEGUNDO escalón helicoidal en vez de esconder el cambio en el que ya
+        # existe. Con `floor` los dos coinciden.
+        capa = math.floor(t / dt_capa)
+        if not pulsa(capa):
+            return base
+        # El pulso está en TODA la vuelta; lo que cambia es cuánto sale. En el
+        # fondo sale `amplitud_fondo` y en la figura `amplitud`, y la máscara
+        # interpola entre las dos. Que el fondo también pulse es lo que hace
+        # que la pieza se lea como una piel con el dibujo más marcado, y no
+        # como un sello pegado sobre una pared lisa.
+        amp = amplitud_fondo + (amp_de(t) - amplitud_fondo) * peso(angulo, t)
+        amp *= crecida(capa)
+        if amp <= 0.0:
+            return base
+        fase = angulo * puas / TAU + deriva * t * puas
+        return base + amp * _pulso(fase % 1.0, ocupacion, filo)
 
-    return radio, None, max(120, puas * max(3, muestras)), None
+    _avisar(silueta, altura, radio_medio, radio, pulsa, lisas, con_patron,
+            puas, amplitud, deriva, altura_capa, ocupacion, filo, ancho_cordon,
+            _lista(barrido))
+
+    return (radio, None, max(120, puas * max(3, muestras)), None,
+            None, funcion_flujo)
 
 
-def _avisar(silueta, altura, radio_medio, peso, puas, amplitud, deriva,
-            altura_capa) -> None:
+def _avisar(silueta, altura, radio_medio, radio, pulsa, lisas, con_patron,
+            puas, amplitud, deriva, altura_capa, ocupacion, filo,
+            ancho_cordon, bandas=()) -> None:
     """
     Los dos números que deciden si esto se imprime, medidos antes de generar.
 
@@ -223,34 +424,83 @@ def _avisar(silueta, altura, radio_medio, peso, puas, amplitud, deriva,
     paso_mm = TAU * radio_medio / max(puas, 1)
     print(f"Púas: {puas} por vuelta sobre radio ~{radio_medio:.1f} mm -> "
           f"paso {paso_mm:.2f} mm, {amplitud:.2f} mm de vuelo.")
-    if paso_mm < 1.0:
-        print(f"  AVISO: con un paso de {paso_mm:.2f} mm las púas vecinas se funden "
-              f"con cualquier cordón de 0.8 o más. Bajá `puas` o subí el radio.")
 
-    # Cuánto se corre el radio de una vuelta a la siguiente por culpa del
-    # BORDE de la figura, en el peor punto de la pieza. Es exactamente lo que
-    # `comun.marcha_vertical` va a mirar para decidir el paso vertical.
+    # Cuánto del vuelo llega a la SUPERFICIE, que es lo único que se ve y se
+    # toca. La boquilla no deposita una línea sin espesor sino una cinta de
+    # `ancho_cordon`, y esa cinta no entra en un valle más angosto que ella: el
+    # g-code puede tener un turupe de 1.0 mm y la pieza salir con una
+    # ondulación insinuada. Lo calcula `lamparas/cordon.py` modelando la
+    # superficie como la unión de los discos del cordón.
+    #
+    # Reemplaza al aviso viejo, que era `paso < 1.0 mm`. Esa regla —"el paso
+    # tiene que medir un cordón"— es de las que suenan bien y son falsas en las
+    # dos direcciones; la tabla del encabezado de `cordon.py` la desmiente con
+    # números. Acá no hay regla: hay una cuenta, y cuesta milisegundos contra
+    # los minutos que tarda generar el g-code para descubrir que salió liso.
+    diente = lambda f: _pulso(f, ocupacion, filo)  # noqa: E731
+    # Con barrido se informa BANDA POR BANDA: el cupón existe para leer un
+    # número por banda contra la pieza impresa, y un promedio de las cinco no
+    # se puede comparar con nada.
+    if bandas:
+        print(f"  cada banda, del turupe al cordón de {ancho_cordon:g} mm:")
+        queda = 1.0
+        for k, a in enumerate(bandas):
+            c, i = sobrevive(diente, radio_medio, ancho_cordon, puas, a)
+            q = i / c if c > 1e-9 else 0.0
+            queda = min(queda, q)
+            print(f"      banda {k + 1}: pide {a:.2f} mm -> quedan {i:.2f} mm "
+                  f"({100 * q:.0f} %)")
+    else:
+        crudo, impreso = sobrevive(diente, radio_medio, ancho_cordon, puas, amplitud)
+        queda = impreso / crudo if crudo > 1e-9 else 0.0
+        print(f"  del turupe sobrevive el {100 * queda:.0f} % al cordón de "
+              f"{ancho_cordon:g} mm: {impreso:.2f} mm de los {crudo:.2f} pedidos.")
+    if queda < 0.60:
+        print(f"  AVISO: el cordón se come el {100 * (1 - queda):.0f} % del turupe. "
+              f"Subir `amplitud` NO lo arregla — lo que falta es VALLE, no altura: "
+              f"la cinta no llega al fondo entre dos púas. Bajá `puas`, bajá "
+              f"`ocupacion` o poné una boquilla más fina.")
+
+    # Cuánto se corre el radio de una vuelta a la siguiente, en el peor punto
+    # de la pieza. Es lo que `comun.marcha_vertical` va a mirar para decidir el
+    # paso, y es la regla que gobierna todas las piezas del proyecto:
+    #
+    #     Δ radio HACIA AFUERA por vuelta < ancho de cordón
+    #
+    # **Hacia afuera, con signo, y no en valor absoluto.** Los dos sentidos no
+    # son lo mismo y confundirlos daba un aviso que gritaba sobre una pieza
+    # sana: cuando la banda de patrón termina, la vuelta lisa de arriba se
+    # corre 1.3 mm hacia ADENTRO, y eso no deja nada al aire —se apoya en el
+    # valle, que vale la silueta en todas las vueltas— mientras que los mismos
+    # 1.3 mm hacia afuera son la punta del grumo colgando. Con `abs()` los dos
+    # daban 1.30 y el aviso salía igual con la pieza ya arreglada.
     N_A, N_T = 240, 300
     dt = altura_capa / max(altura, 1e-9)
-    peor = 0.0
+    afuera = 0.0
     for i in range(N_T):
         t = i / (N_T - 1)
         t2 = min(1.0, t + dt)
         for k in range(N_A):
             a = k / N_A * TAU
-            peor = max(peor, abs(peso(a, t2) - peso(a, t)))
-    salto = peor * amplitud
+            afuera = max(afuera, radio(a, t2) - radio(a, t))
     # la silueta también se corre; se informa junta, que es como la ve el paso
     salto_silueta = max(abs(silueta(min(1.0, i / 200 + dt)) - silueta(i / 200))
                         for i in range(201))
-    print(f"  borde de la figura: {salto:.3f} mm de radio por vuelta de "
-          f"{altura_capa:.2f} mm (la silueta aporta {salto_silueta:.3f}).")
+    print(f"  salto de radio HACIA AFUERA por vuelta de {altura_capa:.2f} mm: "
+          f"{afuera:.3f} mm contra un cordón de {ancho_cordon:g} "
+          f"({100 * max(0.0, ancho_cordon - afuera) / max(ancho_cordon, 1e-9):.0f} % "
+          f"de solape; la silueta aporta {salto_silueta:.3f}).")
+    if lisas > 0:
+        print(f"  cadencia: {lisas} vueltas lisas + {con_patron} con patrón, y el "
+              f"grumo crece {1 / max(1, int(con_patron)):.0%} de la amplitud por "
+              f"vuelta hasta salir entero.")
     if deriva:
         print(f"  AVISO: `deriva={deriva:g}` desalinea las púas entre vueltas. "
               f"Eso mete un salto de hasta {amplitud:.2f} mm en TODOS los ángulos, "
               f"no solo en el borde de la figura, y el paso vertical se desploma.")
-    if salto > 0.25:
-        print(f"  AVISO: {salto:.3f} mm por vuelta es mucho. `marcha_vertical` "
-              f"acorta el paso de TODA la pieza hasta que la separación vuelva a "
-              f"valer un cordón, así que un borde duro en una flor se paga en la "
-              f"pieza entera. Subí `borde` en la máscara o bajá `amplitud`.")
+    if afuera > ancho_cordon:
+        print(f"  AVISO: {afuera:.2f} mm hacia afuera contra un cordón de "
+              f"{ancho_cordon:g}: la vuelta nueva NO solapa con la de abajo y esa "
+              f"punta queda al aire. Subí `con_patron` —el grumo crece en más "
+              f"vueltas y cada salto es menor—, bajá `amplitud`, o subí "
+              f"`suave_borde` si el que salta es el borde de la figura.")

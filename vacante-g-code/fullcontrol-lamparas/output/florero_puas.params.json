@@ -22,6 +22,8 @@
     "--paso",
     "medir",
     "--p",
+    "invertir=1",
+    "--p",
     "puas=150",
     "--p",
     "amplitud=1.0",

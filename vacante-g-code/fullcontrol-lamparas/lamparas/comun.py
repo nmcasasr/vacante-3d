@@ -412,6 +412,7 @@ def generar_pieza(
     capas_base: int = 1,
     funcion_dz: Optional[FuncionRadio] = None,
     funcion_dangulo: Optional[FuncionRadio] = None,
+    funcion_flujo: Optional[FuncionRadio] = None,
     base_solida: bool = False,
     hueco: float = 0.0,   # diámetro FINAL del agujero del piso, en mm
     refuerzo_hueco: int = 0,
@@ -439,6 +440,20 @@ def generar_pieza(
             permite las celosías: si la Z ondula dentro de la vuelta y la fase
             se invierte capa a capa, las capas se tocan solo en los cruces y
             entre medio queda el calado.
+        funcion_flujo: multiplicador del ancho de cordón, `(angulo, t) -> factor`,
+            aplicado punto a punto en la PARED. 1.0 es el ancho nominal.
+
+            Es cuánto material se deposita, no dónde va la boquilla: sirve para
+            engordar el relieve sin moverlo —un turupe más lleno en el mismo
+            sitio— y para los cupones que barren la extrusión a lo alto para
+            calibrarla contra la pieza impresa.
+
+            Cambia la SECCIÓN, así que se emite igual que el ancho de los
+            puentes de más abajo: un `ExtrusionGeometry` cuando el factor
+            cambia, y nada mientras se mantenga. Con None no se emite ninguno y
+            ninguna pieza anterior se mueve —comprobado regenerando el hongo
+            byte a byte.
+
         funcion_dangulo: corrimiento angular en radianes, `(angulo, t) -> dang`.
             Sin esto el ángulo solo avanza y el recorrido nunca puede volver
             sobre sí mismo. Con esto sí, y ahí aparecen los rizos: si el
@@ -633,6 +648,7 @@ def generar_pieza(
     ultimo_alto = [perfil.altura_capa]
     # Radio del punto anterior, para detectar los saltos que son puentes.
     radio_previo = [None]
+    flujo_previo = [None]      # el último factor de `funcion_flujo` que se emitió
 
     def _mezcla(capa: int) -> float:
         """Cuánto del patrón está activo en esta vuelta: 0 en la primera, 1 al final."""
@@ -1278,6 +1294,17 @@ def generar_pieza(
             if puentea:
                 puntos.append(fc.ExtrusionGeometry(
                     area_model="rectangle", width=perfil.ancho, height=perfil.altura_capa))
+            elif funcion_flujo is not None:
+                # Sólo cuando CAMBIA: emitirlo en cada punto multiplicaría por
+                # dos las líneas del archivo para repetir el mismo número. Se
+                # redondea a la centésima para que el ruido de coma flotante no
+                # cuente como cambio.
+                f = round(funcion_flujo(angulo, t), 2)
+                if f != flujo_previo[0]:
+                    puntos.append(fc.ExtrusionGeometry(
+                        area_model="rectangle", width=perfil.ancho * f,
+                        height=ultimo_alto[0]))
+                    flujo_previo[0] = f
             puntos.append(
                 fc.Point(
                     x=cx + radio * math.cos(angulo_pos),
@@ -1288,6 +1315,9 @@ def generar_pieza(
             if puentea:
                 puntos.append(fc.ExtrusionGeometry(
                     area_model="rectangle", width=perfil.ancho, height=ultimo_alto[0]))
+                # el puente dejó el ancho NOMINAL, así que el próximo punto
+                # tiene que volver a declarar su factor aunque no haya cambiado
+                flujo_previo[0] = None
             radio_previo[0] = radio
 
     # Viaje sin extruir hasta el primer punto y recién ahí se abre el extrusor.

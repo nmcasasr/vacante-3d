@@ -224,6 +224,7 @@ lamparas/
 verificar_ams.py # compara el cambio de AMS contra un .3mf real de Bambu Studio
 verificar_lineas.py # mide sobre el g-code cuánto del relieve sobrevive al cordón
 test_cordon.py   # banco de pruebas del modelo del cordón
+verificar_continuidad.py # ¿el trazo es UNA línea? sin viajes ni retracciones, la Z sube
 vista_relieve.py # la pieza DESENROLLADA a PNG: para ver el dibujo antes de imprimir
 output/          # .gcode y .html generados (gitignored)
 requirements.txt
@@ -253,7 +254,7 @@ python -m lamparas.bowls --help
 | `rizos` | bucles que sobresalen, tipo candelero "Dream of Glow" | trocoide: el trazo **retrocede** en ángulo y cierra un bucle, en vez de solo ondular |
 | `zigzag` | textura en diente de sierra que **dibuja una figura** sobre la pared | el radio va y viene en triángulo dentro de la vuelta, y la vuelta siguiente va lisa. Solo donde una máscara lo pide |
 | `ondas` | anillos horizontales ondulados, tipo cerámica torneada | el radio ondula con la **altura**, no con el ángulo; y la fase corre con el ángulo, así los anillos suben y bajan al dar la vuelta |
-| `puas` | tubo cubierto de púas, con la figura **en las zonas lisas** | la boquilla sale y entra en cada púa, siempre hacia afuera y siempre en la misma fase, así que las púas se apilan en columnas. Donde la máscara lo pide, no hay púa |
+| `puas` | el dibujo lo hacen los **turupes**: la boquilla sale y entra en toda la pared, y en la figura sale más | la onda va sólo hacia AFUERA y todas las vueltas pulsan en la misma fase, así que las púas se apilan en columnas. Se alternan vueltas lisas y vueltas con patrón, y el grumo crece a lo largo de su banda para que apoye |
 | `peine` | líneas verticales finas en **toda** la pared; el dibujo lo hacen las que sobresalen más | un diente por línea, con el número de dientes por vuelta ENTERO para que se apilen en columna. La máscara elige, línea por línea, si le toca la altura de fondo o la del dibujo |
 
 Los parámetros propios de cada patrón van con `--p clave=valor` (repetible) y
@@ -611,19 +612,154 @@ python -m lamparas.bowls zigzag --silueta cilindro --altura 90 --radio-base 45 \
        --slot-inicial 1:PLA --cambio-ams 22:3:PETG --cambio-ams 68:1:PLA
 ```
 
-## El florero de púas
+## El florero de turupes
+
+<img src="recetas/florero_kadzi/v001/relieve.png" alt="el florero desenrollado: flores en relieve" width="760">
+
+La pieza se imprime en **modo vaso** como cualquier otra: una espiral, una
+vuelta por capa, sin tocar la Z ni el recorrido. Lo único que cambia es el
+RADIO dentro de la vuelta, y la técnica son tres cosas a la vez:
+
+**1. El pulso está en TODA la pieza; lo que cambia es la intensidad.** La
+boquilla sale y entra `puas` veces por vuelta en toda la pared. En el fondo sale
+`amplitud_fondo` y en la figura `amplitud`, y la máscara interpola entre las
+dos. Lo que dibuja es la DIFERENCIA, no la presencia del relieve: con el fondo
+liso el dibujo queda flotando sobre una pared plana y se ve el recuadro.
+
+**2. Se alternan vueltas lisas y vueltas con patrón.** `lisas=3` vueltas
+derechas y `con_patron=3` pulsando, y el ciclo se repite. Las lisas son las
+costillas continuas que se ven en la pieza de referencia entre fila y fila de
+grumos, y son las que atan las columnas entre sí.
+
+**3. El grumo CRECE a lo largo de su banda**, y eso es lo único que hace que
+la banda se apoye. Ver abajo.
+
+```bash
+python -m lamparas.bowls puas --silueta cilindro --altura 200 --radio-base 34 \
+       --ancho-linea 1.2 --capas-transicion 0 --paso fijo \
+       --p puas=95 --p amplitud=2.4 --p amplitud_fondo=0.6 \
+       --p lisas=3 --p con_patron=3 \
+       --p cantidad=11 --p tamano=52 --p variacion=0.5 --p petalos=6 \
+       --p corazon=0.55 --p borde_mm=2.0 \
+       --segundos-vuelta 0 --velocidad 900 --nombre florero-kadzi/florero_kadzi
+```
+
+Receta en `recetas/florero_kadzi/v001/`. Verificado IMPRIMIBLE contra `Squeezy
+Fidget Toy.gcode` (línea fina 0.00 %, contacto 0.00 %, peor puente 0.51 mm) y
+con trazo continuo. **No está impresa.**
+
+### La regla de tamaño: `amplitud / con_patron` tiene que caber en un cordón
+
+Cuando arranca una banda de patrón, la primera vuelta se corre respecto de la
+vuelta lisa de abajo. Si se corre la amplitud ENTERA, la punta del grumo queda
+al aire. Medido sobre la misma pieza:
+
+| | contacto sin apoyo | veredicto |
+|---|---|---|
+| el grumo sale entero de una vez | 5.90 % | **NO IMPRIMIBLE** |
+| repartido en 2 vueltas | 1.38 % | IMPRIMIBLE |
+
+(la referencia mide 1.88 %). Por eso `crecida()` reparte la amplitud a lo largo
+de las `con_patron` vueltas: el salto por vuelta es `amplitud / con_patron`.
+Con cordón de 1.2 y `con_patron=3`, el techo son 3.6 mm de turupe.
+
+La BAJADA de vuelta a la pared lisa no necesita rampa: correrse hacia ADENTRO
+no deja nada al aire — la vuelta lisa se apoya en el valle, que vale la silueta
+en todas las vueltas. Los dos sentidos no son lo mismo, y medirlos con `abs()`
+hacía saltar el aviso sobre una pieza ya sana.
+
+### Cuánto se ve: dos perillas, y las dos tienen techo
+
+**Más largo** (`amplitud`): la boquilla sale más. Pero lo que se ve no es lo que
+se pide — la cinta del cordón rellena parte del valle. Lo calcula
+[`lamparas/cordon.py`](lamparas/cordon.py) antes de generar nada:
+
+| amplitud pedida | 0.60 | 0.80 | 1.00 | 1.30 | 1.60 | 2.00 |
+|---|---|---|---|---|---|---|
+| relieve impreso (150 púas, cordón 1.0) | 0.60 | 0.76 | 0.86 | 1.02 | 1.18 | 1.39 |
+
+Y a `puas` fijas hay un techo: lo que falta a partir de ahí es VALLE, no altura.
+La otra perilla va al revés — menos púas, más valle:
+
+| púas (radio 34, cordón 1.0) | 110 | 130 | 150 | 180 | 220 |
+|---|---|---|---|---|---|
+| sobrevive | 100 % | 100 % | 86 % | 54 % | 23 % |
+
+El aviso viejo del módulo era `paso < 1.0 mm`, y a 180 púas —donde ya se pierde
+la mitad del relieve— no decía nada. Esa regla, "el paso tiene que medir un
+cordón", es de las que suenan bien y son falsas en las dos direcciones.
+
+**Más lleno** (`flujo`): más sección en el turupe, sin moverlo. Sigue la forma
+del pulso, así que el valle queda con la sección nominal. Ojo: `; LINE_WIDTH:`
+sigue llevando el ancho nominal constante —es el contrato con Orca que fija
+`.agents/MAPA.md`— así que el preview lo va a pintar de ancho uniforme aunque
+la extrusión sí varíe.
+
+### Los dos cupones de calibración
+
+Ø50 x 36 mm, cordón 1.2, ~21 min de recorrido cada uno (contá 25-35 reales: son
+40 000 segmentos cortos y ahí manda la aceleración, no el `F` que se le pide).
+Los dos van con `--p mascara=ninguna`: son para leer el turupe, no el dibujo.
+
+```bash
+# cinco bandas de largo de púa: 1.2, 1.8, 2.4, 3.0 y 3.6 mm
+python -m lamparas.bowls puas --silueta cilindro --altura 36 --radio-base 25 \
+       --ancho-linea 1.2 --capas-transicion 0 --paso fijo \
+       --p puas=70 --p barrido=1.2,1.8,2.4,3.0,3.6 --p amplitud_fondo=0.6 \
+       --p lisas=3 --p con_patron=3 --p mascara=ninguna \
+       --segundos-vuelta 0 --velocidad 900 --nombre florero-kadzi/cupon_largos
+
+# cinco bandas de extrusión en el turupe: 1.0, 1.2, 1.4, 1.6 y 1.8
+python -m lamparas.bowls puas --silueta cilindro --altura 36 --radio-base 25 \
+       --ancho-linea 1.2 --capas-transicion 0 --paso fijo \
+       --p puas=70 --p amplitud=2.4 --p flujo_barrido=1.0,1.2,1.4,1.6,1.8 \
+       --p amplitud_fondo=0.6 --p lisas=3 --p con_patron=3 --p mascara=ninguna \
+       --segundos-vuelta 0 --velocidad 900 --nombre florero-kadzi/cupon_extrusion
+```
+
+La quinta banda del cupón de largos está **a propósito en el límite**: salto de
+1.2 mm contra un cordón de 1.2, o sea 0 % de solape, y es la única con tramos
+al aire (0.15 % de las muestras, el peor 0.65 mm). Si esa banda sale bien, el
+techo real es más alto que el que dice el modelo, y ese es el número que ningún
+script puede dar.
+
+### Comprobar el archivo antes de imprimirlo
+
+```bash
+python verificar_pieza.py output/florero-kadzi/florero_kadzi.gcode --ancho 1.2
+python verificar_continuidad.py output/florero-kadzi/florero_kadzi.gcode --vuelo 2.4
+python vista_relieve.py output/florero-kadzi/florero_kadzi.gcode relieve.png --ancho 1.2
+```
+
+`verificar_continuidad.py` contesta si el trazo es una sola línea: sin viajes,
+sin retracciones, con la Z subiendo siempre y sin ningún paso de XY que no lo
+explique el patrón. El florero da 453 973 movimientos seguidos y 0 de cada cosa.
+No lo cubre `verificar_pieza.py`, que mide apoyo y sección; ni
+`verificar_capas.py`, que lee las marcas `; CHANGE_LAYER` que emite el injerto y
+no el cuerpo.
+
+### Las dos lecturas de la misma máscara
+
+`--p invertir=0` (por defecto) pone el relieve fuerte **en la figura**.
+`--p invertir=1` lo pone en el fondo y deja la figura con el relieve corto, que
+es como se lee la lámpara de referencia. Esa es la pieza `florero_puas` de acá
+abajo.
+
+---
+
+## El florero de púas (la lectura invertida)
 
 <img src="recetas/florero_puas/v001/relieve.png" alt="el florero desenrollado" width="760">
 
 Un tubo cubierto de púas, con flores dibujadas en las zonas donde la púa se
-apaga. La técnica es la que describió el usuario: **sacar y meter levemente la
-boquilla** a lo largo de la vuelta, 150 veces, y hacerlo a lo largo de todo el
-tubo.
+apaga: `--p invertir=1`. Misma técnica —**sacar y meter levemente la boquilla**
+a lo largo de la vuelta, 150 veces— repartida por todo el tubo en vez de
+concentrada en la figura.
 
 ```bash
 python -m lamparas.bowls puas --silueta cilindro --altura 200 --radio-base 34 \
        --ancho-linea 1.0 --capas-transicion 0 --paso medir \
-       --p puas=150 --p amplitud=1.0 \
+       --p puas=150 --p invertir=1 --p amplitud=1.0 \
        --p cantidad=11 --p tamano=52 --p corazon=0.55 \
        --segundos-vuelta 0 --velocidad 900 --nombre florero_puas
 ```
