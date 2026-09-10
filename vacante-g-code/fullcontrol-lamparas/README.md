@@ -738,6 +738,43 @@ No lo cubre `verificar_pieza.py`, que mide apoyo y sección; ni
 `verificar_capas.py`, que lee las marcas `; CHANGE_LAYER` que emite el injerto y
 no el cuerpo.
 
+### El hueco del pico: `ocupacion`
+
+Cada púa es una V: la boquilla sale de la pared, llega a la punta y vuelve. El
+hueco entre la ida y la vuelta —medido en la base, sobre la pared— es lo que
+decide si el turupe sale **macizo** o **abierto**, y lo gobierna `ocupacion`,
+la fracción del paso que ocupa la púa.
+
+Con 70 púas sobre radio 25 (paso 2.24 mm) y cordón de 1.2:
+
+| `ocupacion` | hueco del pico | valle | relieve |
+|---|---|---|---|
+| 0.30 | 0.67 mm | 1.57 mm | 100 % |
+| 0.40 | 0.90 mm | 1.35 mm | 100 % |
+| 0.50 | 1.12 mm | 1.12 mm | 100 % |
+| 0.60 | 1.35 mm | 0.90 mm | **88 %** |
+| 0.70 | 1.57 mm | 0.67 mm | **68 %** |
+
+**Por debajo del ancho de cordón el hueco desaparece**: las dos patas se funden
+desde la base y el turupe sale como una bolita maciza, que es lo que se ve en
+la pieza de referencia. Con 0.50 el hueco mide justo un cordón y se empieza a
+abrir.
+
+Hacia arriba se rompe rápido, y no por el hueco sino por el VALLE: lo que la
+púa gana se lo saca al espacio que queda hasta la púa siguiente, y cuando ese
+valle baja del cordón la boquilla lo rellena y el relieve se borra. Rango útil:
+**0.25 a 0.45**.
+
+Para un hueco más grande SIN perder relieve hay que bajar `puas`, que agranda
+el paso y con él las dos cosas a la vez:
+
+| `puas` (radio 25) | hueco | valle | relieve |
+|---|---|---|---|
+| 40 | 1.96 mm | 1.96 mm | 100 % |
+| 50 | 1.57 mm | 1.57 mm | 100 % |
+| 70 | 1.12 mm | 1.12 mm | 100 % |
+| 90 | 0.87 mm | 0.87 mm | 88 % |
+
 ### Las dos lecturas de la misma máscara
 
 `--p invertir=0` (por defecto) pone el relieve fuerte **en la figura**.
