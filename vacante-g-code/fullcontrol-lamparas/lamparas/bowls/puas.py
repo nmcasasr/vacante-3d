@@ -233,12 +233,24 @@ def construir(
             "ancho" porque `--ancho-linea` ya es un ancho en mm y son cosas
             distintas: esto es una fracción del paso entre púas.
         filo: qué parte de la púa es meseta. 1 = flancos verticales.
-        muestras: puntos de recorrido por púa. Con 6 y `ocupacion=0.5` el muestreo
-            cae justo en los vértices del trapecio y la púa sale cuadrada; con
-            menos, redondeada. Es lo que fija la resolución angular, así que
-            también es lo que fija el tamaño del archivo.
+        muestras: puntos de recorrido por púa. **Es un mínimo, no un valor
+            fijo**: el módulo lo sube si hace falta para que caiga al menos una
+            muestra en la meseta de la púa, porque si no el turupe no llega a
+            la altura pedida y cuánto le falta depende de un ángulo que nadie
+            eligió. Ver el bloque de arriba. Es lo que fija la resolución
+            angular, así que también es lo que fija el tamaño del archivo.
         mascara: dónde va la figura. Por defecto 'flores'. Para mirar la
             textura sola, sin figura: `mascara=ninguna invertir=0`.
+
+            **El dibujo se cuantiza a la rejilla del patrón**, y esa rejilla es
+            gruesa: un "punto" mide `2·pi·radio / puas` de ancho por
+            `(lisas + con_patron) · altura_capa` de alto. En un Ø50 con 70 púas
+            y cadencia 3+3 son 2.24 x 2.40 mm, o sea que la pieza entera son
+            70 x 31 puntos. Cualquier rasgo más fino que eso no se dibuja: se
+            promedia con lo de al lado y desaparece. Antes de elegir el tamaño
+            de una figura conviene dividir sus rasgos por esos dos números —una
+            vena de 2 mm es menos de UN punto— y mirarla a esa resolución, no a
+            resolución libre con `python -m lamparas.superficie`.
         invertir: **0 (por defecto) = la figura son los TURUPES**: la pared da
             vueltas normales y la boquilla sale y entra sólo donde va el
             dibujo. Es la técnica tal como se pidió, y es lo que se ve en el
@@ -279,6 +291,31 @@ def construir(
 
     ocupacion = min(1.0, max(0.02, ocupacion))
     filo = min(1.0, max(0.0, filo))
+
+    # --- cuántas muestras por púa: al menos UNA en la meseta ----------------
+    #
+    # La rejilla angular es pareja y no arranca en la fase de la púa —arranca
+    # donde terminó la espiral del piso, que es cualquier ángulo—. Si la meseta
+    # de la púa es más angosta que el paso de muestreo, las muestras pueden
+    # ESQUIVARLA entera y el turupe no llega nunca a la altura pedida.
+    #
+    # No es teórico: con `ocupacion=0.30` y `filo=0.34` la meseta mide 0.102
+    # del paso contra un muestreo de 1/6 = 0.167, y el g-code depositaba
+    # 1.78 mm de los 2.40 pedidos. Y era LOTERÍA: con 95 púas la fase caía bien
+    # y salían los 2.40, con 70 caía mal y salían 1.78. La misma pieza, dos
+    # alturas, según un ángulo que nadie eligió.
+    #
+    # Es la misma cuenta que hace `bowls/peine.py` con `muestras_diente`, y por
+    # el mismo motivo. Con la meseta por defecto (ocupacion 0.5, filo 0.34) da
+    # 6, que es lo que ya se venía usando: ninguna pieza anterior se mueve.
+    meseta = ocupacion * filo
+    minimo = math.ceil(1.0 / max(meseta, 1e-9))
+    m = max(int(muestras) or 0, minimo, 3)
+    if m > max(int(muestras) or 0, 3):
+        print(f"  muestras {m} por púa (pediste {muestras}): con ocupacion="
+              f"{ocupacion:g} y filo={filo:g} la meseta mide {meseta:.3f} del paso "
+              f"y un muestreo más grueso la esquiva, así que el turupe no llegaría "
+              f"a los {amplitud:.2f} mm.")
 
     # --- el borde de la figura, promediado EN VERTICAL --------------------
     #
@@ -407,8 +444,7 @@ def construir(
             puas, amplitud, deriva, altura_capa, ocupacion, filo, ancho_cordon,
             _lista(barrido))
 
-    return (radio, None, max(120, puas * max(3, muestras)), None,
-            None, funcion_flujo)
+    return radio, None, max(120, puas * m), None, None, funcion_flujo
 
 
 def _avisar(silueta, altura, radio_medio, radio, pulsa, lisas, con_patron,
@@ -494,6 +530,16 @@ def _avisar(silueta, altura, radio_medio, radio, pulsa, lisas, con_patron,
         print(f"  cadencia: {lisas} vueltas lisas + {con_patron} con patrón, y el "
               f"grumo crece {1 / max(1, int(con_patron)):.0%} de la amplitud por "
               f"vuelta hasta salir entero.")
+    # El tamaño del "punto" con el que este patrón puede dibujar. Se imprime
+    # SIEMPRE porque es el número que decide si una figura se va a leer, y no
+    # se puede deducir mirando la máscara: `lamparas.superficie` dibuja la
+    # máscara ideal, no lo que la pieza puede. Una hoja con venas de 2 mm sobre
+    # puntos de 2.24 x 2.40 no dibuja venas: dibuja una mancha.
+    ancho_punto = TAU * radio_medio / max(puas, 1)
+    alto_punto = (max(0, int(lisas)) + max(1, int(con_patron))) * altura_capa
+    print(f"  el dibujo se cuantiza a puntos de {ancho_punto:.2f} x {alto_punto:.2f} mm "
+          f"-> la pieza son {puas} x {int(altura / max(alto_punto, 1e-9))} puntos. "
+          f"Un rasgo más fino que eso no se dibuja.")
     if deriva:
         print(f"  AVISO: `deriva={deriva:g}` desalinea las púas entre vueltas. "
               f"Eso mete un salto de hasta {amplitud:.2f} mm en TODOS los ángulos, "

@@ -1,3 +1,97 @@
+# Sesión del 10-09-2026 (c) — el florero hoja de Kadzi, y la meseta que las muestras esquivaban
+
+## ARREGLADO, y es el hallazgo de la sesión: `muestras` era lotería
+
+La rejilla angular es pareja y **no arranca en la fase de la púa** — arranca en
+el ángulo donde terminó la espiral del piso, que es cualquiera. Si la meseta de
+la púa es más angosta que el paso de muestreo, las muestras la ESQUIVAN y el
+turupe no llega nunca a la altura pedida.
+
+Con `ocupacion=0.30` la meseta mide `0.30 x 0.34 = 0.102` del paso contra un
+muestreo de `1/6 = 0.167`. El g-code depositaba **1.78 mm de los 2.40 pedidos**.
+
+Y lo peor: era LOTERÍA. Con 95 púas la fase caía bien y salían los 2.40; con 70
+caía mal y salían 1.78. La misma pieza, dos alturas, según un ángulo que nadie
+eligió. Las tres piezas `_oc30` de la sesión anterior salieron con ese defecto
+adentro y se regeneraron.
+
+`construir()` ahora sube `muestras` hasta garantizar una muestra en la meseta
+(10 para `ocupacion=0.30`) y lo dice en la corrida. Es la misma cuenta que
+`bowls/peine.py` hace con `muestras_diente`, y por el mismo motivo — estaba
+escrita en el repo desde la otra rama y no se leyó a tiempo. **Con la meseta por
+defecto (`ocupacion=0.5`) da 6, así que ninguna pieza anterior se mueve**:
+`cupon_largos` regenera con 0 instrucciones distintas.
+
+## NUEVO: la máscara `hoja`, con tallo, y la K en la nervadura
+
+El logo de Kadzi es un rombo alto partido por una hendidura vertical, con dos
+brazos que salen del medio hacia la derecha. Una hoja ya tiene esa hendidura y
+se llama nervadura. Así que **la marca no se estampa encima de la hoja: la
+nervadura ES el asta de la K** y los brazos son dos nervios más. Por eso
+`hoja(k=1)` no dibuja asta propia.
+
+El tallo y la panza —el ensanchamiento por debajo del medio— no son adorno:
+una lente simétrica no tiene arriba ni abajo y se lee como una almendra o un
+ojo. Son las dos cosas que la vuelven hoja.
+
+Trabaja en milímetros de superficie, como `flores` y a diferencia de `carita`.
+
+## Y un tercer caso de lo mismo: los rasgos del tamaño de la rejilla
+
+Con `puas=70` y `columnas=4`, las hojas caen cada 17.5 púas: dos quedan sobre
+una púa y dos entre púas. El TALLO mide dos puntos de ancho, así que aparecía
+en dos de las cuatro hojas y en las otras no. Es el mismo defecto que la meseta
+—un rasgo del tamaño de la rejilla a merced de una fase que nadie eligió— con
+otra cara.
+
+La salida es que `puas` sea DIVISIBLE por `columnas`: con 96 y 4, las cuatro
+hojas reparten 24 púas exactas y caen las cuatro igual. De paso 96 púas suben
+la resolución a 1.64 mm sin perder relieve, porque con `ocupacion=0.30` sobra
+valle (100 % hasta 96, 74 % a 104).
+
+    punto        2.24 x 2.40  ->  1.64 x 2.40 mm
+    hoja         13 x 30      ->  28 x 54 mm
+    media hoja   2.9 puntos   ->  8.5 puntos
+    vena         0.9 puntos   ->  1.8 puntos
+
+## Lo que hizo fracasar el primer intento: la rejilla del dibujo
+
+El patrón no puede dibujar más fino que un turupe. Un "punto" del dibujo mide
+
+    ancho = 2·pi·radio / puas          alto = (lisas + con_patron) · altura_capa
+
+En el Ø50 con 70 púas y cadencia 3+3 son **2.24 x 2.40 mm**: la pieza entera son
+70 x 31 puntos. Con las medidas del croquis a mano —hojas de 13 x 30 mm, venas
+de 2 mm— la media hoja donde va la K son 2.9 puntos y la vena **0.9 puntos**,
+menos de uno. No se leyó nada.
+
+Con hojas de 20 x 34 la media hoja pasa a 4.5 puntos y la K aparece. Queda la
+regla: **antes de elegir el tamaño de una figura, dividir sus rasgos por esos
+dos números**, y mirarla a la resolución del patrón. El
+`python -m lamparas.superficie` dibuja la máscara ideal y MIENTE sobre lo que la
+pieza va a poder.
+
+## La pieza
+
+`output/florero-kadzi/florero_hoja.gcode` — Ø50 x 75 mm, cuatro hojas altas con
+tallo. IMPRIMIBLE, trazo continuo, 8 % de solape entre vueltas, turupe de
+2.400 mm clavado.
+
+## Lo que queda abierto
+
+1. **La amplitud no está calibrada.** 2.4 mm es el medio del barrido del cupón,
+   elegido a ojo. El número sale de imprimir `cupon_largos_oc30`.
+2. **El solape entre vueltas quedó en 8 %.** Es el mínimo de todo lo hecho hasta
+   ahora (el jarrón impreso mide 39.5 %). Sale de sumar el crecimiento del grumo
+   (2.4/3 = 0.8 mm) con el borde de la figura. Da IMPRIMIBLE y sin puentes, pero
+   es el número a vigilar si la pieza sale mal: se sube con `con_patron=4` o
+   bajando `amplitud`.
+3. Sigue abierto todo lo de la sesión anterior: `peor_salto_radial` con `abs()`,
+   `SOLAPE_MINIMO` más estricto que el jarrón impreso, y el contador de púas de
+   `vista_relieve.py` que da 0 con la cadencia encendida.
+
+---
+
 # Sesión del 10-09-2026 (b) — el florero de turupes, y las dos ramas juntas
 
 ## Lo primero: NADA ESTÁ IMPRESO

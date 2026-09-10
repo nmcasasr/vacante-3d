@@ -352,6 +352,171 @@ def flores(
     return mascara
 
 
+def hoja(
+    columnas: int = 4,
+    filas: int = 1,
+    largo_mm: float = 60.0,
+    ancho_mm: float = 28.0,
+    punta: float = 1.0,
+    panza: float = 0.12,
+    tallo_mm: float = 8.0,
+    tallo_ancho_mm: float = 3.0,
+    vena_mm: float = 3.2,
+    k: int = 1,
+    brazo: float = 0.62,
+    borde_mm: float = 1.5,
+    radio_mm: float = 25.0,
+    altura_mm: float = 75.0,
+) -> Mascara:
+    """
+    La hoja de Kadzi: una hoja con tallo y la K del logo inscrita.
+
+    El truco del dibujo es que **la nervadura central de la hoja ES el asta de
+    la K**. En el logo, la K son un rombo alto partido por una hendidura
+    vertical y dos brazos que salen del medio hacia la derecha; en una hoja esa
+    hendidura ya existe y se llama nervadura. Así que la marca no se estampa
+    encima de la hoja: se lee en sus nervios. Por eso `k` no dibuja asta propia
+    — dibuja sólo los dos brazos.
+
+    El tallo no es decorativo: sin él la hoja se lee como una almendra o un ojo,
+    porque una lente simétrica no tiene arriba ni abajo. El tallo y la panza
+    —el ensanchamiento por debajo del medio— son las dos cosas que le dan
+    orientación.
+
+    Trabaja en MILÍMETROS de superficie y no en grados, como `flores` y a
+    diferencia de `carita()`: una hoja tiene que salir con la misma proporción
+    en un tubo de Ø50 que en uno de Ø68. `radio_mm` y `altura_mm` los inyecta
+    el patrón (ver `GEOMETRIA`).
+
+    Devuelve 1 en la carne de la hoja y 0 en el fondo Y EN LAS VENAS, o sea que
+    las venas salen hundidas al nivel del fondo. En `bowls/puas` eso es un
+    turupe corto donde va la vena y uno largo en la carne, que es lo que las
+    hace visibles: si la vena valiera 0.5 no se leería ni como una cosa ni como
+    la otra.
+
+    ## Los tamaños se eligen contra la rejilla, no a ojo
+
+    `bowls/puas` dibuja con un "punto" de `2·pi·radio / puas` de ancho por
+    `(lisas + con_patron) · altura_capa` de alto — en un Ø50 típico, 2.24 x
+    2.40 mm. **Un rasgo más fino que eso no se dibuja.** Los valores por defecto
+    de acá salen de esa cuenta y no del croquis:
+
+        media hoja (donde va la K)   14 mm  ->  6.3 puntos
+        vena                        3.2 mm  ->  1.4 puntos
+        tallo                       3.0 mm  ->  1.3 puntos
+
+    El primer intento usó las medidas del croquis a mano —hoja de 13 x 30, vena
+    de 2— y no se leyó nada: media hoja daba 2.9 puntos y la vena 0.9, menos de
+    uno. `construir()` de `puas` imprime el tamaño del punto en cada corrida.
+
+    Args:
+        columnas: hojas alrededor de la pieza.
+        filas: hileras a lo alto. Con más de una, las impares van corridas
+            media columna para que queden en tresbolillo y no en cuadrícula.
+            Ojo: dos hileras obligan a hojas de la mitad de alto, y ahí la K
+            deja de entrar.
+        largo_mm, ancho_mm: el alto y el ancho de la hoja, sin contar el tallo.
+        punta: cuán afilada es la punta. 1.0 la deja en punta franca; por
+            debajo se redondea hacia una elipse y por encima se afila.
+        panza: cuánto se corre hacia abajo el punto más ancho, en fracción del
+            largo. 0 deja la hoja simétrica —un ojo—; 0.12 la baja lo justo
+            para que se lea como hoja.
+        tallo_mm: largo del tallo por debajo de la hoja. 0 lo saca.
+        tallo_ancho_mm: ancho del tallo. Tiene que valer al menos un punto de
+            la rejilla o no se dibuja.
+        vena_mm: ancho de la nervadura y de los brazos de la K.
+        k: 1 dibuja los dos brazos; 0 deja la hoja con la nervadura sola.
+        brazo: la pendiente de los brazos, en fracción de `largo/ancho`. 0.62
+            los saca a media altura del borde, que es la proporción del logo.
+        borde_mm: en cuántos mm se desvanece el CONTORNO. Las venas no se
+            desvanecen: son las que tienen que leerse filosas.
+        radio_mm, altura_mm: el tamaño real de la pieza. Los inyecta el patrón.
+    """
+    columnas = max(1, int(columnas))
+    filas = max(1, int(filas))
+    semi_l = max(largo_mm / 2, 1e-6)
+    semi_a = max(ancho_mm / 2, 1e-6)
+    # el conjunto hoja+tallo se centra en su franja: el centro de la HOJA queda
+    # medio tallo por encima del centro del conjunto
+    subida = tallo_mm / 2
+
+    centros = []
+    for f in range(filas):
+        t_c = (f + 0.5) / filas
+        corrimiento = 0.5 * (f % 2)
+        for c in range(columnas):
+            centros.append(((c + corrimiento) / columnas * TAU, t_c))
+
+    def _media_anchura(dv: float) -> float:
+        """Media anchura de la hoja a esa altura, 0 fuera."""
+        if abs(dv) >= semi_l:
+            return 0.0
+        # `panza` corre el punto más ancho hacia abajo estirando la mitad de
+        # arriba y encogiendo la de abajo, así que la punta de arriba queda más
+        # larga que la de abajo: eso es lo que distingue una hoja de un ojo.
+        v = dv / semi_l
+        v = (v + panza) / (1.0 + panza) if v >= -panza else (v + panza) / (1.0 - panza)
+        if abs(v) >= 1.0:
+            return 0.0
+        return semi_a * (1.0 - v * v) ** punta
+
+    def _en_hoja(du: float, dv: float) -> float:
+        """1 en la carne (hoja o tallo), 0 fuera, contorno desvanecido."""
+        if tallo_mm > 0 and dv < -semi_l:
+            # el tallo: una tira recta colgando de la base de la hoja
+            if dv < -semi_l - tallo_mm:
+                return 0.0
+            media = tallo_ancho_mm / 2
+        else:
+            media = _media_anchura(dv)
+            if media <= 0.0:
+                return 0.0
+        d = abs(du)
+        if d <= media:
+            return 1.0
+        if borde_mm <= 0 or d >= media + borde_mm:
+            return 0.0
+        u = 1.0 - (d - media) / borde_mm
+        return u * u * (3 - 2 * u)
+
+    def _en_vena(du: float, dv: float) -> bool:
+        """La nervadura central, más los dos brazos de la K si están pedidos."""
+        # El tallo queda ENTERO: la nervadura es de la hoja. Dejándola correr
+        # también por el tallo lo parte en dos hilos —el tallo mide dos puntos
+        # de ancho y la vena se lleva el del medio— y deja de leerse como
+        # tallo.
+        if dv < -semi_l:
+            return False
+        if abs(du) <= vena_mm / 2:
+            return True
+        if not k or du <= 0:
+            return False
+        # Los brazos salen del centro hacia la DERECHA, como en el logo, uno
+        # para arriba y otro para abajo. La distancia de un punto a la recta
+        # dv = ±m·du es |dv ∓ m·du| / sqrt(1 + m^2).
+        m = brazo * semi_l / semi_a
+        norma = math.hypot(1.0, m)
+        return (abs(dv - m * du) / norma <= vena_mm / 2
+                or abs(dv + m * du) / norma <= vena_mm / 2)
+
+    def mascara(angulo: float, t: float) -> float:
+        mejor = 0.0
+        for centro_a, centro_t in centros:
+            du = _envolver(angulo - centro_a) * radio_mm
+            dv = (t - centro_t) * altura_mm - subida
+            carne = _en_hoja(du, dv)
+            if carne <= 0.0:
+                continue
+            if _en_vena(du, dv):
+                return 0.0      # la vena manda sobre la carne
+            mejor = max(mejor, carne)
+            if mejor >= 1.0:
+                return 1.0
+        return mejor
+
+    return mascara
+
+
 def organico(
     cantidad: int = 9,
     semilla: int = 5,
@@ -456,6 +621,7 @@ MASCARAS = {
     "flores": flores,
     "parches": parches,
     "organico": organico,
+    "hoja": hoja,
     # `partial` y no un lambda con `**kw`: así la entrada conserva la firma de
     # `carita` y `acepta` puede leerla. Ver la nota en `caritas`.
     "feliz": functools.partial(carita, feliz=True),

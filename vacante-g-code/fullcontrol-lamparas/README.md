@@ -775,6 +775,92 @@ el paso y con él las dos cosas a la vez:
 | 70 | 1.12 mm | 1.12 mm | 100 % |
 | 90 | 0.87 mm | 0.87 mm | 88 % |
 
+## El florero hoja (Kadzi)
+
+Ø50 x 75 mm. Cuatro hojas altas con tallo, con **la K del logo inscrita en
+cada una**: la nervadura central de la hoja ES el asta de la K, y los dos
+brazos salen de ella hacia la derecha como en la marca. La marca no se estampa
+encima de la hoja — se lee en sus nervios.
+
+El tallo y la panza —el ensanchamiento por debajo del medio— no son adorno: una
+lente simétrica no tiene arriba ni abajo y se lee como una almendra o un ojo.
+Son las dos cosas que la vuelven hoja.
+
+```bash
+python -m lamparas.bowls puas --silueta cilindro --altura 75 --radio-base 25 \
+       --ancho-linea 1.2 --capas-transicion 0 --paso fijo \
+       --p puas=96 --p amplitud=2.4 --p ocupacion=0.30 --p amplitud_fondo=0.6 \
+       --p lisas=3 --p con_patron=3 --p suave_borde=2.0 --p tomas=4 \
+       --p mascara=hoja --p columnas=4 --p filas=1 \
+       --p largo_mm=54 --p ancho_mm=28 --p tallo_mm=8 --p tallo_ancho_mm=4.0 \
+       --p vena_mm=3.0 \
+       --segundos-vuelta 0 --velocidad 900 --nombre florero-kadzi/florero_hoja
+```
+
+`puas=96` y `columnas=4` no son sueltos: **96 es divisible por 4**, así que las
+cuatro hojas reparten 24 púas exactas y las cuatro caen igual en la rejilla. Con
+70 púas y 4 hojas, dos caían sobre una púa y dos entre púas — y el tallo, que
+mide dos puntos de ancho, aparecía en dos de las cuatro y en las otras no. Es la
+misma clase de defecto que la meseta de acá abajo: un rasgo del tamaño de la
+rejilla queda a merced de una fase que nadie eligió.
+
+### `muestras` lo elige el módulo, y no es un detalle
+
+La rejilla angular es pareja y **no arranca en la fase de la púa** — arranca en
+el ángulo donde terminó la espiral del piso, que es cualquiera. Si la meseta de
+la púa es más angosta que el paso de muestreo, las muestras la esquivan y el
+turupe **no llega nunca a la altura pedida**.
+
+Pasó con `ocupacion=0.30`: la meseta mide `0.30 x 0.34 = 0.102` del paso contra
+un muestreo de `1/6 = 0.167`, y el g-code depositaba **1.78 mm de los 2.40
+pedidos**. Y era lotería: con 95 púas la fase caía bien y salían los 2.40, con
+70 caía mal y salían 1.78 — la misma pieza, dos alturas, según un ángulo que
+nadie eligió.
+
+Ahora `construir()` sube `muestras` hasta garantizar una muestra en la meseta
+(10 para `ocupacion=0.30`) y lo dice en la corrida. Con la meseta por defecto
+(`ocupacion=0.5`) da 6, que es lo que ya se usaba: ninguna pieza anterior se
+mueve. Es la misma cuenta que hace `bowls/peine.py` con `muestras_diente`.
+
+### Lo que gobierna este dibujo no es el dibujo: es la rejilla
+
+El patrón no puede dibujar más fino que un turupe. **Un "punto" del dibujo mide
+`2·pi·radio / puas` de ancho por `(lisas + con_patron) · altura_capa` de alto**
+— acá 2.24 x 2.40 mm, o sea que la pieza entera son **70 x 31 puntos**.
+
+Por eso el primer intento no se leyó. Salió del croquis a mano, con hojas de
+13 x 30 mm y venas de 2 mm:
+
+| | en mm | en puntos |
+|---|---|---|
+| hoja | 13 x 30 | 5.8 x 12.5 |
+| media hoja (donde va la K) | 6.5 | **2.9** |
+| vena | 2.0 | **0.9** ← menos de uno |
+
+Con media hoja de tres puntos no entra una K: las venas se promedian con la
+carne y queda una mancha. Lo que la arregló fueron tres cosas a la vez —agrandar
+la figura, subir la resolución y alinearla a la rejilla:
+
+| | primer intento | ahora |
+|---|---|---|
+| punto | 2.24 x 2.40 mm | **1.64 x 2.40 mm** (96 púas) |
+| hoja | 13 x 30 mm | **28 x 54 mm** |
+| media hoja | 2.9 puntos | **8.5 puntos** |
+| vena | 0.9 puntos | **1.8 puntos** |
+
+Las púas se pueden subir de 70 a 96 sin perder nada de relieve **porque la púa
+es angosta**: con `ocupacion=0.30` sobra valle, y el modelo del cordón lo
+confirma — 100 % hasta 96 púas, y recién a 104 cae al 74 %.
+
+**Antes de elegir el tamaño de una figura, dividí sus rasgos por esos dos
+números.** Y mirala a la resolución del patrón, no a resolución libre: el
+`python -m lamparas.superficie hoja` dibuja la máscara ideal y miente sobre lo
+que la pieza va a poder.
+
+Si hicieran falta rasgos más finos, las dos perillas son subir `puas` (más
+ancho de resolución, menos valle: ver la tabla de arriba) y acortar la cadencia
+`lisas + con_patron` (más alto de resolución, menos estabilidad).
+
 ### Las dos lecturas de la misma máscara
 
 `--p invertir=0` (por defecto) pone el relieve fuerte **en la figura**.
