@@ -35,6 +35,14 @@ Herramientas que ya existen para eso:
   iba `2π`, que corría cada toque media vuelta.
 - `verificar_ams.py` — contrasta el bloque de cambio de filamento contra un 3mf
   real de Bambu.
+- `verificar_lineas.py` + `test_cordon.py` — para los relieves ANGULARES (el
+  peine): cuánto del relieve sobrevive al cordón, medido sobre el g-code con el
+  mismo modelo (`lamparas/cordon.py`) con el que el generador lo predijo antes
+  de emitir. Que los dos números coincidan es el chequeo; el número solo no
+  dice nada. Ahí ya se cazaron tres mediciones mentirosas: una envolvente
+  mordida que daba MÁS relieve que el recorrido, una grilla anclada a cada
+  vuelta que las desfasaba media línea entre sí, y un `unwrap` que dejaba el
+  ángulo densificado en otra rama que el acumulado de la espiral.
 - El modo **solape** del preview colorea segmento por segmento; es más confiable
   que un script que resume.
 

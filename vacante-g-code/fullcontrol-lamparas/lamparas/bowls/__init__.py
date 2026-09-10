@@ -11,17 +11,22 @@ modo vaso, exportación) y se diferencian solo en el patrón:
 - `rizos`   -> bucles que sobresalen, tipo candelero "Dream of Glow"
 - `zigzag`  -> textura en diente de sierra que dibuja una máscara (ver superficie.py)
 - `ondas`   -> anillos horizontales ondulados, tipo cerámica torneada
-- `puas`    -> tubo cubierto de púas, con la figura dibujada en las zonas lisas
+- `puas`    -> tubo cubierto de púas: la boquilla sale y entra, y donde sale
+               quedan los turupes que dibujan la figura (ver superficie.py)
+- `peine`   -> líneas verticales finas en toda la pared; el dibujo lo hacen las
+               que sobresalen más que las otras (ver superficie.py)
 
 Ninguno de los cuatro se puede hacer con un slicer: los tres primeros porque el
 patrón cambia dentro de cada vuelta y de una vuelta a la otra, y la celosía
 porque además mueve la Z dentro de la capa.
 """
 
+import inspect
 from typing import Optional
 
 from ..comun import Perfil, a_gcode, conviene_paso_fijo, generar_pieza, guardar_gcode
-from . import celosia, cesta, malla, ondas, puas, rizos, siluetas, tramado, zigzag
+from . import (celosia, cesta, malla, ondas, peine, puas, rizos, siluetas,
+               tramado, zigzag)
 from .siluetas import SILUETAS
 
 DISENOS = {
@@ -33,6 +38,7 @@ DISENOS = {
     "zigzag": zigzag,
     "ondas": ondas,
     "puas": puas,
+    "peine": peine,
 }
 
 
@@ -53,7 +59,7 @@ def pasos_bowl(
     modulacion: Optional[dict] = None,
     pintura: Optional[dict] = None,
     deformacion=None,
-    paso_fijo=False,
+    paso_fijo=None,
 ) -> list:
     """
     Arma los pasos de FullControl de un bowl.
@@ -74,13 +80,22 @@ def pasos_bowl(
         capas_transicion: capas en las que el patrón nace desde un círculo liso.
         capas_base: primeras vueltas sin rampa de Z (anillos cerrados), para que
             el calado arranque desde algo macizo en vez de desde un solo cordón.
-        paso_fijo: True fuerza altura de capa constante, False deja la marcha
-            adaptativa, y `"auto"` lo decide midiendo cuánto solapan dos vueltas
-            seguidas (ver `comun.conviene_paso_fijo`). Es para las piezas de
-            pared VERTICAL con relieve angular —un tubo con púas, una rosca—,
-            donde el criterio de `marcha_vertical`, que está pensado para
-            cúpulas, lee el corrimiento RADIAL como si fuera vertical y acorta
-            el paso sin que haga falta. Ver el bloque en `generar_pieza`.
+        paso_fijo: subir `paso_z` exacto en cada vuelta en vez de usar la
+            marcha adaptativa. Hace falta en las piezas de pared VERTICAL con
+            relieve angular —un tubo con púas, una rosca—, donde el criterio
+            de `marcha_vertical`, pensado para cúpulas, lee el corrimiento
+            RADIAL como si fuera vertical y acorta el paso sin que haga falta.
+            Cuatro valores, de menos a más explícito:
+
+            - None (por defecto): lo que declare el patrón en su `PASO_FIJO`.
+              Es quien sabe si su relieve es angular o de silueta.
+            - "auto": lo DECIDE midiendo cuánto solapan dos vueltas seguidas
+              sobre la función de radio ya armada (`comun.conviene_paso_fijo`).
+              Es la salida cuando el patrón no puede saberlo solo, porque
+              depende de la silueta y de los parámetros de la corrida.
+            - True / False: a mano, y manda sobre las otras dos.
+
+            Ver el bloque `paso_fijo` de `generar_pieza`.
     """
     if diseno not in DISENOS:
         raise ValueError(f"diseño desconocido: {diseno!r}. Opciones: {sorted(DISENOS)}")
@@ -97,7 +112,24 @@ def pasos_bowl(
     #   (funcion_radio, funcion_dz, segmentos, paso_z)
     # y opcionalmente un quinto elemento, funcion_dangulo, que solo usan los
     # patrones cuyo trazo vuelve sobre sí mismo (rizos).
-    resultado = DISENOS[diseno].construir(fn_silueta, altura=altura, **(parametros or {}))
+    # La boquilla no es un parámetro del dibujo, pero hay patrones que no se
+    # pueden calcular sin ella: `peine` elige cuántas líneas entran a partir de
+    # cuál es la más fina que el cordón todavía resuelve. Se le pasa sólo a
+    # quien la declara en su firma, así que ningún patrón viejo se entera.
+    par_patron = dict(parametros or {})
+    firma = inspect.signature(DISENOS[diseno].construir).parameters
+    for clave, valor in (("ancho_cordon", (perfil or Perfil()).ancho),
+                         ("altura_capa", (perfil or Perfil()).altura_capa)):
+        if clave in firma and clave not in par_patron:
+            par_patron[clave] = valor
+    abierta = any(v.kind is inspect.Parameter.VAR_KEYWORD for v in firma.values())
+    sobran = [] if abierta else [k for k in par_patron if k not in firma]
+    if sobran:
+        raise ValueError(
+            f"el patrón {diseno!r} no acepta {', '.join(sorted(sobran))}. "
+            f"Acepta: {', '.join(k for k in firma if k != 'silueta')}")
+
+    resultado = DISENOS[diseno].construir(fn_silueta, altura=altura, **par_patron)
     fn_radio, fn_dz, segmentos, paso_z = resultado[:4]
     fn_dangulo = resultado[4] if len(resultado) > 4 else None
 
@@ -114,11 +146,20 @@ def pasos_bowl(
             deformacion.patron = patron
         fn_radio = lambda a, t: patron(a, t) + deformacion(a, t)  # noqa: E731
 
-    if paso_fijo == "auto":
-        # Se decide MIDIENDO sobre la función de radio ya armada —patrón,
-        # estructura y todo— y se dice en voz alta, porque cambia la altura de
-        # capa de la pieza entera y eso tiene que quedar en el log de la corrida
-        # y no adivinarse después mirando el g-code.
+    # --- de dónde sale `paso_fijo` -------------------------------------
+    #
+    # Tres orígenes, y el orden importa: lo que se pide a mano manda sobre lo
+    # que se mide, y lo que se mide sobre lo que declara el patrón. El valor
+    # que queda se dice en voz alta cuando NO lo pidió una persona, porque
+    # cambia la altura de capa de la pieza entera y eso tiene que quedar en el
+    # log de la corrida y no adivinarse después mirando el g-code.
+    if paso_fijo is None:
+        # El patrón sabe si su relieve es angular (pared vertical, la marcha
+        # mide mal) o de silueta (cúpula, la marcha es imprescindible).
+        paso_fijo = bool(getattr(DISENOS[diseno], "PASO_FIJO", False))
+    elif paso_fijo == "auto":
+        # Medido sobre la función de radio ya armada —patrón, estructura y
+        # todo—, que es lo único que el patrón no puede mirar por su cuenta.
         alto_capa = (perfil or Perfil()).altura_capa
         ancho_cordon = (perfil or Perfil()).ancho
         paso_fijo, solape = conviene_paso_fijo(fn_radio, altura, paso_z or alto_capa,
@@ -126,11 +167,13 @@ def pasos_bowl(
         print(f"  paso fijo {paso_z or alto_capa:.2f} mm -> las vueltas solapan "
               f"{solape*100:.0f}% del cordón -> "
               f"{'FIJO' if paso_fijo else 'ADAPTATIVO'}")
+    else:
+        paso_fijo = bool(paso_fijo)
 
     return generar_pieza(
         fn_radio,
         altura=altura,
-        paso_fijo=bool(paso_fijo),
+        paso_fijo=paso_fijo,
         perfil=perfil,
         segmentos_por_capa=segmentos_por_capa or segmentos,
         funcion_dz=fn_dz,
