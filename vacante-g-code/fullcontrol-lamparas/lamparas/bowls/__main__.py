@@ -455,8 +455,15 @@ def _cli() -> None:
             print(aviso)
         print(f"Toques: {len(toques)} desde {args.toques}.")
 
-    # --- silueta desde un DXF ---
-    silueta = args.silueta
+    # --- silueta: del catalogo o desde un DXF ---
+    # Se resuelve a una FUNCION `t -> radio` ya acá, no adentro de `pasos_bowl`.
+    # De acá para abajo hay código que necesita el radio a una altura concreta
+    # —la velocidad por perímetro, el aviso de voladizo— y el comentario de
+    # `--segundos-vuelta` decía "silueta ya resuelta" cuando en realidad seguía
+    # siendo el NOMBRE. Como `--segundos-vuelta` viene encendido por defecto,
+    # toda pieza del catálogo moría con `'str' object is not callable` antes de
+    # generar una sola línea; solo se salvaban las que venían de un `--perfil`.
+    silueta = _SILUETAS[args.silueta](**parametros_silueta)
     altura = args.altura
     if args.perfil:
         from .. import perfil as _perfil
@@ -672,8 +679,21 @@ def _cli() -> None:
             # recibe, así que las descripciones se sacan de ahí.
             from ..estructura import ESTRUCTURAS
             from ..superficie import MASCARAS
+            # Un patrón puede REENVIARLE parámetros a una máscara (`--p
+            # mascara=flores` y con ella `cantidad`, `tamano`, `petalos`...).
+            # Esos no están documentados en el `construir()` del patrón sino en
+            # la máscara, así que hay que ir a buscarlos ahí o los sliders de la
+            # figura salen sin tooltip — que es peor que no tenerlos, porque el
+            # control aparece igual y no dice qué mueve. Si un nombre está en
+            # los dos lados gana el del patrón, que es quien lo recibe.
+            desc_patron = descripciones_de(DISENOS[args.diseno].construir)
+            _par = inspect.signature(DISENOS[args.diseno].construir).parameters.get("mascara")
+            _masc = dict(args.parametros).get("mascara",
+                                              _par.default if _par is not None else None)
+            if isinstance(_masc, str) and _masc in MASCARAS:
+                desc_patron = {**descripciones_de(MASCARAS[_masc]), **desc_patron}
             desc = {
-                "--p": descripciones_de(DISENOS[args.diseno].construir),
+                "--p": desc_patron,
                 "--ps": descripciones_de(_SILUETAS[args.silueta]),
                 "--pe": descripciones_de(ESTRUCTURAS[args.estructura]) if args.estructura else {},
                 "--pp": descripciones_de(MASCARAS[args.pintar]) if args.pintar else {},

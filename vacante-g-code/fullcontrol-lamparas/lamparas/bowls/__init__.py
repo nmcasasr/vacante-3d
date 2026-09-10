@@ -11,6 +11,7 @@ modo vaso, exportación) y se diferencian solo en el patrón:
 - `rizos`   -> bucles que sobresalen, tipo candelero "Dream of Glow"
 - `zigzag`  -> textura en diente de sierra que dibuja una máscara (ver superficie.py)
 - `ondas`   -> anillos horizontales ondulados, tipo cerámica torneada
+- `puas`    -> tubo cubierto de púas, con la figura dibujada en las zonas lisas
 
 Ninguno de los cuatro se puede hacer con un slicer: los tres primeros porque el
 patrón cambia dentro de cada vuelta y de una vuelta a la otra, y la celosía
@@ -20,7 +21,7 @@ porque además mueve la Z dentro de la capa.
 from typing import Optional
 
 from ..comun import Perfil, a_gcode, generar_pieza, guardar_gcode
-from . import celosia, cesta, malla, ondas, rizos, siluetas, tramado, zigzag
+from . import celosia, cesta, malla, ondas, puas, rizos, siluetas, tramado, zigzag
 from .siluetas import SILUETAS
 
 DISENOS = {
@@ -31,6 +32,7 @@ DISENOS = {
     "rizos": rizos,
     "zigzag": zigzag,
     "ondas": ondas,
+    "puas": puas,
 }
 
 

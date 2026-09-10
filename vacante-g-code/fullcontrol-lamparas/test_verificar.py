@@ -141,7 +141,13 @@ def main():
     # El criterio informa qué FRACCIÓN DEL RECORRIDO va por debajo del piso, no
     # el peor segmento: una pieza entera de cordón imposible tiene que dar 100 %.
     fila = [l for l in salida.getvalue().splitlines() if "línea fina" in l]
-    bien = bool(fila) and "100.00%" in fila[0] and "PEOR" in fila[0]
+    # El porcentaje se busca con la unidad SEPARADA ("100.00 %"), que es como lo
+    # imprime `verificar_pieza.medir` —`{valor:8.2f} {u:<2}`—. Buscando
+    # "100.00%" pegado, este caso daba FALLA desde que se escribió y el que
+    # estaba roto era el banco, no el criterio: el veredicto que produce la
+    # línea es el correcto. Un banco que da un rojo permanente enseña a
+    # ignorarlo, que es lo contrario de para lo que existe.
+    bien = bool(fila) and "100.00 %" in fila[0] and "PEOR" in fila[0]
     fallos += not bien
     print(f"  {'ok  ' if bien else 'FALLA'}  el piso de altura de cordón se mide sobre el recorrido")
     if not bien:

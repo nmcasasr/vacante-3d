@@ -1413,9 +1413,13 @@ def _rango(clave: str, valor: float):
     es lo que hace que valga la pena mantenerlo. Los nombres que sabemos que son
     fracciones o cuentas enteras se tratan aparte; el resto sale del valor.
     """
-    if clave.startswith("t_") or clave.endswith("_t") or clave in ("persistencia", "borde", "vuelo_alto"):
+    if clave.startswith("t_") or clave.endswith("_t") or clave in (
+            "persistencia", "borde", "vuelo_alto",
+            # de `bowls/puas.py`: todos fracciones de algo
+            "ocupacion", "filo", "corazon", "variacion", "desde", "hasta"):
         return 0.0, 1.0, 0.01
-    if clave in ("octavas", "modos", "cantidad", "dientes", "escala", "n_lados", "semilla", "alternar"):
+    if clave in ("octavas", "modos", "cantidad", "dientes", "escala", "n_lados", "semilla",
+                 "alternar", "puas", "petalos", "muestras", "tomas", "invertir"):
         tope = max(4.0, valor * 4)
         return 0.0, tope, 1.0
     if "grados" in clave:
