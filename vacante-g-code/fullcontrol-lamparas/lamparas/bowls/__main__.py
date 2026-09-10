@@ -126,6 +126,13 @@ def _cli() -> None:
                         "parametros. Ver lamparas/modelado.py; para probar un archivo sin generar "
                         "nada: python -m lamparas.modelado archivo.json")
     p.add_argument("--segmentos", type=int, help="resolución angular (por defecto, la del patrón)")
+    p.add_argument("--paso", choices=["auto", "fijo", "adaptativo"], default="auto",
+                   help="como sube la espiral. 'adaptativo' acorta la vuelta donde la pared se "
+                        "tumba (imprescindible en una cupula); 'fijo' sube la altura de capa "
+                        "exacta siempre, que es lo que quiere una pared VERTICAL con relieve "
+                        "angular -ahi la marcha adaptativa trata el corrimiento radial como si "
+                        "fuera vertical y devuelve una capa que se bandea sin corresponder a "
+                        "ningun rasgo. 'auto' (por defecto) usa lo que declare el patron.")
     p.add_argument("--sin-base", action="store_true", help="no rellenar el fondo")
     p.add_argument("--capas-transicion", type=int, default=6, metavar="N",
                    help="vueltas en las que el patrón nace desde un círculo liso (por defecto 6). "
@@ -553,6 +560,21 @@ def _cli() -> None:
                   f"{peor[2]:.2f} mm de separacion ({peor[1]:.0f} grados desde la vertical) "
                   f"en z={info['z0'] + peor[0]*info['alto']:.1f}.")
 
+    # De acá para abajo la silueta tiene que ser una FUNCIÓN, no un nombre.
+    #
+    # Sin `--perfil` seguía siendo la cadena que llegó por `--silueta`, y
+    # `--segundos-vuelta` —que viene prendido de fábrica en 25— la llamaba para
+    # sacar el perímetro de cada altura: `TypeError: 'str' object is not
+    # callable` en TODOS los diseños del catálogo. El bloque de abajo era el
+    # único que la necesitaba resuelta y el único camino que la resolvía era el
+    # del DXF, así que el catálogo entero quedaba fuera del CLI.
+    #
+    # Se resuelve una sola vez y con los mismos `parametros_silueta` que usaría
+    # `pasos_bowl`, que acepta la función tal cual: así los dos miden la misma
+    # pieza en vez de resolverla cada uno por su lado.
+    if not callable(silueta):
+        silueta = _SILUETAS[silueta](**parametros_silueta)
+
     # --- velocidad calculada para mantener los segundos por vuelta ----------
     #
     # Va acá y no arriba con los otros `--velocidad-en` porque necesita la
@@ -617,24 +639,31 @@ def _cli() -> None:
               f"techo {techo_mm_min/60:.1f} mm/s · {len(cambios)} escalones")
 
     nombre = args.nombre or f"bowl_{args.diseno}"
-    pasos = pasos_bowl(
-        diseno=args.diseno,
-        silueta=silueta,
-        altura=altura,
-        perfil=perfil,
-        parametros=dict(args.parametros),
-        parametros_silueta=parametros_silueta,
-        segmentos_por_capa=args.segmentos,
-        base_solida=not args.sin_base,
-        hueco=args.piso or 0.0,
-        refuerzo_hueco=args.piso_refuerzo,
-        capas_transicion=args.capas_transicion,
-        capas_base=args.capas_base,
-        cambios=cambios or None,
-        modulacion=modulacion or None,
-        pintura=pintura,
-        deformacion=deformacion,
-    )
+    # Un `--p` que el patrón no conoce es un error de USO: sale por argparse,
+    # con la lista de los que sí acepta, en vez de por un traceback de 20
+    # líneas que termina en el mismo mensaje.
+    try:
+        pasos = pasos_bowl(
+            diseno=args.diseno,
+            silueta=silueta,
+            altura=altura,
+            perfil=perfil,
+            parametros=dict(args.parametros),
+            parametros_silueta=parametros_silueta,
+            segmentos_por_capa=args.segmentos,
+            base_solida=not args.sin_base,
+            hueco=args.piso or 0.0,
+            refuerzo_hueco=args.piso_refuerzo,
+            capas_transicion=args.capas_transicion,
+            capas_base=args.capas_base,
+            cambios=cambios or None,
+            modulacion=modulacion or None,
+            pintura=pintura,
+            deformacion=deformacion,
+            paso_fijo={"auto": None, "fijo": True, "adaptativo": False}[args.paso],
+        )
+    except (ValueError, TypeError) as e:
+        p.error(str(e))
 
     # Va DESPUES del marcador FIN DEL START GCODE. Ahi el empaquetador lo deja
     # pasar verbatim; arriba del marcador lo borraria junto con el calentado de

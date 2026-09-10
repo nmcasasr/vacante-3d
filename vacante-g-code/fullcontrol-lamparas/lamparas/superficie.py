@@ -211,6 +211,95 @@ def parches(
     return mascara
 
 
+def organico(
+    cantidad: int = 9,
+    semilla: int = 5,
+    ancho_grados: float = 85.0,
+    alto_t: float = 0.20,
+    rugosidad: float = 0.55,
+    armonicos: int = 4,
+    borde: float = 0.0,
+) -> Mascara:
+    """
+    Manchas orgánicas que se pisan entre sí, tipo camuflaje.
+
+    Es la máscara de la lámpara de líneas: formas grandes, de borde irregular,
+    que se solapan hasta formar continentes en vez de leerse como una fila de
+    lunares. `parches` no sirve para eso — sus manchas son elipses y la elipse
+    se delata en cuanto hay más de dos.
+
+    Cada mancha es una elipse cuyo RADIO depende del ángulo polar local:
+
+        r(phi) = 1 + rugosidad * sum_j  c_j * cos(j*phi + fase_j)
+
+    con `c_j` proporcional a 1/j y normalizados para que la suma de los módulos
+    valga 1. O sea que `rugosidad` es literalmente cuánto se aparta del óvalo,
+    en fracción de su propio radio: 0 son elipses, 0.55 son manchas, 1.0 son
+    estrellas de mar. Los armónicos bajos dan los lóbulos grandes y los altos
+    el picoteo del borde; por eso pesan 1/j y no todos igual.
+
+    El borde sale DURO a propósito (`borde=0`). En la lámpara de líneas la
+    máscara se cuantiza a la rejilla de líneas antes de usarse, así que el
+    contorno queda escalonado línea por línea —el dentado que se ve en las
+    fotos— y suavizarlo acá no lo suaviza: sólo mete líneas a media altura.
+
+    Args:
+        cantidad: cuántas manchas. Pocas y grandes se pisan y forman
+            continentes; muchas y chicas quedan como un estampado.
+        semilla: cambiala para otra distribución. Misma semilla, misma pieza.
+        ancho_grados: cuánto arco ocupa una mancha de escala 1.
+        alto_t: qué fracción de la altura ocupa una mancha de escala 1.
+        rugosidad: cuánto se aparta del óvalo (0 = elipse, 1 = estrella).
+        armonicos: cuántos lóbulos distintos tiene el borde. 2 son manchas
+            arriñonadas, 5-6 son manchas de vaca.
+        borde: fracción del radio que es transición suave. 0 = borde duro.
+
+    Returns:
+        Una `Mascara`.
+    """
+    from .estructura import _fases
+
+    r = _fases(semilla, cantidad * (3 + 2 * max(1, armonicos)))
+    manchas = []
+    for _ in range(cantidad):
+        centro_a = next(r) * TAU
+        # Se dejan salir por arriba y por abajo: una mancha cortada por el
+        # borde de la pieza se lee como que el patrón sigue, y es lo que hacen
+        # las de la referencia. Acotarlas al centro deja un marco liso que
+        # delata que el dibujo es un estampado y no una piel.
+        centro_t = -0.15 + next(r) * 1.30
+        escala = 0.65 + next(r) * 0.80
+        arm = []
+        for j in range(1, max(1, armonicos) + 1):
+            arm.append((j, next(r) * 2 - 1, next(r) * TAU))
+        peso = sum(abs(c) / j for j, c, _ in arm) or 1.0
+        arm = [(j, c / j / peso, f) for j, c, f in arm]
+        manchas.append((centro_a, centro_t, escala, arm))
+
+    sigma_a = math.radians(ancho_grados) / 2
+    sigma_t = alto_t / 2
+
+    def mascara(angulo: float, t: float) -> float:
+        mejor = 0.0
+        for centro_a, centro_t, escala, arm in manchas:
+            u = _envolver(angulo - centro_a) / (sigma_a * escala)
+            v = (t - centro_t) / (sigma_t * escala)
+            d = math.hypot(u, v)
+            if d > 1 + rugosidad:
+                continue
+            phi = math.atan2(v, u)
+            radio = 1.0 + rugosidad * sum(c * math.cos(j * phi + f) for j, c, f in arm)
+            if radio <= 0:
+                continue
+            if d <= radio * (1 - borde):
+                return 1.0
+            if d < radio:
+                mejor = max(mejor, (radio - d) / max(radio * borde, 1e-9))
+        return mejor
+
+    return mascara
+
+
 def unir(*mascaras: Mascara) -> Mascara:
     """Une varias máscaras: el dibujo es la suma de todas."""
     return lambda angulo, t: max(m(angulo, t) for m in mascaras)
@@ -224,10 +313,35 @@ def invertir(mascara: Mascara) -> Mascara:
 MASCARAS = {
     "caritas": caritas,
     "parches": parches,
+    "organico": organico,
     "feliz": lambda **kw: carita(feliz=True, **kw),
     "triste": lambda **kw: carita(feliz=False, **kw),
     "ninguna": lambda **kw: constante(1.0),
 }
+
+
+def acepta(nombre, kwargs: dict) -> dict:
+    """
+    De `kwargs`, los que esa máscara sabe recibir.
+
+    Las máscaras no comparten parámetros: la carita se ubica con `centro_t` y
+    las manchas orgánicas con `cantidad` y `semilla`. Quien las llama —un
+    patrón, el CLI— tiene un solo bolso de parámetros y no puede saber cuáles
+    van, así que el filtro vive acá, al lado de la tabla.
+
+    Lo que sobra se DESCARTA en silencio a propósito: un `--p semilla=4` que la
+    carita no usa no es un error de uso, es un parámetro que quedó de la otra
+    máscara. Los nombres mal escritos igual se cazan, pero en el patrón, que sí
+    conoce su propia lista.
+    """
+    import inspect
+
+    if callable(nombre) or nombre not in MASCARAS:
+        return {}
+    firma = inspect.signature(MASCARAS[nombre]).parameters
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in firma.values()):
+        return dict(kwargs)
+    return {k: v for k, v in kwargs.items() if k in firma}
 
 
 def resolver(nombre, **kwargs) -> Mascara:
@@ -285,6 +399,10 @@ def _cli() -> None:
     p.add_argument("--ancho-grados", type=float, default=140.0)
     p.add_argument("--centro-t", type=float, default=0.5)
     p.add_argument("--alto-t", type=float, default=0.55)
+    p.add_argument("--cantidad", type=int, default=7, help="manchas (solo 'organico'/'parches')")
+    p.add_argument("--semilla", type=int, default=3, help="semilla de las manchas")
+    p.add_argument("--rugosidad", type=float, default=0.55,
+                   help="cuanto se aparta del ovalo cada mancha (solo 'organico')")
     p.add_argument("--cols", type=int, default=96, help="ancho del dibujo en caracteres")
     p.add_argument("--filas", type=int, default=32, help="alto del dibujo en caracteres")
     p.add_argument("--centrar", action="store_true",
@@ -292,8 +410,10 @@ def _cli() -> None:
                         "partido entre los dos bordes del desenrollado")
     args = p.parse_args()
 
-    m = resolver(args.mascara, ancho_grados=args.ancho_grados,
-                 centro_t=args.centro_t, alto_t=args.alto_t)
+    pedidos = {"ancho_grados": args.ancho_grados, "centro_t": args.centro_t,
+               "alto_t": args.alto_t, "cantidad": args.cantidad,
+               "semilla": args.semilla, "rugosidad": args.rugosidad}
+    m = resolver(args.mascara, **acepta(args.mascara, pedidos))
     if args.centrar:
         base = m
         m = lambda a, t: base((a + math.pi) % TAU, t)  # noqa: E731

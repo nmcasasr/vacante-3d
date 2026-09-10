@@ -207,6 +207,7 @@ lamparas/
   impresoras.py  # start/end gcode de la A1 (o el tuyo, desde un archivo)
   colores.py     # cambios de filamento: pausa manual y AMS
   superficie.py  # máscaras: qué se dibuja sobre la pared, y dónde
+  cordon.py      # qué le hace el CORDÓN a un relieve angular (cuánto sobrevive)
   preview.py     # previsualización HTML 3D
   twist.py       # lámpara ondulada con twist progresivo
   bowls/         # bowls con patrones tejidos
@@ -217,7 +218,10 @@ lamparas/
     tramado.py   # entramado diagonal
     zigzag.py    # textura de diente de sierra que dibuja una máscara
     ondas.py     # anillos horizontales ondulados, tipo cerámica torneada
+    peine.py     # líneas verticales finas; el dibujo lo hacen las que sobresalen
 verificar_ams.py # compara el cambio de AMS contra un .3mf real de Bambu Studio
+verificar_lineas.py # mide sobre el g-code cuánto del peine sobrevive al cordón
+test_cordon.py   # banco de pruebas del modelo del cordón
 output/          # .gcode y .html generados (gitignored)
 requirements.txt
 ```
@@ -246,6 +250,7 @@ python -m lamparas.bowls --help
 | `rizos` | bucles que sobresalen, tipo candelero "Dream of Glow" | trocoide: el trazo **retrocede** en ángulo y cierra un bucle, en vez de solo ondular |
 | `zigzag` | textura en diente de sierra que **dibuja una figura** sobre la pared | el radio va y viene en triángulo dentro de la vuelta, y la vuelta siguiente va lisa. Solo donde una máscara lo pide |
 | `ondas` | anillos horizontales ondulados, tipo cerámica torneada | el radio ondula con la **altura**, no con el ángulo; y la fase corre con el ángulo, así los anillos suben y bajan al dar la vuelta |
+| `peine` | líneas verticales finas en **toda** la pared; el dibujo lo hacen las que sobresalen más | un diente por línea, con el número de dientes por vuelta ENTERO para que se apilen en columna. La máscara elige, línea por línea, si le toca la altura de fondo o la del dibujo |
 
 Los parámetros propios de cada patrón van con `--p clave=valor` (repetible) y
 están documentados en el `construir()` de cada módulo.
@@ -558,6 +563,7 @@ que una máscara se enchufa en cualquier patrón sin tocar el generador. Viven e
 # ver la máscara en la terminal, sin generar nada
 python -m lamparas.superficie caritas
 python -m lamparas.superficie feliz --centrar --ancho-grados 100
+python -m lamparas.superficie organico --cantidad 9 --semilla 5
 
 # una matera con una carita feliz de un lado y una triste del otro
 python -m lamparas.bowls zigzag --silueta cilindro --altura 90 --radio-base 45 \
@@ -600,6 +606,107 @@ python -m lamparas.bowls zigzag --silueta cilindro --altura 90 --radio-base 45 \
        --p mascara=caritas --p dientes=60 --p amplitud=0.6 \
        --slot-inicial 1:PLA --cambio-ams 22:3:PETG --cambio-ams 68:1:PLA
 ```
+
+### Peine: el dibujo con relieve contra relieve
+
+La lámpara de líneas de las referencias es la otra forma de usar una máscara, y
+la diferencia con `zigzag` cambia todo lo que se ve:
+
+- `zigzag` **prende y apaga** la textura. Donde la máscara vale 1 la pared
+  zigzaguea, donde vale 0 va lisa: el dibujo es textura contra liso.
+- `peine` tiene líneas en **toda** la pieza y lo que cambia es **cuánto sale
+  cada una**. Hay dos alturas de diente y la máscara elige cuál le toca a cada
+  línea: el dibujo es relieve contra relieve.
+
+Que el fondo también esté rayado es lo que hace que la pieza se lea como una
+piel y no como un sello: sin líneas de fondo, el dibujo queda flotando sobre una
+pared lisa y se ve el recuadro.
+
+```bash
+# el florero de las fotos: cilindro Ø64 x 180, manchas orgánicas
+python -m lamparas.bowls peine --silueta cilindro --radio-base 32 --altura 180 \
+       --segundos-vuelta 0 --preview
+
+# el peine solo, sin dibujo, para ver la textura
+python -m lamparas.bowls peine --silueta cilindro --radio-base 32 --altura 60 \
+       --p mascara=ninguna --segundos-vuelta 0
+
+# el dibujo al revés: las manchas lisas y el relieve alrededor
+python -m lamparas.bowls peine --p invertir=1 --p semilla=9 --p cantidad=12
+```
+
+`--segundos-vuelta 0` no es un detalle: ese control existe para que el cordón
+cuaje en una cúpula, donde la vuelta siguiente apoya al lado. Un peine sobre
+pared vertical no tiene nada de eso y con el valor por defecto se imprime a
+12 mm/s por gusto.
+
+**Las líneas salen verticales** porque `funcion_radio` recibe el ángulo
+acumulado de toda la espiral: con un número ENTERO de dientes por vuelta,
+`angulo` y `angulo + 2pi` caen en la misma fase y el bulto de una vuelta queda
+exactamente encima del de la anterior. Con un número no entero —lo que hace
+`malla` con `n + 0.5`— saldría una hélice.
+
+**El borde del dibujo sale escalonado**, línea por línea, que es el dentado de
+las fotos. No es un efecto: la máscara se evalúa en el CENTRO de cada línea y
+una sola vez por vuelta, así que una línea sale entera o no sale. Un diente a
+media altura no se leería ni como fondo ni como dibujo.
+
+**En vertical no se puede cuantizar igual.** Si una línea saltara de la altura
+de fondo a la del dibujo entre una vuelta y la siguiente, el radio se correría
+la diferencia entera de golpe, y la regla que gobierna todas las piezas de acá
+es `Δ radio por vuelta < ancho de cordón`. Por eso el peso de cada línea se
+promedia en una ventana de `rampa` vueltas: el salto queda en
+`(amplitud - amplitud_fondo) / rampa` y la línea nace en punta.
+
+#### Cuántas líneas entran: no lo decide una regla, lo decide una cuenta
+
+En modo vaso cada capa es UNA pasada, así que no hay una pasada vecina que
+rellene el valle entre dos dientes: lo rellena el propio cordón. La regla que
+parecía obvia —"el paso de la línea tiene que medir dos cordones"— es falsa en
+las dos direcciones. Con cordón de 0.8 y radio 32:
+
+| líneas | `ancho_diente` | paso | valle | sobrevive |
+|---|---|---|---|---|
+| 160 | 0.55 | 1.26 mm | 0.57 mm | 100 % |
+| 200 | 0.55 | 1.01 mm | 0.45 mm | 49 % |
+| 200 | 0.35 | 1.01 mm | 0.65 mm | 100 % |
+| 250 | 0.35 | 0.80 mm | 0.52 mm | 36 % |
+| 125 | 0.75 | 1.61 mm | 0.40 mm | 96 % |
+
+Un peine de paso 1.26 mm —1.6 cordones, por debajo de la regla— sale entero, y
+uno de paso 0.80 mm con MÁS valle sale borrado: el disco del cordón tiene que
+llegar al fondo del valle **y** a la punta del diente, y eso depende del paso y
+de `ancho_diente` a la vez. Así que no hay regla, hay
+[`lamparas/cordon.py`](lamparas/cordon.py), que modela la superficie como la
+unión de los discos del cordón y calcula el número. Por eso `lineas=0` —el
+valor por defecto— significa **elegilas vos**: busca la mayor cantidad cuyo
+relieve todavía sobrevive. Con boquilla de 0.8 en un cilindro de Ø64 da 186.
+
+#### Medirlo sobre el g-code, que no es lo mismo que predecirlo
+
+```bash
+python3 verificar_lineas.py output/peine_lineas.gcode --dibujo
+python3 test_cordon.py        # el banco de pruebas del modelo del cordón
+```
+
+`verificar_lineas.py` corre el mismo modelo del cordón sobre el archivo REAL,
+con la rejilla de muestreo y la máscara ya aplicadas, y reporta tres cosas:
+
+- **cuánto del relieve sobrevive** al cordón (el florero de arriba: 79 %),
+- **el apoyo**, cuánto se corre el radio entre vueltas vecinas. El florero da
+  0.136 mm de mediana contra los 0.1375 que declara el patrón: que el número
+  medido coincida con el calculado es el chequeo, no el número solo. El peor
+  punto da 0.179 y eso tampoco es un error — el recorrido es una poligonal y
+  entre dos vértices dos vueltas se separan más que en las puntas,
+- **la dinámica**: a qué frecuencia tiene que oscilar el cabezal y con qué
+  aceleración de pico. Es el único de los tres que la geometría no ve — si el
+  perfil de impresión no da esa aceleración, la máquina redondea la onda y la
+  pieza sale más lisa que el archivo sin que nada lo denuncie.
+
+Con `--dibujo` desenrolla la pieza en ASCII y muestra qué líneas quedaron
+altas. Entre la máscara y el g-code están la cuantización a la rejilla, la
+rampa vertical y las capas de transición, y cualquiera de las tres puede
+haberse comido el dibujo.
 
 ### Por qué el zigzag es radial y no vertical
 

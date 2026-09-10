@@ -11,16 +11,19 @@ modo vaso, exportación) y se diferencian solo en el patrón:
 - `rizos`   -> bucles que sobresalen, tipo candelero "Dream of Glow"
 - `zigzag`  -> textura en diente de sierra que dibuja una máscara (ver superficie.py)
 - `ondas`   -> anillos horizontales ondulados, tipo cerámica torneada
+- `peine`   -> líneas verticales finas en toda la pared; el dibujo lo hacen las
+               que sobresalen más que las otras (ver superficie.py)
 
 Ninguno de los cuatro se puede hacer con un slicer: los tres primeros porque el
 patrón cambia dentro de cada vuelta y de una vuelta a la otra, y la celosía
 porque además mueve la Z dentro de la capa.
 """
 
+import inspect
 from typing import Optional
 
 from ..comun import Perfil, a_gcode, generar_pieza, guardar_gcode
-from . import celosia, cesta, malla, ondas, rizos, siluetas, tramado, zigzag
+from . import celosia, cesta, malla, ondas, peine, rizos, siluetas, tramado, zigzag
 from .siluetas import SILUETAS
 
 DISENOS = {
@@ -31,6 +34,7 @@ DISENOS = {
     "rizos": rizos,
     "zigzag": zigzag,
     "ondas": ondas,
+    "peine": peine,
 }
 
 
@@ -51,6 +55,7 @@ def pasos_bowl(
     modulacion: Optional[dict] = None,
     pintura: Optional[dict] = None,
     deformacion=None,
+    paso_fijo: Optional[bool] = None,
 ) -> list:
     """
     Arma los pasos de FullControl de un bowl.
@@ -71,6 +76,10 @@ def pasos_bowl(
         capas_transicion: capas en las que el patrón nace desde un círculo liso.
         capas_base: primeras vueltas sin rampa de Z (anillos cerrados), para que
             el calado arranque desde algo macizo en vez de desde un solo cordón.
+        paso_fijo: subir `paso_z` exacto en cada vuelta en vez de usar la marcha
+            adaptativa. None = lo que declare el patrón en su `PASO_FIJO`, que
+            es quien sabe si su relieve es angular (pared vertical, la marcha
+            mide mal) o de silueta (cúpula, la marcha es imprescindible).
     """
     if diseno not in DISENOS:
         raise ValueError(f"diseño desconocido: {diseno!r}. Opciones: {sorted(DISENOS)}")
@@ -87,7 +96,24 @@ def pasos_bowl(
     #   (funcion_radio, funcion_dz, segmentos, paso_z)
     # y opcionalmente un quinto elemento, funcion_dangulo, que solo usan los
     # patrones cuyo trazo vuelve sobre sí mismo (rizos).
-    resultado = DISENOS[diseno].construir(fn_silueta, altura=altura, **(parametros or {}))
+    # La boquilla no es un parámetro del dibujo, pero hay patrones que no se
+    # pueden calcular sin ella: `peine` elige cuántas líneas entran a partir de
+    # cuál es la más fina que el cordón todavía resuelve. Se le pasa sólo a
+    # quien la declara en su firma, así que ningún patrón viejo se entera.
+    par_patron = dict(parametros or {})
+    firma = inspect.signature(DISENOS[diseno].construir).parameters
+    for clave, valor in (("ancho_cordon", (perfil or Perfil()).ancho),
+                         ("altura_capa", (perfil or Perfil()).altura_capa)):
+        if clave in firma and clave not in par_patron:
+            par_patron[clave] = valor
+    abierta = any(v.kind is inspect.Parameter.VAR_KEYWORD for v in firma.values())
+    sobran = [] if abierta else [k for k in par_patron if k not in firma]
+    if sobran:
+        raise ValueError(
+            f"el patrón {diseno!r} no acepta {', '.join(sorted(sobran))}. "
+            f"Acepta: {', '.join(k for k in firma if k != 'silueta')}")
+
+    resultado = DISENOS[diseno].construir(fn_silueta, altura=altura, **par_patron)
     fn_radio, fn_dz, segmentos, paso_z = resultado[:4]
     fn_dangulo = resultado[4] if len(resultado) > 4 else None
 
@@ -120,6 +146,8 @@ def pasos_bowl(
         modulacion=modulacion,
         pintura=pintura,
         paso_z=paso_z,
+        paso_fijo=(getattr(DISENOS[diseno], "PASO_FIJO", False)
+                   if paso_fijo is None else bool(paso_fijo)),
         # el voladizo se mide sobre la silueta lisa: el relieve del patrón hace
         # oscilar el radio medio y daría falsas alarmas
         silueta_referencia=fn_silueta,
