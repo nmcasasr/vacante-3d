@@ -363,6 +363,7 @@ def hoja(
     tallo_ancho_mm: float = 3.0,
     tallo_afina: float = 0.45,
     vena_mm: float = 3.2,
+    degradado: float = 0.0,
     k: int = 1,
     brazo: float = 0.62,
     borde_mm: float = 1.5,
@@ -431,6 +432,19 @@ def hoja(
             punta mide `tallo_ancho_mm x tallo_afina` y si eso baja de un punto,
             la punta del tallo no se dibuja y el afinado se corta de golpe.
         vena_mm: ancho de la nervadura y de los brazos de la K.
+        degradado: cuánto BAJA el relieve hacia el centro de la hoja. 0 (por
+            defecto) deja la hoja pareja, que es como una meseta de canto vivo y
+            se lee cuadrada. Con 0.2, el borde de la hoja sale entero y el
+            centro apenas por encima del fondo, así que la hoja se ve abombada
+            hacia adentro en vez de estampada.
+
+            Es el peso en el CENTRO, en fracción: el patrón lo convierte en
+            `amplitud_fondo + (amplitud - amplitud_fondo) x degradado`. Con 0.2
+            sobre un fondo de 1.25 y una figura de 7, el centro sale a 2.4 mm.
+
+            Ojo con la rejilla: el degradado es una rampa suave y el patrón la
+            cuantiza a puntos de un par de milímetros. Si la hoja mide pocos
+            puntos de ancho, la rampa sale en dos o tres escalones.
         k: 1 dibuja los dos brazos; 0 deja la hoja con la nervadura sola.
         brazo: la pendiente de los brazos, en fracción de `largo/ancho`. 0.62
             los saca a media altura del borde, que es la proporción del logo.
@@ -525,6 +539,18 @@ def hoja(
                 continue
             if _en_vena(du, dv):
                 return 0.0      # la vena manda sobre la carne
+            if degradado > 0.0:
+                # Cuán CERCA del contorno está el punto: 0 en el centro, 1 en el
+                # borde. Se toma el máximo de las dos distancias normalizadas
+                # —la de costado contra la media anchura de esa altura, y la de
+                # alto contra el semilargo— porque la punta de la hoja también
+                # es borde. Sólo con la de costado, la nervadura y las puntas
+                # quedarían al mismo nivel que el centro y la hoja seguiría
+                # leyéndose plana en el eje largo.
+                media = _media_anchura(dv)
+                lado = abs(du) / media if media > 1e-9 else 1.0
+                e = min(1.0, max(abs(dv) / semi_l, lado))
+                carne *= degradado + (1.0 - degradado) * e
             mejor = max(mejor, carne)
             if mejor >= 1.0:
                 return 1.0

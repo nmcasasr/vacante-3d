@@ -144,6 +144,11 @@ def _cli() -> None:
                         "cuenta que usa marcha_vertical para elegir el paso, con la que esta "
                         "hecho el gusanito. Las dos estan medidas y dan distinto: ver el "
                         "bloque largo en comun.generar_pieza.")
+    p.add_argument("--base-borde", type=float, default=0.0, metavar="MM",
+                   help="milimetros de piso POR FUERA de la pared, para que la pared caiga "
+                        "SOBRE el piso y no en su canto. Sin esto la ultima pasada del piso "
+                        "y la primera vuelta de la pared comparten eje, y al enfriarse la "
+                        "pared levanta el borde: se despega (visto en un cupon impreso).")
     p.add_argument("--sin-base", action="store_true", help="no rellenar el fondo")
     p.add_argument("--capas-transicion", type=int, default=6, metavar="N",
                    help="vueltas en las que el patrón nace desde un círculo liso (por defecto 6). "
@@ -698,6 +703,7 @@ def _cli() -> None:
             pintura=pintura,
             deformacion=deformacion,
             separacion_modo=args.separacion,
+            base_borde=args.base_borde,
             paso_fijo={"auto": None, "medir": "auto",
                        "fijo": True, "adaptativo": False}[args.paso],
         )

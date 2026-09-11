@@ -251,7 +251,8 @@ def radio_de_hueco(diametro: float, ancho: float, holgura: float = 0.3) -> float
 
 
 def _espiral_base(forma: Callable[[float], float], perfil: Perfil, paso_arco: float = 1.0,
-                  radio_interior: float = 0.0, refuerzo: int = 0):
+                  radio_interior: float = 0.0, refuerzo: int = 0,
+                  borde: float = 0.0):
     """
     Espiral que rellena el fondo de la pieza, del centro hacia afuera. Es lo que
     le da piso a un bowl sin romper el trazo continuo del modo vaso: se imprime
@@ -288,6 +289,11 @@ def _espiral_base(forma: Callable[[float], float], perfil: Perfil, paso_arco: fl
     entonces el diámetro del encastre cambiaba cada vez que se tocaba el corte
     de la base — que es justo el número que tiene que quedarse quieto. Para
     angostar el piso se baja el corte, que mueve la punta que sí es libre.
+
+    `borde` son milímetros de piso POR FUERA del contorno de la pared, para que
+    la pared caiga SOBRE el piso y no en su canto. Sin eso, la última pasada del
+    piso y la primera vuelta de la pared comparten eje, y al enfriarse la pared
+    levanta el borde del piso: se despega. Ver el bloque al final.
 
     Devuelve (puntos, angulo_final) para que la pared arranque justo donde
     termina la base y no quede un salto.
@@ -359,6 +365,36 @@ def _espiral_base(forma: Callable[[float], float], perfil: Perfil, paso_arco: fl
     # cierre exacto sobre el contorno, para empalmar con la pared
     puntos.append(fc.Point(x=cx + forma(angulo) * math.cos(angulo),
                            y=cy + forma(angulo) * math.sin(angulo), z=z))
+
+    # --- el reborde ------------------------------------------------------
+    #
+    # Vueltas de piso POR FUERA del contorno de la pared. Sin ellas la última
+    # pasada del piso y la primera vuelta de la pared comparten eje: la pared
+    # se apoya en el BORDE del piso y no sobre él, y al enfriarse lo levanta.
+    # Es un despegue que se vio en un cupón impreso, no una precaución.
+    #
+    # Van DESPUÉS de la espiral y no antes por dos motivos: el trazo tiene que
+    # seguir siendo continuo —terminan justo donde arranca la pared, un cordón
+    # hacia adentro— y así el reborde queda pegado a la cama desde el primer
+    # momento, que es lo que lo hace anclar.
+    #
+    # Se sale hacia afuera y se vuelve: la ÚLTIMA pasada del reborde tiene que
+    # ser la del contorno, porque es donde empalma la pared. Al revés, la pared
+    # arrancaría en el radio de afuera.
+    n_borde = int(math.ceil(max(0.0, borde) / max(fusion, 1e-6)))
+    # Sin reborde no se agrega NADA: `range(1, 1) + [0]` daba igual una vuelta
+    # de cierre y eso movía 171 593 instrucciones del hongo impreso, que es el
+    # control de que una perilla nueva no toca lo que ya estaba.
+    for k in (list(range(1, n_borde + 1)) + [0]) if n_borde else []:
+        objetivo = 2 * math.pi
+        recorrido = 0.0
+        while recorrido < objetivo:
+            r = forma(angulo) + k * fusion
+            puntos.append(fc.Point(x=cx + r * math.cos(angulo),
+                                   y=cy + r * math.sin(angulo), z=z))
+            d = paso_arco / max(r, 0.6)
+            angulo += d
+            recorrido += d
     return puntos, angulo
 
 
@@ -415,6 +451,7 @@ def generar_pieza(
     funcion_flujo: Optional[FuncionRadio] = None,
     funcion_velocidad: Optional[FuncionRadio] = None,
     separacion_modo: str = "derivada",
+    base_borde: float = 0.0,
     base_solida: bool = False,
     hueco: float = 0.0,   # diámetro FINAL del agujero del piso, en mm
     refuerzo_hueco: int = 0,
@@ -483,6 +520,10 @@ def generar_pieza(
             sobre sí mismo. Con esto sí, y ahí aparecen los rizos: si el
             corrimiento retrocede más rápido de lo que avanza el ángulo, el
             trazo cierra un bucle en vez de ondular.
+        base_borde: milímetros de piso POR FUERA del contorno de la pared. Hace
+            que la pared caiga SOBRE el piso en vez de en su canto, que es lo
+            que evita que al enfriarse lo levante y se despegue. Sólo tiene
+            efecto con `base_solida`. 0 deja el comportamiento de siempre.
         base_solida: rellena el fondo con una espiral antes de empezar la pared
         hueco: diámetro que tiene que QUEDAR libre en el piso, en mm. No es el
             del recorrido: el cordón va centrado en la trayectoria, así que se
@@ -659,7 +700,7 @@ def generar_pieza(
         puntos_base, angulo_inicio = _espiral_base(
             lambda a: funcion_radio(a, 0.0), perfil,
             radio_interior=radio_de_hueco(hueco, perfil.ancho) if hueco else 0.0,
-            refuerzo=refuerzo_hueco)
+            refuerzo=refuerzo_hueco, borde=base_borde)
         puntos.extend(puntos_base)
 
     # con base sólida la pared arranca una capa más arriba, encima del fondo

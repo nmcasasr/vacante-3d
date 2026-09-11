@@ -53,6 +53,33 @@ continuas**, que no es el aspecto del video.
 
 ---
 
+## `hoja-degradada` — la hoja que no se ve cuadrada
+
+`2-floreros/hoja-degradada/hoja_fondo1.25_pico7mm` — **IMPRIMIBLE**, contacto
+0.00 %.
+
+Dos cambios sobre las otras hojas:
+
+- **El relieve baja hacia el centro** (`degradado=0.2`). En las demás la hoja es
+  una meseta pareja de canto vivo y se lee cuadrada; acá el borde sale entero
+  —los 7 mm— y el centro apenas por encima del fondo, así que la hoja se ve
+  abombada hacia adentro. La nervadura y la K se leen igual, porque son huecos.
+- **Pico de 7 mm** sobre un fondo de 1.25.
+
+## El reborde de la base, y por qué está
+
+Todos los archivos llevan ahora `--base-borde 4`: **4 mm de piso por fuera de
+la pared**.
+
+Sin eso, la última pasada del piso y la primera vuelta de la pared comparten
+eje — la pared se apoya en el CANTO del piso y no sobre él — y al enfriarse lo
+levanta. Es un despegue que se vio en un cupón impreso, no una precaución.
+Ahora la pared cae 4.46 mm por dentro del canto, y de paso el piso tiene más
+área contra la cama.
+
+`--base-borde 0` (el defecto) deja el comportamiento de siempre: el hongo, el
+peine y el gusanito se regeneran byte a byte.
+
 ## 1-cupones — imprimí estos primero
 
 Cilindros cortos sin dibujo: son para leer el grumo, no la figura. Cinco bandas
