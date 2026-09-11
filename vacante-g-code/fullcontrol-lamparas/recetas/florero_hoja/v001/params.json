@@ -48,9 +48,11 @@
   "--p",
   "ancho_mm=28",
   "--p",
-  "tallo_mm=8",
+  "tallo_mm=12",
   "--p",
-  "tallo_ancho_mm=4.0",
+  "tallo_ancho_mm=5.5",
+  "--p",
+  "tallo_afina=0.32",
   "--p",
   "vena_mm=3.0",
   "--segundos-vuelta",
@@ -207,20 +209,29 @@
   {
    "flag": "--p",
    "clave": "tallo_mm",
-   "valor": 8.0,
+   "valor": 12.0,
    "min": 0.0,
-   "max": 24.0,
-   "paso": 0.12,
+   "max": 36.0,
+   "paso": 0.18,
    "que": "largo del tallo por debajo de la hoja. 0 lo saca."
   },
   {
    "flag": "--p",
    "clave": "tallo_ancho_mm",
-   "valor": 4.0,
+   "valor": 5.5,
    "min": 0.0,
-   "max": 12.0,
-   "paso": 0.06,
-   "que": "ancho del tallo. Tiene que valer al menos un punto de la rejilla o no se dibuja."
+   "max": 16.5,
+   "paso": 0.0825,
+   "que": "ancho del tallo DONDE NACE de la hoja. Tiene que valer al menos un punto de la rejilla o no se dibuja."
+  },
+  {
+   "flag": "--p",
+   "clave": "tallo_afina",
+   "valor": 0.32,
+   "min": 0.0,
+   "max": 1.0,
+   "paso": 0.005,
+   "que": "qu\u00e9 fracci\u00f3n de ese ancho le queda a la punta de abajo. 1.0 deja el tallo recto \u2014un palito pegado\u2014; 0.45 lo afina lo justo para que se lea como parte de la hoja. **Ojo con la rejilla**: la punta mide `tallo_ancho_mm x tallo_afina` y si eso baja de un\u2026"
   },
   {
    "flag": "--p",

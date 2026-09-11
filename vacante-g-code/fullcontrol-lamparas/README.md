@@ -822,6 +822,42 @@ Ahora `construir()` sube `muestras` hasta garantizar una muestra en la meseta
 (`ocupacion=0.5`) da 6, que es lo que ya se usaba: ninguna pieza anterior se
 mueve. Es la misma cuenta que hace `bowls/peine.py` con `muestras_diente`.
 
+### Cuánto puede salir un turupe, y qué cuesta
+
+El cordón NO es el límite: con `ocupacion=0.30` sobra valle y el modelo dice
+100 % de relieve hasta 14 mm de vuelo. El límite es el CRECIMIENTO — el grumo
+se corre hacia afuera `amplitud / con_patron` por vuelta y eso tiene que caber
+en un cordón:
+
+    amplitud maxima = con_patron x ancho_de_cordon
+
+| `con_patron` | vuelo máximo (cordón 1.2) | fila de grumos cada |
+|---|---|---|
+| 3 | 3.6 mm | 2.0 mm |
+| 5 | 6.0 mm | 2.8 mm |
+| 7 | 8.4 mm | 3.6 mm |
+| 11 | 13.2 mm | 5.2 mm |
+
+**Lo que se paga por un turupe más largo es resolución vertical del dibujo.**
+Cada vuelta extra de crecimiento separa una fila de grumos de la siguiente, y
+esa separación es el alto del "punto" con el que se dibuja. Por eso el florero
+de 5 mm de vuelo dibuja con puntos de 1.64 x 3.60 mm y el de 2.4 con puntos de
+1.64 x 2.40.
+
+Cuál gana depende de la pieza: `florero_hoja` (2.4 mm) tiene la K más nítida,
+`florero_hojav2` (5.0 mm) tiene mucho más relieve al tacto.
+
+### Las bandas del barrido cambian al arrancar un ciclo
+
+`barrido` parte la altura en bandas de amplitud distinta, y el corte es duro a
+propósito: la gracia de un cupón es poder decir "la tercera banda sirve y la
+cuarta no". Pero la banda se lee **al arranque del ciclo de cadencia**, no en
+`t`. Cambiando a media banda de patrón, un grumo empezaría a crecer con una
+amplitud y terminaría con otra, y el salto de esa vuelta sería el paso del
+crecimiento MÁS la diferencia entre bandas: medido, 2.28 mm contra un cordón de
+1.2 en un cupón de 4.8 a 12. Leyéndola al arranque, cada grumo crece entero con
+una sola amplitud y el cambio de banda cae donde ya hay vueltas lisas.
+
 ### Lo que gobierna este dibujo no es el dibujo: es la rejilla
 
 El patrón no puede dibujar más fino que un turupe. **Un "punto" del dibujo mide

@@ -433,7 +433,15 @@ def construir(
         # interpola entre las dos. Que el fondo también pulse es lo que hace
         # que la pieza se lea como una piel con el dibujo más marcado, y no
         # como un sello pegado sobre una pared lisa.
-        amp = amplitud_fondo + (amp_de(t) - amplitud_fondo) * peso(angulo, t)
+        # La banda del barrido se lee al ARRANQUE DEL CICLO, no en `t`. Si
+        # cambiara a media banda de patrón, el grumo empezaría a crecer con una
+        # amplitud y terminaría con otra: el salto de esa vuelta sería el paso
+        # del crecimiento MÁS la diferencia entre bandas, y eso no lo tapa
+        # ningún cordón (medido: 2.28 mm contra 1.2 en un cupón de 4.8 a 12).
+        # Leyéndola al arranque, cada grumo crece entero con una sola amplitud y
+        # el cambio de banda cae donde ya hay vueltas lisas.
+        amp = amplitud_fondo + (amp_de((capa // ciclo) * ciclo * dt_capa)
+                                - amplitud_fondo) * peso(angulo, t)
         amp *= crecida(capa)
         if amp <= 0.0:
             return base

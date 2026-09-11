@@ -361,6 +361,7 @@ def hoja(
     panza: float = 0.12,
     tallo_mm: float = 8.0,
     tallo_ancho_mm: float = 3.0,
+    tallo_afina: float = 0.45,
     vena_mm: float = 3.2,
     k: int = 1,
     brazo: float = 0.62,
@@ -422,8 +423,13 @@ def hoja(
             largo. 0 deja la hoja simétrica —un ojo—; 0.12 la baja lo justo
             para que se lea como hoja.
         tallo_mm: largo del tallo por debajo de la hoja. 0 lo saca.
-        tallo_ancho_mm: ancho del tallo. Tiene que valer al menos un punto de
-            la rejilla o no se dibuja.
+        tallo_ancho_mm: ancho del tallo DONDE NACE de la hoja. Tiene que valer
+            al menos un punto de la rejilla o no se dibuja.
+        tallo_afina: qué fracción de ese ancho le queda a la punta de abajo.
+            1.0 deja el tallo recto —un palito pegado—; 0.45 lo afina lo justo
+            para que se lea como parte de la hoja. **Ojo con la rejilla**: la
+            punta mide `tallo_ancho_mm x tallo_afina` y si eso baja de un punto,
+            la punta del tallo no se dibuja y el afinado se corta de golpe.
         vena_mm: ancho de la nervadura y de los brazos de la K.
         k: 1 dibuja los dos brazos; 0 deja la hoja con la nervadura sola.
         brazo: la pendiente de los brazos, en fracción de `largo/ancho`. 0.62
@@ -462,15 +468,25 @@ def hoja(
 
     def _en_hoja(du: float, dv: float) -> float:
         """1 en la carne (hoja o tallo), 0 fuera, contorno desvanecido."""
-        if tallo_mm > 0 and dv < -semi_l:
-            # el tallo: una tira recta colgando de la base de la hoja
-            if dv < -semi_l - tallo_mm:
-                return 0.0
-            media = tallo_ancho_mm / 2
-        else:
-            media = _media_anchura(dv)
-            if media <= 0.0:
-                return 0.0
+        media = _media_anchura(dv)
+        if tallo_mm > 0 and -semi_l - tallo_mm <= dv <= -semi_l + tallo_mm:
+            # El tallo AFINA hacia abajo: grueso donde nace de la hoja y
+            # delgado en la punta. Recto se lee como un palito pegado; el
+            # afinado es lo que lo hace parecer parte de la hoja.
+            #
+            # Se toma el MÁXIMO contra la hoja, no un `else`. Con un `else`, en
+            # la fila donde la hoja ya se cerró en punta pero `dv` todavía no
+            # pasó su base, la anchura era la de la hoja —o sea cero— y quedaba
+            # una FILA VACÍA entre la hoja y el tallo: el tallo salía suelto,
+            # despegado. Con el máximo, el tallo entra por dentro de la punta de
+            # la hoja y el nacimiento queda grueso, que es como se ve en una
+            # hoja de verdad.
+            u = (-semi_l - dv) / tallo_mm          # <0 dentro de la hoja, 1 en la punta
+            if u <= 1.0:
+                media = max(media, tallo_ancho_mm / 2
+                            * (1.0 - (1.0 - tallo_afina) * max(0.0, u)))
+        if media <= 0.0:
+            return 0.0
         d = abs(du)
         if d <= media:
             return 1.0
