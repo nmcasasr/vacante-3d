@@ -413,6 +413,7 @@ def generar_pieza(
     funcion_dz: Optional[FuncionRadio] = None,
     funcion_dangulo: Optional[FuncionRadio] = None,
     funcion_flujo: Optional[FuncionRadio] = None,
+    funcion_velocidad: Optional[FuncionRadio] = None,
     base_solida: bool = False,
     hueco: float = 0.0,   # diámetro FINAL del agujero del piso, en mm
     refuerzo_hueco: int = 0,
@@ -453,6 +454,20 @@ def generar_pieza(
             cambia, y nada mientras se mantenga. Con None no se emite ninguno y
             ninguna pieza anterior se mueve —comprobado regenerando el hongo
             byte a byte.
+
+        funcion_velocidad: multiplicador de la velocidad de impresión,
+            `(angulo, t) -> factor`, punto a punto en la pared. 1.0 es la del
+            perfil.
+
+            Es para los tramos que el patrón tiende AL AIRE: un turupe que sale
+            de golpe sobre una vuelta lisa no tiene nada debajo, y ahí el
+            cordón necesita tiempo para pegarse al llegar. No toca la extrusión
+            —la sección la fija la geometría, no el `F`— así que bajar la
+            velocidad NO adelgaza la línea.
+
+            Se emite como `fc.Printer` sólo cuando el factor cambia, y
+            redondeado a 30 mm/min para no llenar el archivo de cambios de `F`
+            que la máquina ni alcanza a aplicar. Con None no se emite ninguno.
 
         funcion_dangulo: corrimiento angular en radianes, `(angulo, t) -> dang`.
             Sin esto el ángulo solo avanza y el recorrido nunca puede volver
@@ -649,6 +664,7 @@ def generar_pieza(
     # Radio del punto anterior, para detectar los saltos que son puentes.
     radio_previo = [None]
     flujo_previo = [None]      # el último factor de `funcion_flujo` que se emitió
+    velocidad_previa = [None]  # la última velocidad de `funcion_velocidad`
 
     def _mezcla(capa: int) -> float:
         """Cuánto del patrón está activo en esta vuelta: 0 en la primera, 1 al final."""
@@ -1289,6 +1305,16 @@ def generar_pieza(
             # finos cruzando el vacío. Un puente tiene que salir con el grosor
             # del cordón normal: es lo único que le da material para llegar al
             # otro lado. Después se vuelve a la altura de la vuelta.
+            # La velocidad va ANTES del ancho: las dos son estado de la
+            # impresora y da igual el orden en el archivo, pero declararla acá
+            # deja el bloque del puente de abajo tal como estaba.
+            if funcion_velocidad is not None:
+                v = int(round(perfil.velocidad_impresion
+                              * funcion_velocidad(angulo, t) / 30.0) * 30)
+                if v != velocidad_previa[0]:
+                    puntos.append(fc.Printer(print_speed=v))
+                    velocidad_previa[0] = v
+
             salto = abs(radio - radio_previo[0]) if radio_previo[0] is not None else 0.0
             puentea = salto > SALTO_PUENTE
             if puentea:

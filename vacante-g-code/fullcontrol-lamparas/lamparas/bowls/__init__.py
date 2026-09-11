@@ -114,7 +114,9 @@ def pasos_bowl(
     #   [4] funcion_dangulo, que sólo usan los patrones cuyo trazo vuelve sobre
     #       sí mismo (rizos);
     #   [5] funcion_flujo, el factor de SECCIÓN punto a punto, que sólo usan
-    #       los que engordan su relieve sin moverlo (puas).
+    #       los que engordan su relieve sin moverlo (puas);
+    #   [6] funcion_velocidad, el factor de VELOCIDAD punto a punto, que usan
+    #       los que tienden tramos al aire y necesitan frenar ahí.
     # Los dos son posicionales y opcionales, así que un patrón que quiera el
     # [5] y no el [4] tiene que devolver None en el medio.
     # La boquilla no es un parámetro del dibujo, pero hay patrones que no se
@@ -140,6 +142,9 @@ def pasos_bowl(
     # sexto elemento opcional: el factor de SECCIÓN punto a punto. Sólo lo
     # devuelven los patrones que engordan su relieve sin moverlo (`puas`).
     fn_flujo = resultado[5] if len(resultado) > 5 else None
+    # séptimo: el factor de VELOCIDAD punto a punto. Lo devuelven los patrones
+    # que tienden tramos al aire y necesitan frenar ahí (`puas` con `crecer=0`).
+    fn_velocidad = resultado[6] if len(resultado) > 6 else None
 
     # La deformación de estructura se suma ENCIMA del radio que devolvió el
     # patrón, envolviéndolo. Así compone con todos los patrones sin que ninguno
@@ -187,6 +192,7 @@ def pasos_bowl(
         funcion_dz=fn_dz,
         funcion_dangulo=fn_dangulo,
         funcion_flujo=fn_flujo,
+        funcion_velocidad=fn_velocidad,
         base_solida=base_solida,
         hueco=hueco,
         refuerzo_hueco=refuerzo_hueco,

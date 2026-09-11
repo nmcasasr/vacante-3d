@@ -173,6 +173,8 @@ def construir(
     filo: float = 0.34,
     lisas: int = 3,
     con_patron: int = 2,
+    crecer: int = 1,
+    puente_lento: float = 0.35,
     muestras: int = 6,
     mascara="flores",
     invertir: int = 0,
@@ -217,6 +219,30 @@ def construir(
             Los dos barridos son independientes y se pueden usar juntos, pero
             conviene no hacerlo: con los dos a la vez, una banda que sale mal
             no dice cuál de las dos cosas la arruinó.
+        crecer: 1 hace que el grumo CREZCA a lo largo de su banda, repartiendo
+            el salto; 0 lo saca entero en la primera vuelta con patrón y deja
+            que PUENTEE sobre la vuelta lisa de abajo.
+
+            Con 1, el largo del grumo está limitado por
+            `con_patron x ancho_de_cordon`, y cada vuelta de crecimiento separa
+            una fila de grumos de la siguiente: se paga en resolución del
+            dibujo. Con 0 no hay techo y la resolución es la mejor posible, pero
+            la punta del grumo se tiende al aire y se descuelga un poco. En la
+            pieza de referencia se descuelga, y es parte de cómo se ve.
+
+            Con 0, `puente_lento` es lo que hace que ese puente salga bien.
+        puente_lento: qué fracción de la velocidad se usa donde el grumo está
+            al aire. **No adelgaza la línea**: la sección la fija la geometría y
+            no el `F`, así que bajar la velocidad deposita lo mismo en más
+            tiempo.
+
+            Frena sólo en la PUNTA, no en todo el vuelo, y eso está medido en
+            la referencia (`Squeezy Fidget Toy.gcode`, ver el bloque de
+            `modulacion` en `comun.generar_pieza`): de los 14 segmentos de un
+            nodo, 11 van a velocidad plena y 3 a la mitad. Tiende el puente
+            rápido —cuanto menos tiempo al aire, menos se descuelga— y frena
+            únicamente para pararse y dejar material en el vértice. Frenar todo
+            el vuelo hace lo contrario de lo que hay que hacer.
         lisas: cuántas vueltas seguidas van DERECHAS, sin pulsar.
         con_patron: cuántas vueltas seguidas pulsan, después de las lisas. El
             ciclo `lisas + con_patron` se repite hasta arriba. Con `lisas=0` el
@@ -395,7 +421,7 @@ def construir(
         ADENTRO no deja nada al aire — la vuelta lisa se apoya en el valle,
         que vale la silueta en todas las vueltas.
         """
-        if lisas <= 0:
+        if lisas <= 0 or not crecer:
             return 1.0
         k = (capa % ciclo) - int(lisas)          # 0 .. con_patron-1
         return (k + 1) / max(1, int(con_patron))
@@ -416,6 +442,22 @@ def construir(
         # cambio de sección cae en mitad del flanco y se lee como un anillo.
         fase = angulo * puas / TAU + deriva * t * puas
         return 1.0 + (f - 1.0) * _pulso(fase % 1.0, ocupacion, filo)
+
+    def funcion_velocidad(angulo: float, t: float) -> float:
+        """Velocidad en ese punto: plena salvo en la punta de un grumo al aire."""
+        if crecer or lisas <= 0 or puente_lento >= 1.0:
+            return 1.0
+        capa = math.floor(t / dt_capa)
+        # Sólo la PRIMERA vuelta de la banda tiene la vuelta lisa debajo; de la
+        # segunda en adelante cada grumo apoya sobre el de la vuelta anterior.
+        if not pulsa(capa) or (capa % ciclo) != int(lisas):
+            return 1.0
+        fase = (angulo * puas / TAU + deriva * t * puas) % 1.0
+        # la meseta, o sea el vértice donde la boquilla se para y vuelve
+        meseta_ini = (ocupacion - ocupacion * filo) / 2
+        if meseta_ini <= fase <= meseta_ini + ocupacion * filo:
+            return max(0.05, puente_lento)
+        return 1.0
 
     def radio(angulo: float, t: float) -> float:
         base = silueta(t)
@@ -452,7 +494,8 @@ def construir(
             puas, amplitud, deriva, altura_capa, ocupacion, filo, ancho_cordon,
             _lista(barrido))
 
-    return radio, None, max(120, puas * m), None, None, funcion_flujo
+    return (radio, None, max(120, puas * m), None, None, funcion_flujo,
+            funcion_velocidad)
 
 
 def _avisar(silueta, altura, radio_medio, radio, pulsa, lisas, con_patron,
