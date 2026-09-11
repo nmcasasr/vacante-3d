@@ -414,6 +414,7 @@ def generar_pieza(
     funcion_dangulo: Optional[FuncionRadio] = None,
     funcion_flujo: Optional[FuncionRadio] = None,
     funcion_velocidad: Optional[FuncionRadio] = None,
+    separacion_modo: str = "derivada",
     base_solida: bool = False,
     hueco: float = 0.0,   # diámetro FINAL del agujero del piso, en mm
     refuerzo_hueco: int = 0,
@@ -454,6 +455,14 @@ def generar_pieza(
             cambia, y nada mientras se mantenga. Con None no se emite ninguno y
             ninguna pieza anterior se mueve —comprobado regenerando el hongo
             byte a byte.
+
+        separacion_modo: con qué cuenta se mide la separación entre vueltas,
+            que es la que fija la SECCIÓN de extrusión. `"derivada"` (por
+            defecto) es la del hongo; `"marcha"` la del gusanito, que es la
+            misma que usa `marcha_vertical`. Las dos están calibradas contra
+            piezas impresas distintas y dan distinto — el bloque largo de abajo
+            tiene los números. El valor por defecto deja intacta toda pieza
+            anterior.
 
         funcion_velocidad: multiplicador de la velocidad de impresión,
             `(angulo, t) -> factor`, punto a punto en la pared. 1.0 es la del
@@ -1179,22 +1188,48 @@ def generar_pieza(
         # ancho disparatado. Con el nombre correcto son dos cosas independientes.
         puntos.append(fc.ManualGcode(text=f"; LINE_WIDTH: {perfil.ancho:.3f}"))
 
-        tan_v = _pendiente(ts[capa]) / max(altura, 1e-9)
-        # `subida` ya viene atenuada por `_mezcla` y con piso en PASO_MINIMO,
-        # así que la separación se reconstruye desde ella y no desde `paso`.
+        # --- cómo se mide la SEPARACIÓN entre vueltas -----------------------
         #
-        # NO cambiar esto por `_delta_radio` (el peor ángulo, que es con el que
-        # `marcha_vertical` elige el paso). Se probó, de las dos formas:
+        # Hay dos cuentas, las dos medidas, y dan distinto. Conviven porque cada
+        # una está calibrada contra una pieza IMPRESA distinta, y quedarse con
+        # una sola movía la otra. La perilla es `separacion_modo`.
         #
-        #   sólo _delta_radio  -> baja la extrusión del hongo un 23 %
-        #   max de los dos     -> la sube un 25 %
+        # "derivada" — la pendiente de la silueta por una ventana fija de ±0.005
+        # en `t`. Es con la que está calibrado el HONGO, cuya extrusión se
+        # contrastó contra `Squeezy Fidget Toy.gcode` (ver ESTADO.md). Ojo con
+        # querer "arreglarla" de otras formas: se probó `_delta_radio` a secas
+        # (-23 % de extrusión en el hongo) y el máximo de las dos (+25 %).
         #
-        # El hongo está impreso y su extrusión está contrastada contra
-        # `Squeezy Fidget Toy.gcode` (ver ESTADO.md). Los dos estimadores
-        # discrepan lo bastante como para que cualquier cambio acá mueva esa
-        # calibración, así que un patrón que sub-extruya se arregla en el
-        # patrón, no acá.
-        separacion = subida * math.sqrt(1 + tan_v * tan_v)
+        # "marcha" — la MISMA cuenta que hace `marcha_vertical._separacion` para
+        # elegir el paso: la hipotenusa entre lo que sube la vuelta y lo que se
+        # corre el radio en ese tramo. Es la del GUSANITO, y su argumento es de
+        # coherencia: la extrusión va con la separación, y la separación es lo
+        # que `marcha_vertical` mantiene constante, así que las dos tendrían que
+        # salir de la misma cuenta o miden cosas distintas (lo pide `MAPA.md`).
+        #
+        # Los dos sesgos que "marcha" corrige, medidos sobre el gusanito:
+        #
+        # 1. La ventana de `_pendiente` es FIJA — sobre una pieza de 150 mm son
+        #    ±0.75 mm de z. En un cuello donde dos lóbulos se cruzan agarra las
+        #    DOS caras y la resta da casi cero: la pared está a 55° y la cuenta
+        #    la declara vertical. Una vuelta salía con 0.449 mm² contra 0.731 de
+        #    sus vecinas —el 61 % del material— y se ve como una banda hundida.
+        # 2. Se evaluaba en el ARRANQUE de la vuelta y no a lo largo de ella.
+        #
+        # Y lo que cuesta, medido sobre el hongo: con "marcha" la sección queda
+        # clavada en 0.3991 en toda la pieza; con "derivada" va de 0.363 a
+        # 0.599, y la diferencia más grande está en el ápice (33 %). El total
+        # cambia sólo 0.05 %: no es más ni menos material, es cómo se reparte.
+        #
+        # `subida` ya viene atenuada por `_mezcla` y con piso en PASO_MINIMO, así
+        # que las dos la usan a ella y no a `paso`.
+        if separacion_modo == "marcha":
+            dt_capa = subida / max(altura, 1e-9)
+            separacion = math.hypot(
+                subida, _delta_radio(ts[capa], min(1.0, ts[capa] + dt_capa)))
+        else:
+            tan_v = _pendiente(ts[capa]) / max(altura, 1e-9)
+            separacion = subida * math.sqrt(1 + tan_v * tan_v)
         # Donde el paso choca contra el piso, la separación se dispara y un
         # cordón solo no llena el hueco. Se extruye lo que se pueda y el
         # voladizo lo denuncia `_verificar_voladizo`; seguir subiendo la sección
@@ -1369,7 +1404,15 @@ def generar_pieza(
     _verificar_apoyo(solo_puntos[len(solo_puntos) - n_capas * (segmentos_por_capa + 1):],
                      segmentos_por_capa + 1, perfil)
     if silueta_referencia is not None:
-        radios_medios = [silueta_referencia(capa / n_capas) for capa in range(n_capas + 1)]
+        # En los `t` de las vueltas REALES, no repartidos parejo. `ts` sale de
+        # `marcha_vertical`, que acorta el paso donde la pared se tumba, así que
+        # las vueltas se amontonan en `t` justo ahí — que es donde el voladizo
+        # decide. Con `capa/n_capas` se mide la silueta en puntos que ninguna
+        # vuelta visita: sobre el gusanito daba 0.86 mm de salto y 28 % de
+        # solape, contra los 0.64 mm y 46 % que emite el recorrido. Es el mismo
+        # error que `marcha_vertical` documenta al final de su docstring, del
+        # otro lado de la frontera.
+        radios_medios = [silueta_referencia(t_capa) for t_capa in ts]
     # Cuánto ondula el radio DENTRO de la vuelta, medido igual que `amplitud_onda`:
     # muestreando el propio patrón, sin pedirle a nadie que lo declare.
     amplitud_radial = 0.0

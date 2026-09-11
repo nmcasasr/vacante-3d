@@ -137,6 +137,13 @@ def _cli() -> None:
                         "alto, o sea que un salto radial de 0.4 sigue dejando 0.6 solapados. "
                         "'auto' (por defecto) usa lo que declare el patron; 'medir' lo decide "
                         "midiendo cuanto solapan dos vueltas seguidas en esta corrida.")
+    p.add_argument("--separacion", choices=["derivada", "marcha"], default="derivada",
+                   help="con que cuenta se mide la separacion entre vueltas, que es la que "
+                        "fija la SECCION de extrusion. 'derivada' (por defecto) es con la "
+                        "que esta calibrado el hongo contra Squeezy; 'marcha' es la misma "
+                        "cuenta que usa marcha_vertical para elegir el paso, con la que esta "
+                        "hecho el gusanito. Las dos estan medidas y dan distinto: ver el "
+                        "bloque largo en comun.generar_pieza.")
     p.add_argument("--sin-base", action="store_true", help="no rellenar el fondo")
     p.add_argument("--capas-transicion", type=int, default=6, metavar="N",
                    help="vueltas en las que el patrón nace desde un círculo liso (por defecto 6). "
@@ -630,6 +637,12 @@ def _cli() -> None:
         area = perfil.ancho * perfil.altura_capa
         piso_mm_min = args.caudal_minimo / max(area, 1e-9) * 60.0
         techo_mm_min = float(perfil.velocidad_impresion)
+        # `silueta` es un CALLABLE cuando vino de un DXF y el NOMBRE de una del
+        # catalogo cuando no. `pasos_bowl` acepta las dos y resuelve sola; este
+        # bloque necesita evaluar el radio, asi que la resuelve tambien. Sin
+        # esto, --segundos-vuelta reventaba con cualquier silueta del catalogo.
+        fn_silueta = (silueta if callable(silueta)
+                      else _SILUETAS[silueta](**parametros_silueta))
         PASO_MUESTREO = 2.0     # mm de altura entre escalones
         n = max(2, int(altura / PASO_MUESTREO))
         ultimo = None
@@ -637,12 +650,25 @@ def _cli() -> None:
             z = altura * i / n
             if z < altura * desde_t:
                 continue
-            r = silueta(min(1.0, z / max(altura, 1e-9)))
+            r = fn_silueta(min(1.0, z / max(altura, 1e-9)))
             mm_min = 2 * _math.pi * r / args.segundos_vuelta * 60.0
             mm_min = min(techo_mm_min, max(piso_mm_min, mm_min))
             mm_min = int(round(mm_min / 20) * 20)     # escalones de 20 mm/min
             if mm_min != ultimo and z > 0:
-                cambios[round(z, 2)] = fc.Printer(print_speed=mm_min)
+                # `cambios` es un dict POR ALTURA, así que dos cosas distintas
+                # que quieran la misma z se pisan. Estos escalones caen en una
+                # grilla de 2 mm y son ~50, o sea que son los que pisan: con
+                # `--ventilador-desde 0.08` sobre 150 mm el aire va a z12.00,
+                # que es de la grilla, y el gusanito salió SIN VENTILADOR.
+                # El hongo zafó de casualidad — su z era 162.07.
+                #
+                # Se corre el escalón una centésima en vez de mezclarlos: a la
+                # escala de una vuelta no cambia nada, y no hay que enseñarle a
+                # `_insertar_cambios` a recibir listas.
+                clave = round(z, 2)
+                while clave in cambios:
+                    clave = round(clave + 0.01, 2)
+                cambios[clave] = fc.Printer(print_speed=mm_min)
                 ultimo = mm_min
         print(f"  velocidad por perímetro desde {100*desde_t:.0f}% de la altura: "
               f"{args.segundos_vuelta:g} s por vuelta · "
@@ -671,6 +697,7 @@ def _cli() -> None:
             modulacion=modulacion or None,
             pintura=pintura,
             deformacion=deformacion,
+            separacion_modo=args.separacion,
             paso_fijo={"auto": None, "medir": "auto",
                        "fijo": True, "adaptativo": False}[args.paso],
         )

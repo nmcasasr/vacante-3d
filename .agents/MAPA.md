@@ -103,6 +103,132 @@ una celosía cuyos hilos cruzan en el aire por diseño, y el ángulo no avanza d
 forma monótona, así que cualquier detección de vueltas sobre la pieza entera da
 basura.
 
+## `cambios` es un dict POR ALTURA, y dos cosas en la misma z se pisan
+
+El ventilador, los cambios de color, `--velocidad-en`, `--ventilador-en` y los
+~50 escalones de `--segundos-vuelta` escriben todos en el mismo `cambios{z: bloque}`.
+El que pisa es el último, porque cae en una grilla de 2 mm y son muchos:
+
+    --ventilador-desde 0.08 sobre 150 mm  ->  aire a z12.00, que es de la grilla
+    el escalón de velocidad de z12.00 le gana  ->  la pieza sale SIN VENTILADOR
+
+Y no avisa nada: el CLI imprime "ventilador 100% desde z12.0" igual, porque lo
+imprime cuando lo escribe, no cuando sobrevive. **El hongo zafó de casualidad**
+—su `0.89 x 182.1` da 162.07, que no es múltiplo de 2— así que el defecto
+esperó a la primera pieza cuya altura por la fracción cayera redonda.
+
+Se arregla corriendo el escalón de velocidad una centésima; a la escala de una
+vuelta no cambia nada. Pero la lección general es: **antes de creerle al log del
+generador, buscar el `M106` en el g-code emitido.** Lo que vale es el archivo.
+
+## Las rayas oscuras entre cordones del visor NO son huecos
+
+Se ven en Orca en cuanto la pared se acuesta, y asustan: parece que las vueltas
+no se tocan. Orca dibuja cada cordón con el ancho de `; LINE_WIDTH:` y el alto de
+`; LAYER_HEIGHT:`, y `; LAYER_HEIGHT:` lleva la SUBIDA de la vuelta. Pero el
+cordón real está ROTADO con la pared, y su extensión vertical es
+`separacion·cos(θ) + ancho·sin(θ)`, que en un flanco a 55° vale 1.19 mm contra
+una subida de 0.48. **El visor lo pinta a la mitad de lo que mide.**
+
+Medido, en el gusanito y en el hongo, la subida entre vueltas y el
+`; LAYER_HEIGHT:` declarado coinciden hasta la milésima: los cordones dibujados
+quedan exactamente tangentes, 0.000 mm de hueco. Lo que se ve es el surco entre
+dos cilindros tangentes pintados más flacos de lo que son.
+
+**El hongo, que está impreso y sale bien, da lo mismo** (dibujado 0.19..0.80
+contra 0.85..1.44 reales). Antes de perseguir un hueco del visor, medir la
+separación sobre la superficie contra el ancho del cordón: eso es lo que decide,
+y `verificar_pieza` ya lo hace.
+
+Y a Squeezy esta medición no se le puede hacer: no tiene marcas de capa, y su
+tramo del medio rompe cualquier detección de vueltas (ver más arriba).
+
+## La extrusión se derivaba con una ventana más ancha que el detalle
+
+La sección depositada se escala con la SEPARACIÓN, y la separación salía de
+`subida * sqrt(1 + tan²)` con la pendiente de `_pendiente`, que deriva con una
+**ventana fija de ±0.005 en `t`** — sobre una pieza de 150 mm, ±0.75 mm de z.
+
+Donde el perfil tiene un detalle más angosto que esa ventana, la resta agarra
+las dos caras y da casi cero: la cuenta declara vertical una pared que está a
+55°. En el cuello del gusanito eso dejó **una vuelta con 0.449 mm² contra 0.731
+de sus vecinas —el 61 % del material— y la de abajo con 0.793, gorda**. Se ve en
+el laminador como una banda hundida y una saliente; no lo cazó ningún
+verificador, lo cazó el usuario mirando la pieza.
+
+`radio_de` ya avisaba de la misma trampa del otro lado ("la derivada de una
+escalera es ruido") y por eso suaviza la tabla del DXF. Pero una silueta
+analítica no pasa por ahí.
+
+**El arreglo es no derivar.** `marcha_vertical` ya elige el paso con
+`_delta_radio` —el radio evaluado en los dos extremos del tramo, sin ventana— y
+la extrusión ahora usa la misma cuenta:
+
+    separacion = hypot(subida, _delta_radio(t, t + subida/altura))
+
+Las dos caras de la frontera hacen la misma cuenta, que es lo que este archivo
+viene pidiendo desde arriba. Medido:
+
+| | antes | después | Squeezy |
+|---|---|---|---|
+| gusanito, cuello | 0.449..0.793 mm² | **0.720 clavado** | — |
+| hongo, área p10..p90 | 0.892..1.018 | **0.960..0.960** | 0.968..0.969 |
+| hongo, caudal tope | 19.97 mm³/s | **15.36** | 10.44 |
+
+**El hongo cambia**, y hay que saberlo: el RECORRIDO es idéntico —86 346
+movimientos, 0 con X/Y/Z distinto— y lo único que cambia es cuánto material sale.
+Le desaparece un pico de caudal del 30 % y queda con la sección constante, que
+es lo que hace la referencia. Sigue dando IMPRIMIBLE y su choque baja de 4.25 a
+3.99 %.
+
+## Dos superficies solo empalman bien donde comparten la tangente
+
+`espejar()` lo dice para la base del hongo: el eje del reflejo es la panza
+porque "es el único punto donde las dos mitades empalman con la misma tangente;
+cualquier otra altura deja un pico o un escalón". Vale igual para el gusanito,
+que es el MÁXIMO de varios elipsoides: donde dos lóbulos se cruzan las tangentes
+valen ±55° y queda un pico. Impreso se lee como un corte.
+
+Por eso `gusanito` combina los lóbulos con un máximo SUAVE y no con `max()`. El
+filete es local —fuera de su ventana devuelve el máximo duro, así que no toca ni
+el ecuador ni el ápice— y ensancha el cuello exactamente `redondeo/4`.
+
+Lo que NO hay que hacer es compensar ese ensanche descontándoselo a la V antes
+de resolver la geometría: con la altura fija, una V más profunda obliga a un
+paso más largo y **achata todos los lóbulos**. Medido, corría el perfil hasta
+2.6 mm a media altura — un filete de 4 mm reformando la pieza entera. Se compensa
+por afuera, bajando `cintura`.
+
+## Un verificador tiene que mirar las vueltas QUE SE IMPRIMEN
+
+`generar_pieza` medía el voladizo sobre `silueta(capa/n_capas)`: la silueta
+repartida pareja en `t`. Pero `marcha_vertical` acorta el paso donde la pared se
+tumba, así que las vueltas se AMONTONAN en `t` justo ahí — que es donde el
+voladizo decide. Los puntos que se medían no los visitaba ninguna vuelta.
+
+Sobre el gusanito daba **0.86 mm de salto radial y 28 % de solape** ("no esperes
+que salga") contra los **0.64 mm y 46 %** que emite el recorrido de verdad. Se
+arregla muestreando en los `t` que devuelve `marcha_vertical`, que ya están ahí
+mismo en la función. Es el mismo error que `marcha_vertical` documenta al final
+de su docstring, del otro lado de la frontera: dos copias de la misma cuenta
+describiendo recorridos distintos.
+
+El aviso es solo un `print`: comprobado regenerando el jarrón antes y después,
+0 líneas de máquina distintas.
+
+## Al ápice de una cúpula el "choque" le da siempre alto, y no significa nada
+
+`verificar_pieza` marca "pisado" cuando dos ejes quedan a menos del 70 % de la
+separación de fusión. En el ápice la pared está acostada y las vueltas apoyan AL
+LADO, no encima: la separación sobre la superficie es el paso, y contra un
+cordón de 1.2 eso cae debajo del umbral en cuanto el paso baja de ~0.73.
+
+O sea que la MISMA pieza pasa de 1.5 % a 8.6 % de choque bajando la capa de 0.8
+a 0.6 sin que cambie nada físico — la razón `área ÷ avance` es idéntica. El
+hongo, impreso y bueno, da 4.25 %. Antes de creerle a ese número hay que
+preguntarle DÓNDE: si está todo en la banda del ápice, es el cierre de la
+cúpula, no un defecto.
+
 ## Cómo derivar el cordón de un g-code ajeno
 
 Sin suponer nada, y la circularidad acá ya costó una calibración entera:

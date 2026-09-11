@@ -60,6 +60,7 @@ def pasos_bowl(
     pintura: Optional[dict] = None,
     deformacion=None,
     paso_fijo=None,
+    separacion_modo: str = "derivada",
 ) -> list:
     """
     Arma los pasos de FullControl de un bowl.
@@ -80,6 +81,11 @@ def pasos_bowl(
         capas_transicion: capas en las que el patrón nace desde un círculo liso.
         capas_base: primeras vueltas sin rampa de Z (anillos cerrados), para que
             el calado arranque desde algo macizo en vez de desde un solo cordón.
+        separacion_modo: `"derivada"` (por defecto, la del hongo) o `"marcha"`
+            (la del gusanito). Decide con qué cuenta se mide la separación
+            entre vueltas, que es la que fija la sección de extrusión. Ver el
+            bloque largo en `comun.generar_pieza`: las dos están calibradas
+            contra piezas impresas distintas.
         paso_fijo: subir `paso_z` exacto en cada vuelta en vez de usar la
             marcha adaptativa. Hace falta en las piezas de pared VERTICAL con
             relieve angular —un tubo con púas, una rosca—, donde el criterio
@@ -193,6 +199,7 @@ def pasos_bowl(
         funcion_dangulo=fn_dangulo,
         funcion_flujo=fn_flujo,
         funcion_velocidad=fn_velocidad,
+        separacion_modo=separacion_modo,
         base_solida=base_solida,
         hueco=hueco,
         refuerzo_hueco=refuerzo_hueco,

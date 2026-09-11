@@ -1227,3 +1227,36 @@ inicial con el extrusor apagado.
   adherencia antes de empezar a espiralar.
 - La primera capa se imprime a `z = altura_capa`, nunca a `z = 0`.
 - Sin retracciones ni cambios de capa: el modo vaso es un único trazo continuo.
+
+
+## Las dos cuentas de la separación, y por qué conviven
+
+La SECCIÓN de extrusión sale de la separación entre vueltas, y hay **dos
+cuentas** para medirla. Las dos están medidas, dan distinto, y cada una está
+calibrada contra una pieza IMPRESA distinta. Se eligen con `--separacion`:
+
+| | `derivada` (por defecto) | `marcha` |
+|---|---|---|
+| cómo | la pendiente de la silueta, ventana fija de ±0.005 en `t` | la misma cuenta que `marcha_vertical` usa para elegir el paso |
+| calibrada contra | el **hongo**, contrastado con `Squeezy Fidget Toy.gcode` | el **gusanito** |
+| sección del hongo | 0.363 .. 0.599 (0.599 en el ápice) | 0.3991 clavado |
+
+El total de material cambia sólo **0.05 %**: no es más ni menos, es cómo se
+reparte.
+
+`marcha` corrige dos sesgos reales, medidos sobre el gusanito: la ventana de
+`_pendiente` es fija —±0.75 mm de z en una pieza de 150— así que en un cuello
+donde dos lóbulos se cruzan agarra las dos caras, la resta da casi cero y
+declara vertical una pared de 55°; una vuelta salía con el 61 % del material de
+sus vecinas y se veía como una banda hundida. Y se evaluaba en el arranque de
+la vuelta, no a lo largo.
+
+Y tiene un argumento de principio a favor: la extrusión va con la separación, y
+la separación es lo que `marcha_vertical` mantiene constante, así que las dos
+tendrían que salir de la misma cuenta — es lo que pide `.agents/MAPA.md`.
+
+**Aun así el defecto es `derivada`**, porque cambiarlo movería la única pieza
+con calibración física contrastada. No es una duda sin resolver: es que la
+respuesta depende de la pieza, y hasta que alguien imprima un cupón que compare
+las dos, cada figura usa la suya. Las recetas del gusanito llevan
+`--separacion marcha`; todo lo demás usa el defecto y se regenera byte a byte.
