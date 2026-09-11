@@ -80,6 +80,34 @@ aceleración. `ESTADO.md` ya avisa que este estimador sale corto —son segmento
 de décimas de milímetro y ahí manda la aceleración, no el `F`—, así que
 tomalos como piso. El de Orca al laminar da el bueno.
 
+## `hoja-degradada-puente` — el grumo que puentea, con la hoja degradada
+
+| archivo | alto | punto del dibujo | tiempo | contacto sin apoyo |
+|---|---|---|---|---|
+| `alto65_pico5a9mm` | 65 mm | **1.64 x 1.60 mm** | ~4.0 h | 15.9 % |
+| `alto70_pico5a9mm` | 70 mm | **1.64 x 1.60 mm** | ~4.4 h | 16.6 % |
+
+Las dos dan **NO IMPRIMIBLE** contra el criterio de `verificar_pieza.py`: 16 %
+de muestras sin apoyo contra 1.88 % de la referencia. Es el puenteo, buscado a
+propósito — el peor puente mide 10.9 mm, por debajo de los 12 que la referencia
+aguanta. Pero 16 % es OCHO VECES la referencia y nadie imprimió todavía nada
+con esta técnica: **va el cupón antes**
+(`1-cupones/grumo-puentea/largos_3a9mm`).
+
+Pico de **5 mm de base y 9 en la figura**, cadencia **2 lisas + 2 con patrón**,
+el grumo sale de una y puentea, y el tallo con el degradado INVERTIDO: alto en
+el medio y fino en los cantos.
+
+La cadencia de 2+2 en vez de 3+2 es lo que da la resolución: el punto del
+dibujo mide 1.60 mm de alto contra los 4.40 de la versión que crece. Se puede
+porque el grumo no necesita vueltas para crecer — sale entero y se cuelga.
+
+**Lo que cuesta: contraste.** La figura se lee por la DIFERENCIA entre el pico
+del fondo y el de la figura, y con 5 contra 9 esa diferencia es el 44 % del
+relieve. En `hoja-degradada` (1.25 contra 7) es el 82 %, y las hojas saltan
+mucho más. No es la técnica de puente: es el fondo alto. Si el dibujo importa
+más que el relieve al tacto, hay que bajar el fondo.
+
 ## El reborde de la base, y por qué está
 
 Todos los archivos llevan ahora `--base-borde 4`: **4 mm de piso por fuera de
