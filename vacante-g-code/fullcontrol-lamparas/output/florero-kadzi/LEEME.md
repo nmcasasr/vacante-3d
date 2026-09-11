@@ -66,6 +66,20 @@ Dos cambios sobre las otras hojas:
   abombada hacia adentro. La nervadura y la K se leen igual, porque son huecos.
 - **Pico de 7 mm** sobre un fondo de 1.25.
 
+Tres alturas, con la hoja encogida en proporción para que no quede apretada
+(el ancho se deja en 28 mm en las tres: es lo que la K necesita para leerse):
+
+| archivo | alto | hoja + tallo | tiempo estimado |
+|---|---|---|---|
+| `alto65_pico7mm` | 65 mm | 45 + 11 mm | **~1.5 h** |
+| `alto70_pico7mm` | 70 mm | 48 + 12 mm | **~1.6 h** |
+| `hoja_fondo1.25_pico7mm` | 75 mm | 52 + 13 mm | ~1.75 h |
+
+Los tiempos son estimados por recorrido y velocidad con un 1.4x por
+aceleración. `ESTADO.md` ya avisa que este estimador sale corto —son segmentos
+de décimas de milímetro y ahí manda la aceleración, no el `F`—, así que
+tomalos como piso. El de Orca al laminar da el bueno.
+
 ## El reborde de la base, y por qué está
 
 Todos los archivos llevan ahora `--base-borde 4`: **4 mm de piso por fuera de
