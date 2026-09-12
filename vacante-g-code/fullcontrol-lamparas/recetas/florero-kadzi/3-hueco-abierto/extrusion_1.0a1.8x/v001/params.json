@@ -51,6 +51,7 @@
     "240",
     "--ventilador",
     "100",
+    "--pendiente-silueta",
     "--nombre",
     "florero-kadzi/3-hueco-abierto/extrusion_1.0a1.8x"
   ],

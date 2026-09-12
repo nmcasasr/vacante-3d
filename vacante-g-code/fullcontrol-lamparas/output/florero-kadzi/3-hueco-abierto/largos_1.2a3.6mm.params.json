@@ -20,7 +20,7 @@
   "--segundos-vuelta",
   "0",
   "--velocidad",
-  "900",
+  "480",
   "--material",
   "PETG",
   "--radio-base",
@@ -47,6 +47,9 @@
   "70",
   "--temperatura",
   "240",
+  "--ventilador",
+  "100",
+  "--pendiente-silueta",
   "--nombre",
   "florero-kadzi/3-hueco-abierto/largos_1.2a3.6mm"
  ],
@@ -69,7 +72,7 @@
   {
    "flag": "--velocidad",
    "clave": "velocidad",
-   "valor": 900.0,
+   "valor": 480.0,
    "min": 120.0,
    "max": 6000.0,
    "paso": 29.4,

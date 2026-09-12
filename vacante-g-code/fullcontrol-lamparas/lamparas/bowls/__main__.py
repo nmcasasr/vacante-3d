@@ -163,6 +163,13 @@ def _cli() -> None:
                         "pasada con 0.4 mm de espesor: un papel. El hongo aguanta porque toda "
                         "la pieza va a 0.8. Esto pide el espesor del piso sin tocar el de la "
                         "pared. No es capas-base, que son vueltas de la PARED.")
+    p.add_argument("--pendiente-silueta", action="store_true",
+                   help="medir la inclinacion de la pared sobre la SILUETA LISA en vez del "
+                        "radio con patron. En una pared VERTICAL con picos, la derivada ve "
+                        "el pico entrando y saliendo, lo lee como pendiente y la seccion se "
+                        "va un 50%% arriba (1.44 mm2 contra 0.96 medidos). Apagado por "
+                        "defecto: cambia la seccion de toda pieza con patron y la del hongo "
+                        "esta calibrada contra Squeezy.")
     p.add_argument("--sin-base", action="store_true", help="no rellenar el fondo")
     p.add_argument("--capas-transicion", type=int, default=6, metavar="N",
                    help="vueltas en las que el patrón nace desde un círculo liso (por defecto 6). "
@@ -717,6 +724,7 @@ def _cli() -> None:
             pintura=pintura,
             deformacion=deformacion,
             separacion_modo=args.separacion,
+            pendiente_silueta=args.pendiente_silueta,
             base_borde=args.base_borde,
             base_solape=args.base_solape,
             base_altura=args.base_altura,

@@ -9,6 +9,31 @@ Las recetas están en `recetas/florero-kadzi/`, con el mismo árbol.
 
 ---
 
+## La pared llevaba 50 % de material de más — `--pendiente-silueta`
+
+Medido sobre el cupón de velocidad, antes del arreglo: **14 222 segmentos a
+1.44 mm² contra 12 889 a 0.96**, cuando el nominal (1.2 x 0.8) es 0.96.
+
+La extrusión se escala con la SEPARACIÓN entre vueltas, y esa separación sale
+de derivar la función de radio. Con los picos entrando y saliendo, la derivada
+los lee como pendiente —cree que la pared está a 48°— y la separación se
+dispara hasta saturar contra el tope de `1.5 x altura_capa` = 1.2 mm. El
+generador entonces empuja material para llenar un hueco de 1.2 de alto cuando
+la vuelta sólo sube 0.8.
+
+En una pared vertical ese hueco no existe: lo que la derivada ve son los picos,
+que no son pendiente. `--pendiente-silueta` la mide sobre la silueta lisa, que
+es lo que `_verificar_voladizo` ya hace con `silueta_referencia` y por el mismo
+motivo.
+
+**Un cordón con 50 % de material de más que además se tiende al aire es
+justamente lo que lo hace descolgarse.** Si algo se veía caído, mirá esto antes
+que la velocidad.
+
+Viene apagado por defecto: cambia la sección de toda pieza con patrón, y la del
+hongo está calibrada contra Squeezy. El hongo y el peine regeneran con 0
+instrucciones distintas.
+
 ## Los números salen de Squeezy, que está impreso y funciona
 
 `Squeezy Fidget Toy.gcode` es **PETG**, y es la referencia contra la que este

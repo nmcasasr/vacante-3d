@@ -22,7 +22,7 @@
   "--segundos-vuelta",
   "0",
   "--velocidad",
-  "900",
+  "480",
   "--material",
   "PETG",
   "--base-borde",
@@ -75,6 +75,9 @@
   "70",
   "--temperatura",
   "240",
+  "--ventilador",
+  "100",
+  "--pendiente-silueta",
   "--nombre",
   "florero-kadzi/2-floreros/hoja-degradada/alto70_pico7mm"
  ],
@@ -106,7 +109,7 @@
   {
    "flag": "--velocidad",
    "clave": "velocidad",
-   "valor": 900.0,
+   "valor": 480.0,
    "min": 120.0,
    "max": 6000.0,
    "paso": 29.4,

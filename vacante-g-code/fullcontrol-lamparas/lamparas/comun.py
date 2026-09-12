@@ -469,6 +469,7 @@ def generar_pieza(
     funcion_espera: Optional[FuncionRadio] = None,
     espera_retraccion: float = 1.5,
     separacion_modo: str = "derivada",
+    pendiente_silueta: bool = False,
     base_borde: float = 0.0,
     base_solape: float = 1.0,
     base_altura: float = 0.0,
@@ -512,6 +513,16 @@ def generar_pieza(
             cambia, y nada mientras se mantenga. Con None no se emite ninguno y
             ninguna pieza anterior se mueve —comprobado regenerando el hongo
             byte a byte.
+
+        pendiente_silueta: medir la inclinación de la pared sobre la SILUETA
+            LISA (`silueta_referencia`) en vez de sobre el radio con patrón.
+            **Por defecto False**, o sea el comportamiento de siempre, porque
+            cambia la sección de toda pieza con patrón y la del hongo está
+            calibrada contra `Squeezy Fidget Toy.gcode`.
+
+            Hace falta en las piezas de pared VERTICAL con picos: ahí la
+            derivada ve el pico entrando y saliendo, lo lee como pendiente y la
+            sección se va un 50 % arriba. Ver el bloque donde se usa.
 
         separacion_modo: con qué cuenta se mide la separación entre vueltas,
             que es la que fija la SECCIÓN de extrusión. `"derivada"` (por
@@ -1352,7 +1363,32 @@ def generar_pieza(
             separacion = math.hypot(
                 subida, _delta_radio(ts[capa], min(1.0, ts[capa] + dt_capa)))
         else:
-            tan_v = _pendiente(ts[capa]) / max(altura, 1e-9)
+            # `pendiente_silueta` mide la inclinación sobre la SILUETA LISA en
+            # vez de sobre el radio con patrón. Es el mismo cambio, y por el
+            # mismo motivo, que `_verificar_voladizo` ya hace con
+            # `silueta_referencia`: el relieve del patrón hace oscilar el radio
+            # y eso no es pendiente de la pared.
+            #
+            # Sin esto, en una pieza de pared VERTICAL con picos, la derivada
+            # ve el pico entrando y saliendo y la lee como una pared acostada:
+            # `separacion` se dispara, satura contra el tope de
+            # `1.5 x altura_capa` de abajo, y la pared sale con 1.44 mm² de
+            # sección en vez de 0.96 — un 50 % de material de más. Medido en el
+            # cupón de velocidad: 14 222 segmentos a 1.44 contra 12 889 a 0.96.
+            # En un cordón que además se tiende al aire, eso es justo lo que lo
+            # hace descolgarse.
+            #
+            # Viene APAGADO porque cambia la sección de toda pieza con patrón, y
+            # la del hongo está calibrada contra `Squeezy Fidget Toy.gcode`.
+            fn = (silueta_referencia if (pendiente_silueta and silueta_referencia)
+                  else None)
+            if fn is not None:
+                h = 5e-3
+                a, b = min(1.0, ts[capa] + h), max(0.0, ts[capa] - h)
+                bruta = abs(fn(a) - fn(b)) / ((a - b) or 1e-9)
+            else:
+                bruta = _pendiente(ts[capa])
+            tan_v = bruta / max(altura, 1e-9)
             separacion = subida * math.sqrt(1 + tan_v * tan_v)
         # Donde el paso choca contra el piso, la separación se dispara y un
         # cordón solo no llena el hueco. Se extruye lo que se pueda y el

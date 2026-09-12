@@ -67,6 +67,7 @@
   "mascara=sectores",
   "--p",
   "cantidad=5",
+  "--pendiente-silueta",
   "--nombre",
   "florero-kadzi/1-cupones/velocidad"
  ],
