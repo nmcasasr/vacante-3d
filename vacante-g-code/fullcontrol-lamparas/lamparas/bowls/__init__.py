@@ -135,7 +135,11 @@ def pasos_bowl(
     par_patron = dict(parametros or {})
     firma = inspect.signature(DISENOS[diseno].construir).parameters
     for clave, valor in (("ancho_cordon", (perfil or Perfil()).ancho),
-                         ("altura_capa", (perfil or Perfil()).altura_capa)):
+                         ("altura_capa", (perfil or Perfil()).altura_capa),
+                         # el ventilador del perfil, para que un patrón que lo
+                         # sube en un tramo sepa a qué valor VOLVER. Sin esto
+                         # pisaría el `--ventilador` que pidió el usuario.
+                         ("ventilador_base", (perfil or Perfil()).ventilador)):
         if clave in firma and clave not in par_patron:
             par_patron[clave] = valor
     abierta = any(v.kind is inspect.Parameter.VAR_KEYWORD for v in firma.values())
@@ -154,6 +158,8 @@ def pasos_bowl(
     # séptimo: el factor de VELOCIDAD punto a punto. Lo devuelven los patrones
     # que tienden tramos al aire y necesitan frenar ahí (`puas` con `crecer=0`).
     fn_velocidad = resultado[6] if len(resultado) > 6 else None
+    # séptimo: el VENTILADOR punto a punto, para los tramos que van al aire.
+    fn_ventilador = resultado[7] if len(resultado) > 7 else None
 
     # La deformación de estructura se suma ENCIMA del radio que devolvió el
     # patrón, envolviéndolo. Así compone con todos los patrones sin que ninguno
@@ -202,6 +208,7 @@ def pasos_bowl(
         funcion_dangulo=fn_dangulo,
         funcion_flujo=fn_flujo,
         funcion_velocidad=fn_velocidad,
+        funcion_ventilador=fn_ventilador,
         separacion_modo=separacion_modo,
         base_borde=base_borde,
         base_solape=base_solape,

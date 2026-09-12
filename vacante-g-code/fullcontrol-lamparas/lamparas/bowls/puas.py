@@ -176,6 +176,9 @@ def construir(
     con_patron: int = 2,
     crecer: int = 1,
     puente_lento: float = 0.35,
+    barrido_lento: str = "",
+    ventilador_pua: int = 100,
+    ventilador_base: int = 100,
     muestras: int = 6,
     mascara="flores",
     invertir: int = 0,
@@ -252,6 +255,18 @@ def construir(
             rápido —cuanto menos tiempo al aire, menos se descuelga— y frena
             únicamente para pararse y dejar material en el vértice. Frenar todo
             el vuelo hace lo contrario de lo que hay que hacer.
+        barrido_lento: bandas de `puente_lento` a lo alto, para encontrar a qué
+            velocidad sale mejor el puente: `"1.0,0.7,0.5,0.35,0.2"`. Vacío =
+            `puente_lento` en toda la pieza.
+        ventilador_pua: el ventilador, en %, MIENTRAS la boquilla está en la
+            punta de un grumo al aire. Es la otra mitad de tender un puente, y
+            la que más pesa: bajar la velocidad le da tiempo al cordón, pero lo
+            que lo endurece antes de llegar al otro lado es el aire.
+        ventilador_base: el ventilador en el resto de la pieza. No es 0 a
+            propósito: apagarlo entre grumo y grumo lo dejaría subiendo y
+            bajando cientos de veces por pieza, y el ventilador tarda en
+            responder — llegaría tarde a la punta siguiente, que es donde hace
+            falta.
         lisas: cuántas vueltas seguidas van DERECHAS, sin pulsar.
         con_patron: cuántas vueltas seguidas pulsan, después de las lisas. El
             ciclo `lisas + con_patron` se repite hasta arriba. Con `lisas=0` el
@@ -455,22 +470,49 @@ def construir(
         fase = angulo * n / TAU + deriva * t * n
         return 1.0 + (f - 1.0) * _pulso(fase % 1.0, ocupacion, filo)
 
-    def funcion_velocidad(angulo: float, t: float) -> float:
-        """Velocidad en ese punto: plena salvo en la punta de un grumo al aire."""
-        if crecer or lisas <= 0 or puente_lento >= 1.0:
-            return 1.0
+    lento_de = _bandas(barrido_lento, puente_lento)
+
+    def _en_punta(angulo: float, t: float):
+        """
+        (está en la punta de un grumo al aire, la capa) — o (False, capa).
+
+        La punta es la meseta del pulso, o sea el vértice donde la boquilla se
+        para y vuelve, y sólo cuenta en la PRIMERA vuelta de la banda: de la
+        segunda en adelante cada grumo apoya sobre el de la vuelta anterior y
+        ya no está al aire.
+        """
         capa = math.floor(t / dt_capa)
-        # Sólo la PRIMERA vuelta de la banda tiene la vuelta lisa debajo; de la
-        # segunda en adelante cada grumo apoya sobre el de la vuelta anterior.
+        if crecer or lisas <= 0:
+            return False, capa
         if not pulsa(capa) or (capa % ciclo) != int(lisas):
-            return 1.0
+            return False, capa
         n = int(puas_de((capa // ciclo) * ciclo * dt_capa))
         fase = (angulo * n / TAU + deriva * t * n) % 1.0
-        # la meseta, o sea el vértice donde la boquilla se para y vuelve
-        meseta_ini = (ocupacion - ocupacion * filo) / 2
-        if meseta_ini <= fase <= meseta_ini + ocupacion * filo:
-            return max(0.05, puente_lento)
-        return 1.0
+        ini = (ocupacion - ocupacion * filo) / 2
+        return ini <= fase <= ini + ocupacion * filo, capa
+
+    def funcion_velocidad(angulo: float, t: float) -> float:
+        """Velocidad en ese punto: plena salvo en la punta de un grumo al aire."""
+        punta, capa = _en_punta(angulo, t)
+        if not punta:
+            return 1.0
+        return max(0.05, lento_de((capa // ciclo) * ciclo * dt_capa))
+
+    def funcion_ventilador(angulo: float, t: float) -> float:
+        """
+        El ventilador, en %. Al máximo en la punta de un grumo al aire.
+
+        Es la otra mitad de tender un puente, y la que más pesa: el cordón que
+        sale al aire tiene que solidificar ANTES de llegar al otro lado. Bajar
+        la velocidad le da tiempo; el ventilador es lo que lo endurece.
+
+        Fuera de la punta se devuelve el del perfil, no 0: apagarlo entre grumo
+        y grumo lo dejaría subiendo y bajando cientos de veces por pieza, y el
+        ventilador tarda en responder — llegaría tarde a la punta siguiente,
+        que es justo donde hace falta.
+        """
+        punta, _ = _en_punta(angulo, t)
+        return float(ventilador_pua if punta else ventilador_base)
 
     def radio(angulo: float, t: float) -> float:
         base = silueta(t)
@@ -509,7 +551,7 @@ def construir(
             ancho_cordon, _lista(barrido))
 
     return (radio, None, max(120, max(lista_puas) * m), None, None, funcion_flujo,
-            funcion_velocidad)
+            funcion_velocidad, funcion_ventilador)
 
 
 def _avisar(silueta, altura, radio_medio, radio, pulsa, lisas, con_patron,

@@ -149,6 +149,33 @@ un cupón no importa.
 
 ## 1-cupones — imprimí estos primero
 
+### `velocidad` — a qué velocidad sale mejor el puente
+
+**Ø50 x 40 mm.** Cinco bandas con la punta del grumo a distinta velocidad:
+
+| banda | factor | velocidad en la punta |
+|---|---|---|
+| 1 | 1.00 | 15 mm/s (sin frenar) |
+| 2 | 0.60 | 9 mm/s |
+| 3 | 0.40 | 6 mm/s |
+| 4 | 0.25 | 4 mm/s |
+| 5 | 0.15 | 2 mm/s |
+
+El resto de la vuelta va siempre a 15 mm/s: **se frena sólo en la punta**, que
+es el vértice donde la boquilla se para y vuelve. Frenar todo el vuelo hace lo
+contrario de lo que hay que hacer — cuanto menos tiempo al aire, menos se
+descuelga el grumo. Está medido en la referencia (ver `puente_lento`).
+
+Alrededor lleva los cinco gajos de largo (3 a 9 mm), así que también dice si la
+velocidad que sirve depende del largo.
+
+**El ventilador va al 100 % en la punta** (`ventilador_pua`). Es la otra mitad
+de tender un puente y la que más pesa: bajar la velocidad le da tiempo al
+cordón, pero lo que lo endurece antes de llegar al otro lado es el aire. Fuera
+de la punta vuelve al del perfil —no a 0— porque el ventilador tarda en
+responder y apagarlo entre grumo y grumo lo dejaría llegando tarde a la punta
+siguiente.
+
 ### `matriz` — las dos variables cruzadas en una pieza
 
 **Ø50 x 40 mm, ~35 min.** Es el que reemplaza a los cupones sueltos de

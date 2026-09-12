@@ -465,6 +465,7 @@ def generar_pieza(
     funcion_dangulo: Optional[FuncionRadio] = None,
     funcion_flujo: Optional[FuncionRadio] = None,
     funcion_velocidad: Optional[FuncionRadio] = None,
+    funcion_ventilador: Optional[FuncionRadio] = None,
     separacion_modo: str = "derivada",
     base_borde: float = 0.0,
     base_solape: float = 1.0,
@@ -531,6 +532,15 @@ def generar_pieza(
             Se emite como `fc.Printer` sólo cuando el factor cambia, y
             redondeado a 30 mm/min para no llenar el archivo de cambios de `F`
             que la máquina ni alcanza a aplicar. Con None no se emite ninguno.
+
+        funcion_ventilador: el ventilador en PORCENTAJE, `(angulo, t) -> 0..100`,
+            punto a punto en la pared. Se emite sólo cuando cambia y redondeado
+            a 5 %, que es el escalón que la máquina distingue.
+
+            Es para los tramos que el patrón tiende AL AIRE: ahí el cordón
+            tiene que solidificar antes de llegar al otro lado, y el ventilador
+            vale más que la velocidad. Con None no se emite ninguno y manda el
+            del perfil.
 
         funcion_dangulo: corrimiento angular en radianes, `(angulo, t) -> dang`.
             Sin esto el ángulo solo avanza y el recorrido nunca puede volver
@@ -770,6 +780,7 @@ def generar_pieza(
     radio_previo = [None]
     flujo_previo = [None]      # el último factor de `funcion_flujo` que se emitió
     velocidad_previa = [None]  # la última velocidad de `funcion_velocidad`
+    ventilador_previo = [None]  # el último % de `funcion_ventilador`
 
     def _mezcla(capa: int) -> float:
         """Cuánto del patrón está activo en esta vuelta: 0 en la primera, 1 al final."""
@@ -1445,6 +1456,17 @@ def generar_pieza(
                 if v != velocidad_previa[0]:
                     puntos.append(fc.Printer(print_speed=v))
                     velocidad_previa[0] = v
+
+            # El ventilador, igual: sólo cuando CAMBIA y redondeado a 5 %, que
+            # es el escalón que la máquina distingue. Un tramo que se tiende al
+            # aire necesita enfriarse antes de llegar al otro lado, y ahí el
+            # ventilador vale más que la velocidad.
+            if funcion_ventilador is not None:
+                f = int(round(funcion_ventilador(angulo, t) / 5.0) * 5)
+                f = max(0, min(100, f))
+                if f != ventilador_previo[0]:
+                    puntos.append(fc.Fan(speed_percent=f))
+                    ventilador_previo[0] = f
 
             salto = abs(radio - radio_previo[0]) if radio_previo[0] is not None else 0.0
             puentea = salto > SALTO_PUENTE
