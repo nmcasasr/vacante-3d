@@ -108,7 +108,45 @@ relieve. En `hoja-degradada` (1.25 contra 7) es el 82 %, y las hojas saltan
 mucho más. No es la técnica de puente: es el fondo alto. Si el dibujo importa
 más que el relieve al tacto, hay que bajar el fondo.
 
-## El reborde de la base, y por qué está
+## El piso: dos arreglos, los dos vistos en impresiones
+
+Todos los archivos llevan `--base-borde 4` y `--base-solape 0.92`. Los dos
+defectos por defecto están APAGADOS (`0` y `1.0`): una perilla que cambia una
+calibración no puede venir encendida, o regenerar una pieza vieja con su
+comando de siempre da otra pieza. El hongo, el peine y el gusanito se regeneran
+byte a byte con sus comandos originales.
+
+### El piso no se pegaba A SÍ MISMO — `--base-solape 0.92`
+
+Las pasadas del piso se separan `ancho - 0.215 x altura_capa`, y esa fórmula
+depende de la ALTURA DE CAPA:
+
+| | capa | separación | solape del cordón |
+|---|---|---|---|
+| hongo (pega bien) | 0.8 mm | 1.029 mm | **14.2 %** |
+| cupón, antes | 0.4 mm | 1.118 mm | **6.8 %** |
+| cupón, ahora | 0.4 mm | 1.028 mm | **14.3 %** |
+
+Con la mitad de solape las pasadas **se rozan en vez de fundirse**. El hongo
+cae del lado bueno sin que nadie lo haya elegido: imprime su piso a 0.8.
+
+No hubo que inventar nada — `lamparas/recorrido.py` ya usa este mismo margen
+sobre esta misma fórmula, con el mismo nombre y el mismo valor calibrado (0.92)
+para su relleno concéntrico.
+
+### La pared se apoyaba en el CANTO del piso — `--base-borde 4`
+
+La última pasada del piso y la primera vuelta de la pared compartían eje, y al
+enfriarse la pared levantaba el borde. Ahora el piso sigue 4 mm hacia afuera y
+la pared cae ~4.1 mm por dentro del canto, con más área contra la cama.
+
+**El reborde no se ve en los floreros**: el piso queda en Ø58.2 y los picos
+llegan a Ø63.7 (hoja-degradada) o Ø67.9 (la de puente), así que el reborde
+queda POR DENTRO. Sólo asoma en los dos cupones de pico corto —`largos_1.2a3.6mm`
+(1 mm) y `extrusion_1.0a1.8x` (3.4 mm)— porque ahí la pieza es casi lisa, y en
+un cupón no importa.
+
+
 
 Todos los archivos llevan ahora `--base-borde 4`: **4 mm de piso por fuera de
 la pared**.
@@ -118,9 +156,6 @@ eje — la pared se apoya en el CANTO del piso y no sobre él — y al enfriarse
 levanta. Es un despegue que se vio en un cupón impreso, no una precaución.
 Ahora la pared cae 4.46 mm por dentro del canto, y de paso el piso tiene más
 área contra la cama.
-
-`--base-borde 0` (el defecto) deja el comportamiento de siempre: el hongo, el
-peine y el gusanito se regeneran byte a byte.
 
 ## 1-cupones — imprimí estos primero
 

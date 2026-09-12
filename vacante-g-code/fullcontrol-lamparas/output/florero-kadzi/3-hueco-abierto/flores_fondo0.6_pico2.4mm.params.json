@@ -49,6 +49,8 @@
   "corazon=0.55",
   "--p",
   "borde_mm=2.0",
+  "--base-solape",
+  "0.92",
   "--nombre",
   "florero-kadzi/3-hueco-abierto/flores_fondo0.6_pico2.4mm"
  ],

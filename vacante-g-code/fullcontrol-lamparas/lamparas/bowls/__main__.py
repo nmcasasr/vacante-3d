@@ -149,6 +149,20 @@ def _cli() -> None:
                         "SOBRE el piso y no en su canto. Sin esto la ultima pasada del piso "
                         "y la primera vuelta de la pared comparten eje, y al enfriarse la "
                         "pared levanta el borde: se despega (visto en un cupon impreso).")
+    p.add_argument("--base-solape", type=float, default=1.0, metavar="F",
+                   help="margen de seguridad sobre la distancia de fusion de las pasadas del "
+                        "PISO. Por defecto 1.0, SIN EFECTO: una perilla que cambia la calibracion no "
+                        "puede venir encendida. Mismo parametro, nombre y valor calibrado (0.92) que usa "
+                        "recorrido.pantalla_glitch sobre la misma formula. Hace falta porque "
+                        "esa distancia depende de la altura de capa: a 0.4 las pasadas "
+                        "quedaban con 6.8%% de solape contra el 14.3%% del hongo y SE ROZAN "
+                        "en vez de fundirse (visto en un cupon impreso).")
+    p.add_argument("--base-altura", type=float, default=0.0, metavar="MM",
+                   help="espesor del PISO en mm. 0 (por defecto) usa la altura de capa de la "
+                        "pared. El piso la hereda, asi que a 0.4 queda un disco de una sola "
+                        "pasada con 0.4 mm de espesor: un papel. El hongo aguanta porque toda "
+                        "la pieza va a 0.8. Esto pide el espesor del piso sin tocar el de la "
+                        "pared. No es capas-base, que son vueltas de la PARED.")
     p.add_argument("--sin-base", action="store_true", help="no rellenar el fondo")
     p.add_argument("--capas-transicion", type=int, default=6, metavar="N",
                    help="vueltas en las que el patrón nace desde un círculo liso (por defecto 6). "
@@ -704,6 +718,8 @@ def _cli() -> None:
             deformacion=deformacion,
             separacion_modo=args.separacion,
             base_borde=args.base_borde,
+            base_solape=args.base_solape,
+            base_altura=args.base_altura,
             paso_fijo={"auto": None, "medir": "auto",
                        "fijo": True, "adaptativo": False}[args.paso],
         )

@@ -252,7 +252,8 @@ def radio_de_hueco(diametro: float, ancho: float, holgura: float = 0.3) -> float
 
 def _espiral_base(forma: Callable[[float], float], perfil: Perfil, paso_arco: float = 1.0,
                   radio_interior: float = 0.0, refuerzo: int = 0,
-                  borde: float = 0.0):
+                  borde: float = 0.0, solape: float = 1.0,
+                  z: float = 0.0):
     """
     Espiral que rellena el fondo de la pieza, del centro hacia afuera. Es lo que
     le da piso a un bowl sin romper el trazo continuo del modo vaso: se imprime
@@ -299,7 +300,7 @@ def _espiral_base(forma: Callable[[float], float], perfil: Perfil, paso_arco: fl
     termina la base y no quede un salto.
     """
     cx, cy = perfil.centro
-    z = perfil.altura_capa
+    z = z if z > 0 else perfil.altura_capa
     r_max = max(forma(k / 180 * math.pi) for k in range(360)) or 1.0
     ri = max(0.0, radio_interior)
     if ri >= r_max:
@@ -316,12 +317,26 @@ def _espiral_base(forma: Callable[[float], float], perfil: Perfil, paso_arco: fl
     # base quedaba una ranura, y se veía en las primeras capas de la pieza
     # impresa.
     #
+    # `solape` es el MISMO margen de seguridad que ya usa
+    # `recorrido.pantalla_glitch` sobre esta misma fórmula, con el mismo nombre
+    # y el mismo valor calibrado (0.92). Su comentario lo dice mejor: no es una
+    # fracción del ancho, es un margen sobre la separación de FUSIÓN — por
+    # debajo los cordones se pisan y por encima no se tocan, y la ventana entre
+    # las dos cosas es estrecha.
+    #
+    # Acá hacía falta porque la fórmula depende de la ALTURA DE CAPA: con cordón
+    # de 1.2 da 1.028 a capa 0.8 y 1.114 a capa 0.4, o sea 14.3 % de solape
+    # contra 6.8 %. El hongo, que pega bien, imprime su piso a 0.8 y cae del
+    # lado bueno sin que nadie lo haya elegido; un piso a capa 0.4 sale con la
+    # mitad de solape y las pasadas SE ROZAN en vez de fundirse. Se vio
+    # despegándose en un cupón impreso.
+    #
     # La distancia a la que dos pasadas planas se funden es `ancho - 0.215*alto`
     # —la misma que usa `verificar_pieza.py:114` y la que usa cualquier slicer
     # para el relleno sólido—. Con cordón de 1.2: 1.114 con capa de 0.4 y 1.028
     # con capa de 0.8. Por eso el defecto se agravó al engordar la capa: la
     # distancia de fusión baja mientras el avance seguía clavado en 1.2.
-    fusion = perfil.ancho - 0.215 * perfil.altura_capa
+    fusion = (perfil.ancho - 0.215 * perfil.altura_capa) * max(0.3, min(1.0, solape))
     avance = fusion / (r_max - ri)
     puntos = []
     angulo = 0.0
@@ -452,6 +467,8 @@ def generar_pieza(
     funcion_velocidad: Optional[FuncionRadio] = None,
     separacion_modo: str = "derivada",
     base_borde: float = 0.0,
+    base_solape: float = 1.0,
+    base_altura: float = 0.0,
     base_solida: bool = False,
     hueco: float = 0.0,   # diámetro FINAL del agujero del piso, en mm
     refuerzo_hueco: int = 0,
@@ -524,6 +541,32 @@ def generar_pieza(
             que la pared caiga SOBRE el piso en vez de en su canto, que es lo
             que evita que al enfriarse lo levante y se despegue. Sólo tiene
             efecto con `base_solida`. 0 deja el comportamiento de siempre.
+        base_altura: espesor del PISO en mm. 0 (por defecto) usa la altura de
+            capa de la pared, que es lo de siempre.
+
+            Existe porque el piso hereda la altura de capa de la pared, y a 0.4
+            queda un disco de Ø58 con 0.4 mm de espesor hecho de una sola
+            pasada en espiral: un papel. El hongo, que aguanta, imprime el suyo
+            a 0.8 — no porque alguien lo eligiera, sino porque toda la pieza va
+            a 0.8. Con `base_altura` se pide el espesor del piso sin tocar el
+            de la pared.
+
+            No es lo mismo que `capas_base`, que son vueltas de la PARED sin
+            rampa de Z.
+
+        base_solape: margen de seguridad sobre la distancia de fusión de las
+            pasadas del PISO. **Por defecto 1.0, o sea sin efecto.** Una perilla
+            que cambia la calibración no puede venir encendida: si viene,
+            regenerar una pieza vieja con su comando de siempre da otra pieza.
+            La piden las que la necesitan. **Por defecto 1.0, o sea sin efecto**: una perilla
+            que cambia la calibración no puede venir encendida, porque entonces
+            regenerar una pieza vieja con su comando de siempre da otra pieza.
+            Las que lo necesitan lo piden. Es el mismo parámetro, el mismo nombre y el mismo
+            valor calibrado (0.92) que `recorrido.pantalla_glitch` usa sobre
+            esta misma fórmula. Hacía falta acá porque la distancia de fusión
+            depende de la altura de capa: a 0.4 las pasadas quedaban con 6.8 %
+            de solape contra el 14.3 % del hongo, y se rozan en vez de
+            fundirse.
         base_solida: rellena el fondo con una espiral antes de empezar la pared
         hueco: diámetro que tiene que QUEDAR libre en el piso, en mm. No es el
             del recorrido: el cordón va centrado en la trayectoria, así que se
@@ -688,23 +731,35 @@ def generar_pieza(
     puntos: list = []
     angulo_inicio = 0.0
 
+    alto_piso = base_altura if base_altura > 0 else perfil.altura_capa
     if base_solida:
         # La base sigue el CONTORNO de la pared, no un círculo. Ver _espiral_base.
         # El piso también declara su cordón. Sale antes que la pared y sin esto
         # queda sin anotar: el injerto tiene que inventarle una capa semilla,
         # que después no cierra contra la primera capa de la pared.
-        puntos.append(fc.ManualGcode(text=f";Z:{perfil.altura_capa:.3f}"))
+        puntos.append(fc.ManualGcode(text=f";Z:{alto_piso:.3f}"))
         puntos.append(fc.ManualGcode(text=f";WIDTH:{perfil.ancho:.3f}"))
         puntos.append(fc.ManualGcode(text=f"; LINE_WIDTH: {perfil.ancho:.3f}"))
-        puntos.append(fc.ManualGcode(text=f";HEIGHT:{perfil.altura_capa:.3f}"))
+        puntos.append(fc.ManualGcode(text=f";HEIGHT:{alto_piso:.3f}"))
+        if alto_piso != perfil.altura_capa:
+            # La SECCIÓN también cambia: un piso más grueso pone más material
+            # por milímetro. Sin esto el recorrido sube pero la extrusión sigue
+            # siendo la de una capa fina, y el disco sale hueco por dentro.
+            puntos.append(fc.ExtrusionGeometry(
+                area_model="rectangle", width=perfil.ancho, height=alto_piso))
         puntos_base, angulo_inicio = _espiral_base(
             lambda a: funcion_radio(a, 0.0), perfil,
             radio_interior=radio_de_hueco(hueco, perfil.ancho) if hueco else 0.0,
-            refuerzo=refuerzo_hueco, borde=base_borde)
+            refuerzo=refuerzo_hueco, borde=base_borde,
+            solape=base_solape, z=alto_piso)
         puntos.extend(puntos_base)
+        if alto_piso != perfil.altura_capa:
+            # devolver la sección de la PARED antes de seguir
+            puntos.append(fc.ExtrusionGeometry(
+                area_model="rectangle", width=perfil.ancho, height=perfil.altura_capa))
 
-    # con base sólida la pared arranca una capa más arriba, encima del fondo
-    z_offset = perfil.altura_capa if base_solida else 0.0
+    # con base sólida la pared arranca encima del fondo, a su espesor
+    z_offset = alto_piso if base_solida else 0.0
 
     radio_max = 0.0
     radios_medios = []

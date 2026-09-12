@@ -167,6 +167,7 @@ def construir(
     amplitud: float = 0.9,
     amplitud_fondo: float = 0.35,
     barrido: str = "",
+    barrido_puas: str = "",
     flujo: float = 1.0,
     flujo_barrido: str = "",
     ocupacion: float = 0.5,
@@ -209,6 +210,14 @@ def construir(
             pieza. Es lo que convierte una prueba en un cupón: en vez de
             imprimir cuatro piezas para saber qué largo se ve bien, se imprime
             una y se mira.
+        barrido_puas: bandas de CANTIDAD DE PÚAS a lo alto, para comparar
+            separaciones en una sola pieza: `"48,60,72"` parte la altura en tres
+            tramos y le da a cada uno su paso. Vacío = `puas` en toda la pieza.
+
+            Cada banda tiene que ser un ENTERO o sus columnas salen en hélice
+            en vez de apiladas (ver el encabezado). Dentro de una banda las
+            columnas se apilan normal; en la juntura entre bandas se corren, y
+            eso es justo lo que deja ver dónde empieza cada una.
         flujo: cuánto material se deposita EN EL TURUPE, como factor del ancho
             de cordón. 1.0 es el nominal. Sube la sección sin mover la
             boquilla, que es la otra forma de que el turupe se vea más: más
@@ -426,6 +435,8 @@ def construir(
         k = (capa % ciclo) - int(lisas)          # 0 .. con_patron-1
         return (k + 1) / max(1, int(con_patron))
 
+    lista_puas = [max(4, int(round(v))) for v in _lista(barrido_puas)] or [puas]
+    puas_de = _bandas(",".join(str(v) for v in lista_puas), puas)
     amp_de = _bandas(barrido, amplitud)
     flujo_de = _bandas(flujo_barrido, flujo)
 
@@ -440,7 +451,8 @@ def construir(
         # Sigue la forma del pulso, no un escalón: el turupe se engorda donde
         # está y el valle queda con la sección nominal. Con un escalón, el
         # cambio de sección cae en mitad del flanco y se lee como un anillo.
-        fase = angulo * puas / TAU + deriva * t * puas
+        n = int(puas_de((capa // ciclo) * ciclo * dt_capa))
+        fase = angulo * n / TAU + deriva * t * n
         return 1.0 + (f - 1.0) * _pulso(fase % 1.0, ocupacion, filo)
 
     def funcion_velocidad(angulo: float, t: float) -> float:
@@ -452,7 +464,6 @@ def construir(
         # segunda en adelante cada grumo apoya sobre el de la vuelta anterior.
         if not pulsa(capa) or (capa % ciclo) != int(lisas):
             return 1.0
-        fase = (angulo * puas / TAU + deriva * t * puas) % 1.0
         # la meseta, o sea el vértice donde la boquilla se para y vuelve
         meseta_ini = (ocupacion - ocupacion * filo) / 2
         if meseta_ini <= fase <= meseta_ini + ocupacion * filo:
@@ -487,19 +498,20 @@ def construir(
         amp *= crecida(capa)
         if amp <= 0.0:
             return base
-        fase = angulo * puas / TAU + deriva * t * puas
+        n = int(puas_de((capa // ciclo) * ciclo * dt_capa))
+        fase = angulo * n / TAU + deriva * t * n
         return base + amp * _pulso(fase % 1.0, ocupacion, filo)
 
     _avisar(silueta, altura, radio_medio, radio, pulsa, lisas, con_patron,
-            puas, amplitud, deriva, altura_capa, ocupacion, filo, ancho_cordon,
-            _lista(barrido))
+            lista_puas, amplitud, deriva, altura_capa, ocupacion, filo,
+            ancho_cordon, _lista(barrido))
 
-    return (radio, None, max(120, puas * m), None, None, funcion_flujo,
+    return (radio, None, max(120, max(lista_puas) * m), None, None, funcion_flujo,
             funcion_velocidad)
 
 
 def _avisar(silueta, altura, radio_medio, radio, pulsa, lisas, con_patron,
-            puas, amplitud, deriva, altura_capa, ocupacion, filo,
+            lista_puas, amplitud, deriva, altura_capa, ocupacion, filo,
             ancho_cordon, bandas=()) -> None:
     """
     Los dos números que deciden si esto se imprime, medidos antes de generar.
@@ -508,9 +520,22 @@ def _avisar(silueta, altura, radio_medio, radio, pulsa, lisas, con_patron,
     función de radio y sin gcode: esperar al gcode para enterarse cuesta
     minutos, y el veredicto sería el mismo.
     """
+    diente = lambda f: _pulso(f, ocupacion, filo)  # noqa: E731
+    if len(lista_puas) > 1:
+        # con barrido de púas cada banda tiene su paso, su hueco y su
+        # supervivencia: un solo número sería el de una banda que no existe.
+        print(f"Púas: {len(lista_puas)} bandas sobre radio ~{radio_medio:.1f} mm")
+        for k, n in enumerate(lista_puas):
+            pm = TAU * radio_medio / max(n, 1)
+            c, i = sobrevive(diente, radio_medio, ancho_cordon, n, amplitud)
+            print(f"    banda {k + 1}: {n:3d} púas · paso {pm:.2f} mm · "
+                  f"hueco entre grumos {pm - ancho_cordon:.2f} mm · "
+                  f"sobrevive {100 * i / c if c > 1e-9 else 0:.0f} %")
+    puas = lista_puas[0]
     paso_mm = TAU * radio_medio / max(puas, 1)
-    print(f"Púas: {puas} por vuelta sobre radio ~{radio_medio:.1f} mm -> "
-          f"paso {paso_mm:.2f} mm, {amplitud:.2f} mm de vuelo.")
+    if len(lista_puas) == 1:
+        print(f"Púas: {puas} por vuelta sobre radio ~{radio_medio:.1f} mm -> "
+              f"paso {paso_mm:.2f} mm, {amplitud:.2f} mm de vuelo.")
 
     # Cuánto del vuelo llega a la SUPERFICIE, que es lo único que se ve y se
     # toca. La boquilla no deposita una línea sin espesor sino una cinta de
@@ -524,7 +549,6 @@ def _avisar(silueta, altura, radio_medio, radio, pulsa, lisas, con_patron,
     # dos direcciones; la tabla del encabezado de `cordon.py` la desmiente con
     # números. Acá no hay regla: hay una cuenta, y cuesta milisegundos contra
     # los minutos que tarda generar el g-code para descubrir que salió liso.
-    diente = lambda f: _pulso(f, ocupacion, filo)  # noqa: E731
     # Con barrido se informa BANDA POR BANDA: el cupón existe para leer un
     # número por banda contra la pieza impresa, y un promedio de las cinco no
     # se puede comparar con nada.

@@ -71,6 +71,8 @@
   "largo_mm=45",
   "--p",
   "tallo_mm=11",
+  "--base-solape",
+  "0.92",
   "--nombre",
   "florero-kadzi/2-floreros/hoja-degradada-puente/alto65_pico5a9mm"
  ],

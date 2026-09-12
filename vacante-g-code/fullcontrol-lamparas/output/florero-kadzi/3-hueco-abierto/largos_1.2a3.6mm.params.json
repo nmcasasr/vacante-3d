@@ -39,6 +39,8 @@
   "con_patron=3",
   "--p",
   "mascara=ninguna",
+  "--base-solape",
+  "0.92",
   "--nombre",
   "florero-kadzi/3-hueco-abierto/largos_1.2a3.6mm"
  ],

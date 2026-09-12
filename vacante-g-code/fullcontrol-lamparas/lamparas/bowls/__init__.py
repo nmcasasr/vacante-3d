@@ -62,6 +62,8 @@ def pasos_bowl(
     paso_fijo=None,
     separacion_modo: str = "derivada",
     base_borde: float = 0.0,
+    base_solape: float = 1.0,
+    base_altura: float = 0.0,
 ) -> list:
     """
     Arma los pasos de FullControl de un bowl.
@@ -202,6 +204,8 @@ def pasos_bowl(
         funcion_velocidad=fn_velocidad,
         separacion_modo=separacion_modo,
         base_borde=base_borde,
+        base_solape=base_solape,
+        base_altura=base_altura,
         base_solida=base_solida,
         hueco=hueco,
         refuerzo_hueco=refuerzo_hueco,
