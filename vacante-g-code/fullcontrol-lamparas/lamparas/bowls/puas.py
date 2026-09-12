@@ -177,6 +177,10 @@ def construir(
     crecer: int = 1,
     puente_lento: float = 0.35,
     barrido_lento: str = "",
+    lento_alcance: str = "punta",
+    espera_ms: int = 0,
+    barrido_espera: str = "",
+    espera_cada: int = 1,
     ventilador_pua: int = 100,
     ventilador_base: int = 100,
     muestras: int = 6,
@@ -258,6 +262,12 @@ def construir(
         barrido_lento: bandas de `puente_lento` a lo alto, para encontrar a qué
             velocidad sale mejor el puente: `"1.0,0.7,0.5,0.35,0.2"`. Vacío =
             `puente_lento` en toda la pieza.
+        lento_alcance: `"punta"` (por defecto) frena sólo en la meseta, el
+            vértice donde la boquilla se para y vuelve — que es lo que hace la
+            referencia. `"todo"` frena el vuelo entero, ida y vuelta. Ver
+            `_en_punta`: las dos lecturas son defendibles y la referencia no
+            zanja el caso de un grumo de 7 mm, que es mucho más largo que sus
+            nodos.
         ventilador_pua: el ventilador, en %, MIENTRAS la boquilla está en la
             punta de un grumo al aire. Es la otra mitad de tender un puente, y
             la que más pesa: bajar la velocidad le da tiempo al cordón, pero lo
@@ -474,12 +484,25 @@ def construir(
 
     def _en_punta(angulo: float, t: float):
         """
-        (está en la punta de un grumo al aire, la capa) — o (False, capa).
+        (hay que frenar en este punto, la capa) — o (False, capa).
 
-        La punta es la meseta del pulso, o sea el vértice donde la boquilla se
-        para y vuelve, y sólo cuenta en la PRIMERA vuelta de la banda: de la
-        segunda en adelante cada grumo apoya sobre el de la vuelta anterior y
-        ya no está al aire.
+        Sólo cuenta en la PRIMERA vuelta de la banda: de la segunda en adelante
+        cada grumo apoya sobre el de la vuelta anterior y ya no está al aire.
+
+        `lento_alcance` decide CUÁNTO del grumo se frena, y las dos opciones
+        dicen cosas distintas sobre qué se cree que pasa:
+
+        - `"punta"` — sólo la meseta, el vértice donde la boquilla se para y
+          vuelve. Es lo que hace la referencia: de los 14 segmentos de un nodo
+          de `Squeezy Fidget Toy.gcode`, 11 van a velocidad plena y 3 a la
+          mitad. Tiende el puente RÁPIDO —cuanto menos tiempo al aire, menos se
+          descuelga— y frena únicamente para pararse y dejar material.
+        - `"todo"` — el vuelo entero, ida y vuelta. Es la lectura contraria: que
+          lo que falta no es tiempo al aire sino tiempo para enfriarse.
+
+        Las dos son defendibles y la referencia no zanja el caso de un grumo
+        que sale 7 mm, que es mucho más que sus nodos. Por eso es una perilla y
+        no una decisión tomada acá.
         """
         capa = math.floor(t / dt_capa)
         if crecer or lisas <= 0:
@@ -488,6 +511,9 @@ def construir(
             return False, capa
         n = int(puas_de((capa // ciclo) * ciclo * dt_capa))
         fase = (angulo * n / TAU + deriva * t * n) % 1.0
+        if lento_alcance == "todo":
+            # todo el pulso: desde que despega de la pared hasta que vuelve
+            return _pulso(fase, ocupacion, filo) > 0.0, capa
         ini = (ocupacion - ocupacion * filo) / 2
         return ini <= fase <= ini + ocupacion * filo, capa
 
@@ -497,6 +523,46 @@ def construir(
         if not punta:
             return 1.0
         return max(0.05, lento_de((capa // ciclo) * ciclo * dt_capa))
+
+    espera_de = _bandas(barrido_espera, float(espera_ms))
+    _contador = [0, False]   # [cuántas puntas van, si la anterior estaba dentro]
+
+    def funcion_espera(angulo: float, t: float) -> float:
+        """
+        Milisegundos de pausa en ese punto: sólo en el VÉRTICE de un grumo.
+
+        La pausa va siempre en la punta, aunque el frenado abarque todo el
+        vuelo (`lento_alcance`): lo que se busca es que el vértice cuaje antes
+        de emprender la vuelta, y eso pasa en un punto, no en un tramo.
+
+        `espera_cada` existe porque el costo se multiplica: cada pausa son sus
+        milisegundos MÁS una retracción, y acá hay una punta por púa y por fila
+        de grumos. Con 48 púas y 16 filas son 768 puntas: a 1500 ms cada una,
+        19 minutos parado y 768 retracciones, que en PETG son 768 oportunidades
+        de hilo. La referencia tiene 550 en toda la pieza.
+        """
+        ms = espera_de(t)
+        if ms <= 0:
+            return 0.0
+        capa = math.floor(t / dt_capa)
+        if crecer or lisas <= 0 or not pulsa(capa) or (capa % ciclo) != int(lisas):
+            return 0.0
+        n = int(puas_de((capa // ciclo) * ciclo * dt_capa))
+        fase = (angulo * n / TAU + deriva * t * n) % 1.0
+        ini = (ocupacion - ocupacion * filo) / 2
+        dentro = ini <= fase <= ini + ocupacion * filo
+        # UNA pausa por púa, en el FLANCO de entrada a la meseta. Buscar "el
+        # primer punto" comparando contra una ventana de un paso de muestreo no
+        # sirve: la rejilla angular no arranca en la fase de la púa, así que
+        # ninguna muestra cae exactamente ahí. Es el mismo aliasing que ya
+        # obligó a elegir `muestras` desde la meseta. Detectar el flanco no
+        # depende de dónde caigan las muestras.
+        previo = _contador[1]
+        _contador[1] = dentro
+        if not (dentro and not previo):
+            return 0.0
+        _contador[0] += 1
+        return ms if _contador[0] % max(1, int(espera_cada)) == 0 else 0.0
 
     def funcion_ventilador(angulo: float, t: float) -> float:
         """
@@ -551,7 +617,7 @@ def construir(
             ancho_cordon, _lista(barrido))
 
     return (radio, None, max(120, max(lista_puas) * m), None, None, funcion_flujo,
-            funcion_velocidad, funcion_ventilador)
+            funcion_velocidad, funcion_ventilador, funcion_espera)
 
 
 def _avisar(silueta, altura, radio_medio, radio, pulsa, lisas, con_patron,

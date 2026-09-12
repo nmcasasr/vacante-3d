@@ -49,35 +49,64 @@ MOV = re.compile(r'([XYZEF])(-?\d*\.?\d+)')
 
 
 def leer(ruta):
-    """Los movimientos del archivo, como (x, y, z, e, linea)."""
+    """
+    Los movimientos del archivo, como (x, y, z, e, linea), más las pausas.
+
+    Una PAUSA es el trío que escribe la referencia: `G1 E-r` / `G4 P…` /
+    `G1 E+r`, sin mover XY. No es un corte del trazo —la boquilla no se va a
+    ningún lado— así que sus dos movimientos de filamento se marcan y se saltan
+    en vez de partir el cuerpo en dos.
+
+    Sin esto el verificador se apaga solo: cada pausa cortaba la tirada, así
+    que sobre un archivo con 192 pausas el "cuerpo" pasaba de 27 506
+    movimientos a 4 105 y todo lo demás se medía sobre ese pedazo. Daba verde
+    porque había dejado de mirar.
+    """
     x = y = z = 0.0
     puntos = []
+    pausas = []
     for n, ln in enumerate(open(ruta), 1):
+        if ln.startswith("G4"):
+            m = re.search(r'P(\d+)', ln)
+            pausas.append((int(m.group(1)) if m else 0, n))
+            continue
         if not (ln.startswith("G0 ") or ln.startswith("G1 ")):
             continue
         d = dict(MOV.findall(ln))
         if not d:
             continue
+        # movimiento de SOLO filamento, sin XYZ: es media pausa, no un punto
+        if "E" in d and not ({"X", "Y", "Z"} & set(d)):
+            puntos.append((x, y, z, None, n, True))
+            continue
         x = float(d.get("X", x))
         y = float(d.get("Y", y))
         z = float(d.get("Z", z))
         # extrusión RELATIVA (M83): esto es lo que se empuja en este segmento.
-        puntos.append((x, y, z, float(d["E"]) if "E" in d else None, n))
+        puntos.append((x, y, z, float(d["E"]) if "E" in d else None, n, False))
     if not puntos:
         sys.exit(f"{ruta}: no hay movimientos G0/G1")
-    return puntos
+    return puntos, pausas
 
 
 def cuerpo_de(pts):
-    """La tirada más larga de movimientos que extruyen hacia adelante."""
+    """
+    La tirada más larga de movimientos que extruyen hacia adelante.
+
+    Los movimientos de una pausa (marcados por `leer`) no la cortan: la
+    boquilla sigue donde estaba.
+    """
+    def sigue(p):
+        return p[5] or (p[3] is not None and p[3] > 0)
+
     mejor = (0, 0)
     i = 0
     while i < len(pts):
-        if pts[i][3] is None or pts[i][3] <= 0:
+        if not sigue(pts[i]):
             i += 1
             continue
         j = i
-        while j < len(pts) and pts[j][3] is not None and pts[j][3] > 0:
+        while j < len(pts) and sigue(pts[j]):
             j += 1
         if j - i > mejor[1] - mejor[0]:
             mejor = (i, j)
@@ -95,9 +124,9 @@ def main():
                         "deduce del percentil 99.9 de los pasos.")
     args = p.parse_args()
 
-    pts = leer(args.gcode)
+    pts, pausas = leer(args.gcode)
     a, b = cuerpo_de(pts)
-    cuerpo = pts[a:b]
+    cuerpo = [p for p in pts[a:b] if not p[5]]
     if len(cuerpo) < 2:
         sys.exit(f"{args.gcode}: no se encontró un cuerpo continuo")
     print(f"{args.gcode}: {len(pts)} movimientos · el cuerpo son "
@@ -105,14 +134,19 @@ def main():
 
     # Retracciones y viajes se cuentan sobre el ARCHIVO ENTERO: los de la purga
     # son legítimos, pero uno dentro del rango del cuerpo no lo sería, y por eso
-    # se informa dónde cae cada uno.
-    retracciones = [(e, n) for _, _, _, e, n in pts if e is not None and e < 0]
+    # se informa dónde cae cada uno. Las de las PAUSAS no cuentan: no cortan el
+    # trazo, sólo sueltan la presión mientras la boquilla está parada.
+    lineas_pausa = set()
+    for _, n in pausas:
+        lineas_pausa.update((n - 1, n + 1))
+    retracciones = [(e, n) for _, _, _, e, n, _ in pts
+                    if e is not None and e < 0 and n not in lineas_pausa]
     dentro = [n for _, n in retracciones if cuerpo[0][4] <= n <= cuerpo[-1][4]]
 
     saltos, bajadas, subida, viajes = [], [], [], []
     for i in range(1, len(cuerpo)):
-        x0, y0, z0, _, _ = cuerpo[i - 1]
-        x1, y1, z1, e1, ln = cuerpo[i]
+        x0, y0, z0, _, _, _ = cuerpo[i - 1]
+        x1, y1, z1, e1, ln, _ = cuerpo[i]
         d = math.hypot(x1 - x0, y1 - y0)
         saltos.append((d, ln))
         subida.append(z1 - z0)
@@ -128,6 +162,10 @@ def main():
     grandes = sorted(((d, ln) for d, ln in saltos if d > corte), reverse=True)
 
     print("\n1. CONTINUIDAD DEL TRAZO")
+    if pausas:
+        ms = sum(p for p, _ in pausas)
+        print(f"   pausas deliberadas: {len(pausas)} · {ms / 1000:.1f} s en total "
+              f"({ms / 1000 / 60:.1f} min de reloj). No cortan el trazo.")
     print(f"   viajes sin extruir dentro del cuerpo: {len(viajes)}")
     print(f"   retracciones en el archivo: {len(retracciones)}"
           f" · dentro del cuerpo: {len(dentro)}")

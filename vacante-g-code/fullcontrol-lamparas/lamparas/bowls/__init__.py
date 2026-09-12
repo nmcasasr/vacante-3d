@@ -160,6 +160,8 @@ def pasos_bowl(
     fn_velocidad = resultado[6] if len(resultado) > 6 else None
     # séptimo: el VENTILADOR punto a punto, para los tramos que van al aire.
     fn_ventilador = resultado[7] if len(resultado) > 7 else None
+    # octavo: los milisegundos de PAUSA punto a punto.
+    fn_espera = resultado[8] if len(resultado) > 8 else None
 
     # La deformación de estructura se suma ENCIMA del radio que devolvió el
     # patrón, envolviéndolo. Así compone con todos los patrones sin que ninguno
@@ -209,6 +211,7 @@ def pasos_bowl(
         funcion_flujo=fn_flujo,
         funcion_velocidad=fn_velocidad,
         funcion_ventilador=fn_ventilador,
+        funcion_espera=fn_espera,
         separacion_modo=separacion_modo,
         base_borde=base_borde,
         base_solape=base_solape,

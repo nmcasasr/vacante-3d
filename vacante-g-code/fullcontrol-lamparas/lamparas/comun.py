@@ -466,6 +466,8 @@ def generar_pieza(
     funcion_flujo: Optional[FuncionRadio] = None,
     funcion_velocidad: Optional[FuncionRadio] = None,
     funcion_ventilador: Optional[FuncionRadio] = None,
+    funcion_espera: Optional[FuncionRadio] = None,
+    espera_retraccion: float = 1.5,
     separacion_modo: str = "derivada",
     base_borde: float = 0.0,
     base_solape: float = 1.0,
@@ -541,6 +543,21 @@ def generar_pieza(
             tiene que solidificar antes de llegar al otro lado, y el ventilador
             vale más que la velocidad. Con None no se emite ninguno y manda el
             del perfil.
+
+        funcion_espera: milisegundos de PAUSA en ese punto, `(angulo, t) -> ms`.
+            0 o None no emite nada. Se escribe como la referencia: retraer,
+            esperar, devolver, y sin `F`.
+
+            Sirve para dejar cuajar un vértice antes de salir otra vez al aire.
+            `Squeezy Fidget Toy.gcode` tiene 550 de estas, de 1500 ms, y todas
+            caen en su zona calada (z 28.0 a 69.7): ninguna en la base maciza
+            ni en la tapa. O sea que la pausa es para el material que va al
+            aire, no para la pared apoyada.
+
+            Ojo con cuántas se piden: cada una cuesta su tiempo y una
+            retracción, y en PETG cada retracción es una oportunidad de hilo.
+        espera_retraccion: cuánto filamento se retrae en cada pausa, en mm. La
+            referencia usa 1.5.
 
         funcion_dangulo: corrimiento angular en radianes, `(angulo, t) -> dang`.
             Sin esto el ángulo solo avanza y el recorrido nunca puede volver
@@ -1456,6 +1473,24 @@ def generar_pieza(
                 if v != velocidad_previa[0]:
                     puntos.append(fc.Printer(print_speed=v))
                     velocidad_previa[0] = v
+
+            # La PAUSA, tal como la escribe la referencia: retraer, esperar,
+            # devolver. La retracción no es opcional — es lo que corta el hilo:
+            # suelta la presión para que no siga saliendo material durante la
+            # espera, y la recarga la repone antes de arrancar. Sin retraer, un
+            # segundo y medio parado es un goterón.
+            #
+            # Va SIN `F`, igual que en `Squeezy Fidget Toy.gcode`: así sale a la
+            # velocidad que esté activa —la lenta de la punta— en vez de dar un
+            # tirón que en PETG arranca el hilo que la pausa venía a sostener.
+            # Ver el mismo razonamiento en `_pasos_modulacion`.
+            if funcion_espera is not None:
+                ms = funcion_espera(angulo, t)
+                if ms:
+                    puntos.append(fc.ManualGcode(
+                        text=f"G1 E-{espera_retraccion}\n"
+                             f"G4 P{int(ms)} ; dejar cuajar la punta\n"
+                             f"G1 E{espera_retraccion}"))
 
             # El ventilador, igual: sólo cuando CAMBIA y redondeado a 5 %, que
             # es el escalón que la máquina distingue. Un tramo que se tiende al

@@ -3,12 +3,13 @@
 ; para reproducirlo, o cambiale un número para variarlo.
 ; python -m lamparas.bowls puas --silueta cilindro --boquilla 0.8 --ancho-linea 1.2
 ;     --altura-capa 0.4 --capas-transicion 0 --paso fijo --segundos-vuelta 0 --velocidad
-;     900 --material PLA --radio-base 25 --altura 75 --p puas=96 --p amplitud=9.0 --p
+;     900 --material PETG --radio-base 25 --altura 75 --p puas=96 --p amplitud=9.0 --p
 ;     amplitud_fondo=5.0 --p ocupacion=0.30 --p lisas=0 --p con_patron=1 --p
 ;     suave_borde=3.0 --p tomas=10 --p suave_mm=12 --p mascara=hoja --p columnas=4 --p
 ;     filas=1 --p ancho_mm=28 --p vena_mm=3.0 --p largo_mm=52 --p tallo_mm=13 --p
 ;     tallo_ancho_mm=6.0 --p tallo_afina=0.30 --base-solape 0.92 --base-altura 0.8
-;     --nombre florero-kadzi/2-floreros/sin-cadencia/hoja_crestas_fondo5_pico9mm
+;     --temp-cama 70 --temperatura 240 --nombre
+;     florero-kadzi/2-floreros/sin-cadencia/hoja_crestas_fondo5_pico9mm
 ;===============================================================
 ; Time to print!!!!!
 ; GCode created with FullControl - tell us what you're printing!
@@ -20,10 +21,10 @@ M83 ; relative extrusion
 ; G-code que exporta Bambu Studio para tu A1.
 G90 ; coordenadas absolutas
 M83 ; extrusión relativa
-M104 S200 ; empezar a calentar la boquilla
-M140 S55 ; empezar a calentar la cama
-M190 S55 ; esperar temperatura de cama
-M109 S200 ; esperar temperatura de boquilla
+M104 S245 ; empezar a calentar la boquilla
+M140 S70 ; empezar a calentar la cama
+M190 S70 ; esperar temperatura de cama
+M109 S245 ; esperar temperatura de boquilla
 G28 ; homing de todos los ejes
 G29 ; nivelación automática de cama
 G92 E0
@@ -36,8 +37,9 @@ G1 X20 Y5.8 E35.921 F1000 ; segunda línea de purga
 G1 E-0.4 F2100 ; retracción corta
 G1 Z2.4 F1200 ; levantar para no arrastrar
 G92 E0
-M106 S255 ; ventilador de capa
+M106 S102 ; ventilador de capa
 ;===== FIN DEL START GCODE ====================================
+M104 S240 ; temperatura de impresion
 ;Z:0.800
 ;WIDTH:1.200
 ; LINE_WIDTH: 1.200
@@ -2440,6 +2442,7 @@ G1 X124.161684 Y152.703589 E0.399121
 ; LINE_WIDTH: 1.200
 ;Z:1.199
 ;HEIGHT:0.399
+M106 S102 ; set fan speed
 G1 F900 X124.000083 Y152.677939 E0.032653
 G1 X123.838653 Y152.651231 E0.032653
 G1 X123.677402 Y152.623467 E0.032653

@@ -9,6 +9,30 @@ Las recetas están en `recetas/florero-kadzi/`, con el mismo árbol.
 
 ---
 
+## Los números salen de Squeezy, que está impreso y funciona
+
+`Squeezy Fidget Toy.gcode` es **PETG**, y es la referencia contra la que este
+proyecto calibra todo. Medido sobre su g-code:
+
+| | Squeezy | estas piezas |
+|---|---|---|
+| boquilla | 250 la primera capa, 240 el resto | 240 |
+| cama | 70 | 70 |
+| ventilador | 0 hasta z 27.5, después **100 %** | 100 % |
+| altura de capa | ≈ 0.76 mm | 0.8 |
+| ancho de cordón | ≈ 1.27 mm | 1.2 |
+| sección | 0.960 mm² | 0.96 |
+| **velocidad** | **8 mm/s** en el 93.9 % del recorrido | **8 mm/s** |
+| **frenado** | **4 mm/s**, la mitad exacta, en el 5 % | barrido alrededor de 0.5 |
+
+Dos cosas que conviene no olvidar. Una: el ventilador de PETG **no** va al 40 %
+que pone `--material PETG` — la referencia usa 100, apagado sólo al principio
+para que agarre. Dos: el frenado de la punta es **la mitad** de la velocidad
+normal, no menos; por eso el barrido corre alrededor de 0.5 y no más abajo.
+
+A 8 mm/s todo tarda el doble que a 15: el cupón de matriz pasa de ~35 min a
+~70, y un florero de ~1.5 h a ~3.
+
 ## Las tres maneras de hacer el grumo
 
 Es la decisión que separa las carpetas, y sale de una sola regla física: **en
