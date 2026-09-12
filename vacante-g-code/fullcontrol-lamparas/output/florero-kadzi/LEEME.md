@@ -147,17 +147,36 @@ queda POR DENTRO. Sólo asoma en los dos cupones de pico corto —`largos_1.2a3.
 un cupón no importa.
 
 
-
-Todos los archivos llevan ahora `--base-borde 4`: **4 mm de piso por fuera de
-la pared**.
-
-Sin eso, la última pasada del piso y la primera vuelta de la pared comparten
-eje — la pared se apoya en el CANTO del piso y no sobre él — y al enfriarse lo
-levanta. Es un despegue que se vio en un cupón impreso, no una precaución.
-Ahora la pared cae 4.46 mm por dentro del canto, y de paso el piso tiene más
-área contra la cama.
-
 ## 1-cupones — imprimí estos primero
+
+### `matriz` — las dos variables cruzadas en una pieza
+
+**Ø50 x 40 mm, ~35 min.** Es el que reemplaza a los cupones sueltos de
+separación: 25 combinaciones en un solo cilindro.
+
+- **A lo ALTO, la separación** (`barrido_puas`): cinco bandas de 8 mm.
+- **A lo ANCHO, el largo del pico** (máscara `sectores`): cinco gajos.
+
+| | sector 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| banda 1 — 36 púas, hueco 3.16 mm | 3.0 | 4.5 | 6.0 | 7.5 | 9.0 mm |
+| banda 2 — 44, hueco 2.37 | 3.0 | 4.5 | 6.0 | 7.5 | 9.0 |
+| banda 3 — 52, hueco 1.82 | 3.0 | 4.5 | 6.0 | 7.5 | 9.0 |
+| banda 4 — 60, hueco 1.42 | 3.0 | 4.5 | 6.0 | 7.5 | 9.0 |
+| banda 5 — 72, hueco 0.98 | 3.0 | 4.5 | 6.0 | 7.5 | 9.0 |
+
+Girás la pieza y comparás largos; subís la vista y comparás separaciones.
+
+Funciona porque las dos variables usan ejes distintos: la separación sólo puede
+barrerse a lo alto —las columnas tienen que apilarse dentro de una banda— así
+que el largo se barre por ÁNGULO, con una máscara en escalera. El patrón
+convierte el peso de la máscara en amplitud, así que una escalera de pesos es
+una escalera de largos.
+
+Lleva todo lo nuevo: **capa 0.8**, piso de 0.8, reborde de 4 mm, solape 0.92,
+cordón 1.2 y el grumo que puentea con el frenado en la punta.
+
+
 
 Cilindros cortos sin dibujo: son para leer el grumo, no la figura. Cinco bandas
 de abajo hacia arriba.

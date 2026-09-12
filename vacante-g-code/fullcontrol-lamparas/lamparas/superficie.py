@@ -75,6 +75,42 @@ def banda(desde_t: float, hasta_t: float) -> Mascara:
     return lambda angulo, t: 1.0 if desde_t <= t <= hasta_t else 0.0
 
 
+def sectores(cantidad: int = 5, desde: float = 0.0, hasta: float = 1.0) -> Mascara:
+    """
+    Escalera alrededor de la pieza: `cantidad` gajos, cada uno con su peso.
+
+    Es la máscara de los CUPONES DE MATRIZ. Un patrón convierte el peso en
+    amplitud —`fondo + (figura - fondo) x peso`— así que una escalera en el
+    ángulo es una escalera de amplitudes alrededor del cilindro. Eso deja el
+    eje vertical libre para barrer otra cosa (`barrido_puas`, `barrido`), y una
+    sola pieza prueba las dos variables cruzadas en vez de dos piezas.
+
+    El corte entre gajos es DURO a propósito, igual que en `_bandas`: la gracia
+    de un cupón es poder decir "el tercer gajo sirve y el cuarto no", y con un
+    degradé no hay gajos, hay un continuo del que no se lee un número.
+
+    Ojo con el salto que eso mete: entre dos gajos el radio cambia de golpe
+    dentro de la MISMA vuelta. No es el salto entre vueltas —que es el que
+    gobierna el apoyo— sino un escalón lateral, y el cordón lo tiende como
+    cualquier otro cambio de radio dentro de la vuelta.
+
+    Args:
+        cantidad: cuántos gajos.
+        desde, hasta: el peso del primero y el del último. Con (0, 1) el primer
+            gajo sale al nivel del fondo y el último a la amplitud entera.
+    """
+    n = max(1, int(cantidad))
+    if n == 1:
+        return lambda angulo, t: hasta
+    paso = (hasta - desde) / (n - 1)
+
+    def mascara(angulo: float, t: float) -> float:
+        k = int((angulo % TAU) / TAU * n)
+        return desde + paso * min(n - 1, k)
+
+    return mascara
+
+
 def carita(
     feliz: bool = True,
     angulo_centro: float = 0.0,
@@ -679,6 +715,7 @@ MASCARAS = {
     "parches": parches,
     "organico": organico,
     "hoja": hoja,
+    "sectores": sectores,
     # `partial` y no un lambda con `**kw`: así la entrada conserva la firma de
     # `carita` y `acepta` puede leerla. Ver la nota en `caritas`.
     "feliz": functools.partial(carita, feliz=True),

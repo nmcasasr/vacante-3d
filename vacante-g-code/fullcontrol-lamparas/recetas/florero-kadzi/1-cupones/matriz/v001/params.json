@@ -36,13 +36,13 @@
   "--p",
   "barrido_puas=36,44,52,60,72",
   "--p",
-  "amplitud=6",
+  "amplitud=9",
   "--p",
-  "amplitud_fondo=1.2",
+  "amplitud_fondo=3",
   "--p",
   "ocupacion=0.30",
   "--p",
-  "lisas=1",
+  "lisas=2",
   "--p",
   "con_patron=1",
   "--p",
@@ -50,11 +50,13 @@
   "--p",
   "puente_lento=0.35",
   "--p",
-  "mascara=ninguna",
+  "mascara=sectores",
+  "--p",
+  "cantidad=5",
   "--nombre",
-  "florero-kadzi/1-cupones/separacion/todas"
+  "florero-kadzi/1-cupones/matriz"
  ],
- "nombre": "florero-kadzi/1-cupones/separacion/todas",
+ "nombre": "florero-kadzi/1-cupones/matriz",
  "borrador": [
   "--segmentos",
   "120",
@@ -100,19 +102,19 @@
   {
    "flag": "--p",
    "clave": "amplitud",
-   "valor": 6.0,
+   "valor": 9.0,
    "min": 0.0,
-   "max": 18.0,
-   "paso": 0.09,
+   "max": 27.0,
+   "paso": 0.135,
    "que": "cu\u00e1nto sale la boquilla en la FIGURA, en mm. Es la perilla de \"cu\u00e1nto se ve el dibujo\"."
   },
   {
    "flag": "--p",
    "clave": "amplitud_fondo",
-   "valor": 1.2,
+   "valor": 3.0,
    "min": 0.0,
-   "max": 3.5999999999999996,
-   "paso": 0.018,
+   "max": 9.0,
+   "paso": 0.045,
    "que": "cu\u00e1nto sale en el resto de la pared, en mm. **No es 0** a prop\u00f3sito: el pulso est\u00e1 en toda la pieza y lo que dibuja es la DIFERENCIA de intensidad entre el fondo y la figura. Con 0 el dibujo queda flotando sobre una pared lisa y se ve el recuadro, que es\u2026"
   },
   {
@@ -127,10 +129,10 @@
   {
    "flag": "--p",
    "clave": "lisas",
-   "valor": 1.0,
+   "valor": 2.0,
    "min": 0.0,
-   "max": 3.0,
-   "paso": 0.015,
+   "max": 6.0,
+   "paso": 0.03,
    "que": "cu\u00e1ntas vueltas seguidas van DERECHAS, sin pulsar."
   },
   {
@@ -159,6 +161,15 @@
    "max": 1.0499999999999998,
    "paso": 0.0052499999999999995,
    "que": "qu\u00e9 fracci\u00f3n de la velocidad se usa donde el grumo est\u00e1 al aire. **No adelgaza la l\u00ednea**: la secci\u00f3n la fija la geometr\u00eda y no el `F`, as\u00ed que bajar la velocidad deposita lo mismo en m\u00e1s tiempo. Frena s\u00f3lo en la PUNTA, no en todo el vuelo, y eso est\u00e1\u2026"
+  },
+  {
+   "flag": "--p",
+   "clave": "cantidad",
+   "valor": 5.0,
+   "min": 0.0,
+   "max": 20.0,
+   "paso": 1.0,
+   "que": "cu\u00e1ntos gajos."
   }
  ],
  "mapeo": {
