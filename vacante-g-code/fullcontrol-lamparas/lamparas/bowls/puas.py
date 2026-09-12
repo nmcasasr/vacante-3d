@@ -464,6 +464,8 @@ def construir(
         # segunda en adelante cada grumo apoya sobre el de la vuelta anterior.
         if not pulsa(capa) or (capa % ciclo) != int(lisas):
             return 1.0
+        n = int(puas_de((capa // ciclo) * ciclo * dt_capa))
+        fase = (angulo * n / TAU + deriva * t * n) % 1.0
         # la meseta, o sea el vértice donde la boquilla se para y vuelve
         meseta_ini = (ocupacion - ocupacion * filo) / 2
         if meseta_ini <= fase <= meseta_ini + ocupacion * filo:
