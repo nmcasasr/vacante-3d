@@ -479,6 +479,7 @@ def generar_pieza(
     capas_transicion: int = 6,
     paso_z: Optional[float] = None,
     paso_fijo: bool = False,
+    separacion_por_angulo: bool = False,
     silueta_referencia: Optional[Callable[[float], float]] = None,
     cambios: Optional[dict] = None,
     modulacion: Optional[dict] = None,
@@ -626,6 +627,27 @@ def generar_pieza(
             criterio de la marcha —pensado para cúpulas— produce una altura de
             capa que se bandea sin corresponder a ningún rasgo. Ver el bloque
             donde se usa.
+        separacion_por_angulo: calcula la separación entre vueltas —o sea la
+            sección que se extruye— EN CADA ÁNGULO, en vez de una sola por
+            vuelta tomada del peor ángulo.
+
+            Por defecto va apagado y no cambia nada. La cuenta de siempre sirve
+            para CÚPULAS, donde toda la vuelta se tumba lo mismo y el peor
+            ángulo describe a la vuelta entera. En una ROSCA no: sólo los
+            flancos del hilo están a 43°, la cresta y el fondo son planos, y
+            con una sola separación toda la vuelta recibe la sección gorda del
+            flanco. Medido sobre `PLA_NUEVAS_macho_clasico_v1778`, que pide
+            1.0 mm de pared: sale 1.32 mm de mediana, un 32 % de más, mientras
+            que la pieza impresa de referencia —donde Orca deja el caudal
+            constante— sale 0.88 y adelgaza a 0.67 en los flancos.
+
+            La separación local es `hypot(subida, dr)` con `dr` medido contra
+            la vuelta de ARRIBA en el mismo ángulo, que es la misma cuenta que
+            hace `_delta_radio` pero sin quedarse con el máximo.
+
+            No se enciende por defecto a propósito: el hongo está impreso y su
+            extrusión está calibrada contra `Squeezy Fidget Toy.gcode` con la
+            cuenta vieja (ver el bloque de `separacion`, y ESTADO.md).
         silueta_referencia: silueta lisa `t -> radio`, solo para medir el
             voladizo. Sin esto la medición usa el radio medio de cada vuelta,
             que en los patrones con relieve variable da falsos positivos.
@@ -1447,7 +1469,7 @@ def generar_pieza(
         # los dos sentidos: con altura constante el aro aparece, con la subida
         # real desaparece. El ancho ya no depende de esto si Orca lee `; WIDTH:`.
         puntos.append(fc.ManualGcode(text=f";HEIGHT:{subida:.3f}"))
-        if abs(separacion - ultimo_alto[0]) > 0.005:
+        if not separacion_por_angulo and abs(separacion - ultimo_alto[0]) > 0.005:
             puntos.append(fc.ExtrusionGeometry(area_model="rectangle",
                                                width=perfil.ancho, height=separacion))
             ultimo_alto[0] = separacion
@@ -1478,7 +1500,33 @@ def generar_pieza(
         medio = sum(r for _, _, _, r in crudos[:-1]) / segmentos_por_capa
         radios_medios.append(medio)
 
-        for fraccion, angulo, t, radio_crudo in crudos:
+        # La separación EN CADA ÁNGULO, contra la vuelta de arriba.
+        #
+        # Es la misma cuenta que `separacion` de más arriba, pero sin quedarse
+        # con el peor ángulo de la vuelta: `dr` sale de restar el radio de la
+        # vuelta siguiente en el mismo ángulo —un giro entero más, que es lo que
+        # significa `angulo + 2*pi` con el ángulo acumulado— en vez de derivar.
+        #
+        # Se mide sobre los radios CRUDOS, sin la mezcla de transición: `medio`
+        # de la vuelta de arriba todavía no existe cuando se calcula ésta. Sólo
+        # afecta a las primeras `capas_transicion` vueltas, donde la mezcla
+        # atenúa el relieve y la separación real es algo menor que ésta.
+        seps = None
+        if separacion_por_angulo:
+            sig = capa + 1
+            t_a, t_b = ts[sig], ts[min(sig + 1, n_capas)]
+            subida_sig = pasos_capa[min(sig + 1, len(pasos_capa) - 1)]
+            seps = []
+            for fraccion, angulo, t, radio_crudo in crudos:
+                dr = funcion_radio(angulo + 2 * math.pi,
+                                   t_a + (t_b - t_a) * fraccion) - radio_crudo
+                dz = subida + fraccion * (subida_sig - subida)
+                # el mismo techo que la cuenta por vuelta: donde el paso choca
+                # contra el piso, un cordón solo no llena el hueco y seguir
+                # subiendo la sección sólo pondría una soga colgando.
+                seps.append(min(math.hypot(dz, dr), 1.5 * perfil.altura_capa))
+
+        for i_seg, (fraccion, angulo, t, radio_crudo) in enumerate(crudos):
             radio = medio + (radio_crudo - medio) * mezcla
             radio_max = max(radio_max, radio)
             z = z_capa + fraccion * subida if rampa else z_capa
@@ -1538,6 +1586,14 @@ def generar_pieza(
                 if f != ventilador_previo[0]:
                     puntos.append(fc.Fan(speed_percent=f))
                     ventilador_previo[0] = f
+
+            # Va ANTES del bloque de puente: así el `ultimo_alto[0]` al que el
+            # puente vuelve es el de este ángulo y no el de la vuelta entera.
+            if seps is not None and abs(seps[i_seg] - ultimo_alto[0]) > 0.005:
+                puntos.append(fc.ExtrusionGeometry(area_model="rectangle",
+                                                   width=perfil.ancho,
+                                                   height=seps[i_seg]))
+                ultimo_alto[0] = seps[i_seg]
 
             salto = abs(radio - radio_previo[0]) if radio_previo[0] is not None else 0.0
             puentea = salto > SALTO_PUENTE
@@ -1823,6 +1879,10 @@ _FLAGS_KV = ("--p", "--pe", "--pp", "--ps")
 # depende de tres cosas que solo conoce quien genera —el hueco del piso, la
 # escala y la cama—, y sale de `perfil.rango_de_corte`; ver `rangos` en
 # `guardar_receta`.
+#
+# El tercer elemento, opcional, es el PASO. Sin él el slider va en 200 tramos,
+# que para un flotante está bien y para una cuenta entera no: `--pastillas-n`
+# saldría en 8.2 pastillas por vuelta y el `type=int` de argparse revienta.
 _FLAGS_SUELTOS = {
     "--altura": (20.0, 300.0),
     "--perfil-desde": (0.0, 300.0),
@@ -1832,6 +1892,16 @@ _FLAGS_SUELTOS = {
     "--ancho-linea": (0.3, 1.6),
     "--velocidad": (120.0, 6000.0),
     "--perfil-escala": (0.1, 2.0),
+    # --- rosca ---
+    # `--ancho` es el cordón, y en modo vaso ES el espesor de pared: por debajo
+    # del diámetro de boquilla (0.8) no se puede colocar.
+    "--ancho": (0.8, 1.6),
+    "--diente": (0.0, 1.0),
+    "--pastillas-n": (8.0, 48.0, 1.0),
+    "--pastillas-radio": (2.5, 4.625),
+    "--pastillas-achatado": (0.70, 1.0),
+    "--pastillas-prof": (0.15, 0.90),
+    "--paso-z": (0.12, 0.40),
 }
 
 
@@ -1974,6 +2044,10 @@ def guardar_receta(nombre: str, argv: list, modulo: str, descripciones: dict = N
             porque `sys.argv[0]` de un `python -m paquete` es la ruta del
             `__main__.py`, y correr ESE archivo directo rompe los imports
             relativos del paquete. Lo que hay que reconstruir es `-m modulo`.
+
+            Si termina en `.py` se invoca como SCRIPT y no con `-m`. Los
+            generadores sueltos —`gen_rosca.py`, `gen_tuerca.py`— no son
+            paquetes: `python -m gen_rosca` los importaría en vez de correrlos.
         extra: se mezcla tal cual en la receta. Por ahí va el mapeo z<->t, que
             el preview necesita para saber a qué `t` corresponde un click.
     """
@@ -2003,9 +2077,11 @@ def guardar_receta(nombre: str, argv: list, modulo: str, descripciones: dict = N
             except ValueError:
                 i += 2
                 continue
-            mn, mx = (rangos or {}).get(a, _FLAGS_SUELTOS[a])
+            rango = (rangos or {}).get(a) or _FLAGS_SUELTOS[a]
+            mn, mx = rango[0], rango[1]
+            paso = rango[2] if len(rango) > 2 else (mx - mn) / 200
             controles.append({"flag": a, "clave": a.lstrip("-"), "valor": v,
-                              "min": mn, "max": mx, "paso": (mx - mn) / 200,
+                              "min": mn, "max": mx, "paso": paso,
                               "que": (descripciones or {}).get("", {}).get(a, "")})
             i += 2
             continue
@@ -2016,7 +2092,7 @@ def guardar_receta(nombre: str, argv: list, modulo: str, descripciones: dict = N
         "cwd": str(Path.cwd()),
         # Los argumentos con los que se vuelve a invocar, ya listos para
         # `spawn(python, args)`. No es `sys.argv`: ver el docstring.
-        "args": ["-m", modulo] + list(argv[1:]),
+        "args": ([modulo] if modulo.endswith(".py") else ["-m", modulo]) + list(argv[1:]),
         "nombre": nombre,
         # Con esto la extensión baja la resolución mientras arrastrás: 1.8 s en
         # vez de 8.6 s. Al soltar regenera completo.

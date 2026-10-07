@@ -18,6 +18,7 @@ ven en cuatro líneas de g-code con la respuesta sabida de antemano.
 """
 
 import math
+import re
 import subprocess
 import sys
 import tempfile
@@ -140,14 +141,12 @@ def main():
                        ANCHO), ANCHO, ALTO)
     # El criterio informa qué FRACCIÓN DEL RECORRIDO va por debajo del piso, no
     # el peor segmento: una pieza entera de cordón imposible tiene que dar 100 %.
+    # Se lee el NÚMERO de la fila, no un trozo de texto: el informe separa el
+    # valor de la unidad con un espacio ("100.00 %") y buscar "100.00%" fallaba
+    # por el espacio, no por la medición.
     fila = [l for l in salida.getvalue().splitlines() if "línea fina" in l]
-    # El porcentaje se busca con la unidad SEPARADA ("100.00 %"), que es como lo
-    # imprime `verificar_pieza.medir` —`{valor:8.2f} {u:<2}`—. Buscando
-    # "100.00%" pegado, este caso daba FALLA desde que se escribió y el que
-    # estaba roto era el banco, no el criterio: el veredicto que produce la
-    # línea es el correcto. Un banco que da un rojo permanente enseña a
-    # ignorarlo, que es lo contrario de para lo que existe.
-    bien = bool(fila) and "100.00 %" in fila[0] and "PEOR" in fila[0]
+    medido = re.search(r":\s*([\d.]+)\s*%", fila[0]) if fila else None
+    bien = bool(medido) and float(medido.group(1)) == 100.0 and "PEOR" in fila[0]
     fallos += not bien
     print(f"  {'ok  ' if bien else 'FALLA'}  el piso de altura de cordón se mide sobre el recorrido")
     if not bien:

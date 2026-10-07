@@ -84,6 +84,14 @@ pieza de 180 000 segmentos.
 | `vista_relieve.py` | la pieza DESENROLLADA a PNG, y el período de la textura | el ojo, y el conteo contra una pieza sin figura |
 | `verificar_campo.py` | campo de deformación JS contra Python | uno contra otro |
 | `verificar_ams.py` | bloque de cambio de filamento | un 3mf real de Bambu |
+| `verificar_rosca.py` | contención, apoyo y voladizo de la `FuncionRadio` | la envolvente medida |
+| `verificar_encastre.py` | si el macho EMITIDO entra en la hembra, y con cuánto juego | `rosca.perfil_hembra` |
+| `medir_hembra.py` | que `perfil_hembra` reproduzca el barreno real | `tuerca.stl`, por trazado de rayos |
+
+`verificar_encastre.py` mide contra la TABLA `perfil_hembra` por defecto, y contra
+el g-code de la tuerca con `--hembra ARCHIVO`. Los dos números no son iguales:
+la hembra emitida tiene su propia discretización, y sobre el clásico eso son
+0.021 mm (+0.191 contra la tabla, +0.170 contra el archivo).
 
 `vista_gcode.py` no sirve para una pieza texturada: de frente, un tubo cubierto
 de púas es un rectángulo gris y en planta las 500 vueltas se pisan. Ahí va
@@ -228,6 +236,19 @@ a 0.6 sin que cambie nada físico — la razón `área ÷ avance` es idéntica. 
 hongo, impreso y bueno, da 4.25 %. Antes de creerle a ese número hay que
 preguntarle DÓNDE: si está todo en la banda del ápice, es el cierre de la
 cúpula, no un defecto.
+
+## El centro de una pieza no sale de la caja envolvente
+
+Vale para cualquier medidor que lea un g-code y convierta a radio. La caja
+envolvente sólo da el eje si la pieza llega a su radio máximo en TODAS las
+direcciones. Un patrón que depende del ángulo no lo hace, y la caja sale corrida
+justo lo que después aparece como error de radio: sobre `cuadros` la corre
+0.99 mm y la pieza da NO ENTRA por 0.99 mm.
+
+Ajustar un círculo a todos los puntos tampoco alcanza — el hilo mueve el radio
+2 mm y deja 0.05 mm de sesgo. Hay que ajustar sobre una parte de la pieza que sea
+un círculo exacto; en las roscas es el NÚCLEO, que existe en todos los ángulos y
+en todas las variantes porque el patrón ni se aplica ahí. Ver `verificar_encastre.centro`.
 
 ## Cómo derivar el cordón de un g-code ajeno
 
