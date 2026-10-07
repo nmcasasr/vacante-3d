@@ -175,6 +175,8 @@ def construir(
     lisas: int = 3,
     con_patron: int = 2,
     crecer: int = 1,
+    crecer_pico: float = 1.0,
+    crecer_tope: float = 1.0,
     puente_lento: float = 0.35,
     barrido_lento: str = "",
     lento_alcance: str = "punta",
@@ -186,6 +188,9 @@ def construir(
     muestras: int = 6,
     mascara="flores",
     invertir: int = 0,
+    peso_por_pua: bool = False,
+    peso_por_banda: bool = False,
+    banda_por_vuelta: bool = False,
     suave_borde: float = 5.0,
     tomas: int = 5,
     deriva: float = 0.0,
@@ -429,6 +434,18 @@ def construir(
     dt_capa = altura_capa / max(altura, 1e-9)
     ciclo = max(0, int(lisas)) + max(1, int(con_patron))
 
+    # El número de vuelta, que NO es `floor(t / dt_capa)`: el arranque de la
+    # pared no cae en un múltiplo exacto de la altura de capa, así que ese
+    # `floor` se incrementa al 40 % de la vuelta (medido: púa 22 de 56). La
+    # banda del dibujo cambia ahí, en un ángulo fijo que no es la costura, y
+    # las copias del logo que caen antes de esa púa leen una fila distinta de
+    # las que caen después: 3 púas de más en la fila 3, en 3 de las 4 copias.
+    #
+    # `comun.py` sabe el índice de verdad y lo deja acá antes de cada vuelta;
+    # fuera del bucle de la pared lo deja en None y se vuelve a la cuenta
+    # vieja, que es la que usan los sondeos de diagnóstico.
+    capa_actual: list = [None]
+
     def pulsa(capa: int) -> bool:
         """True si a esa vuelta le toca patrón."""
         if lisas <= 0:
@@ -458,7 +475,34 @@ def construir(
         if lisas <= 0 or not crecer:
             return 1.0
         k = (capa % ciclo) - int(lisas)          # 0 .. con_patron-1
-        return (k + 1) / max(1, int(con_patron))
+        n = max(1, int(con_patron))
+        if crecer_pico >= 1.0:
+            return min((k + 1) / n, max(0.05, crecer_tope))
+        # El grumo sube hasta `crecer_pico` de la banda y VUELVE A BAJAR: de
+        # perfil cada tira es un rombo en vez de una cuña.
+        #
+        # Con el máximo en la mitad el vuelo se alcanza en n/2 vueltas en vez
+        # de n, así que el salto radial por vuelta se DUPLICA —0.333 a 0.600 mm
+        # con 9 vueltas y 3 mm de vuelo— y es el número que decide si se
+        # imprime. La bajada no cuesta: correrse hacia ADENTRO apoya sobre lo
+        # de afuera de la vuelta de abajo. El que manda es el tramo de subida.
+        # Con `con_patron` PAR el pico cae ENTRE dos vueltas y las dos salen
+        # al mismo radio: la punta pasa a tener dos capas de espesor en vez de
+        # una, y deja de verse como una aguja. No cuesta solape —el paso entre
+        # vueltas es el mismo—, sólo hay que normalizar para que el máximo siga
+        # siendo el vuelo pedido: con n par el crudo se queda en 0.909.
+        pico = crecer_pico * (n - 1)
+        crudo = lambda j: ((j + 1) / (pico + 1) if j <= pico
+                           else (n - j) / (n - pico))
+        tope = max(crudo(j) for j in range(n))
+        v = crudo(k) / tope
+        # RECORTAR LA PUNTA. El pico sale de la vuelta que llega al vuelo
+        # entero, y esa sobresale un escalón completo por encima de su vecina:
+        # medido, 0.48 mm de un solo cordón asomando, que es lo que se lee como
+        # aguja de perfil. Recortándolo la punta llega sólo hasta
+        # `crecer_tope` del vuelo y el último escalón se achica, sin tocar el
+        # resto de la rampa ni la altura de capa ni la cadencia.
+        return min(v, max(0.05, crecer_tope))
 
     lista_puas = [max(4, int(round(v))) for v in _lista(barrido_puas)] or [puas]
     puas_de = _bandas(",".join(str(v) for v in lista_puas), puas)
@@ -470,7 +514,8 @@ def construir(
         f = flujo_de(t)
         if f == 1.0:
             return 1.0
-        capa = math.floor(t / dt_capa)
+        capa = (capa_actual[0] if (banda_por_vuelta and capa_actual[0] is not None)
+                else math.floor(t / dt_capa))
         if not pulsa(capa):
             return 1.0
         # Sigue la forma del pulso, no un escalón: el turupe se engorda donde
@@ -504,7 +549,8 @@ def construir(
         que sale 7 mm, que es mucho más que sus nodos. Por eso es una perilla y
         no una decisión tomada acá.
         """
-        capa = math.floor(t / dt_capa)
+        capa = (capa_actual[0] if (banda_por_vuelta and capa_actual[0] is not None)
+                else math.floor(t / dt_capa))
         if crecer or lisas <= 0:
             return False, capa
         if not pulsa(capa) or (capa % ciclo) != int(lisas):
@@ -544,7 +590,8 @@ def construir(
         ms = espera_de(t)
         if ms <= 0:
             return 0.0
-        capa = math.floor(t / dt_capa)
+        capa = (capa_actual[0] if (banda_por_vuelta and capa_actual[0] is not None)
+                else math.floor(t / dt_capa))
         if crecer or lisas <= 0 or not pulsa(capa) or (capa % ciclo) != int(lisas):
             return 0.0
         n = int(puas_de((capa // ciclo) * ciclo * dt_capa))
@@ -588,7 +635,8 @@ def construir(
         # del punto donde el recorrido ya tiene su costura, y eso agrega un
         # SEGUNDO escalón helicoidal en vez de esconder el cambio en el que ya
         # existe. Con `floor` los dos coinciden.
-        capa = math.floor(t / dt_capa)
+        capa = (capa_actual[0] if (banda_por_vuelta and capa_actual[0] is not None)
+                else math.floor(t / dt_capa))
         if not pulsa(capa):
             return base
         # El pulso está en TODA la vuelta; lo que cambia es cuánto sale. En el
@@ -603,14 +651,64 @@ def construir(
         # ningún cordón (medido: 2.28 mm contra 1.2 en un cupón de 4.8 a 12).
         # Leyéndola al arranque, cada grumo crece entero con una sola amplitud y
         # el cambio de banda cae donde ya hay vueltas lisas.
+        n = int(puas_de((capa // ciclo) * ciclo * dt_capa))
+        fase = angulo * n / TAU + deriva * t * n
+        # La máscara se lee en el CENTRO DE LA PÚA, no en el punto.
+        #
+        # Evaluándola punto a punto, una púa que cae sobre el borde del dibujo
+        # tiene sus primeras muestras en el fondo y las últimas en la figura:
+        # sale mitad y mitad. Se ve como una púa deforme al ARRANQUE de cada
+        # tira de púas, y como asimetría en el contorno de la hoja —un lado
+        # gana la púa del borde y el otro la pierde—.
+        #
+        # Leyendo el peso una sola vez por púa, cada púa es entera de una cosa
+        # o de la otra y el dibujo cae en la rejilla sin medias tintas.
+        # Se lee en el CENTRO DE LA CELDA, `floor(fase) + 0.5`, y no en el
+        # centro de la meseta del pulso (`+ ocupacion/2`).
+        #
+        # La celda de la púa `k` es la fase [k, k+1); el pulso ocupa sólo
+        # [k, k+ocupacion) dentro de ella. Leer en `k+ocupacion/2` = k+0.30
+        # rompe la SIMETRÍA: el espejo de `k+0.30` respecto del centro de la
+        # hoja es `-k-0.30`, que no cae en ningún otro punto de lectura, así
+        # que la rejilla de muestreo es asimétrica y la hoja sale con bultos de
+        # un lado y no del otro. Medido sobre la máscara, con la hoja centrada
+        # en el borde de púa: leyendo en k+0.30 la asimetría llega a 1.00;
+        # leyendo en k+0.50 es 0.00 EXACTO, porque el espejo de `k+0.5` es
+        # `(-1-k)+0.5`, que sí es un punto de lectura.
+        #
+        # OJO: la rejilla de `patron` numera con `int(x + 0.5)`, así que
+        # leyendo en `k+0.5` devuelve la columna `k+1`. Se compensa con
+        # `patron_corrimiento=-1`, que existe justo para alinear el dibujo con
+        # la rejilla de púas. Las dos cosas van juntas.
+        ang_pua = ((math.floor(fase) + 0.5 - deriva * t * n) * TAU / n
+                   if peso_por_pua else angulo)
+        # La máscara se lee también una sola vez por BANDA, no por punto.
+        #
+        # Es el mismo problema que `ang_pua` pero en el otro eje. Una vuelta
+        # sube `altura_capa`, así que el último cuarto de vuelta ya puede caer
+        # en la fila de arriba del dibujo: la fila cambia A MEDIA VUELTA y el
+        # grumo que está creciendo apunta a una figura hasta la mitad y a otra
+        # después. Es exactamente la objeción que el comentario de acá arriba
+        # le hace al barrido de amplitud —"empezaría a crecer con una amplitud
+        # y terminaría con otra"— sólo que aplicada a la figura.
+        #
+        # Medido en el logo: 3 púas de más en la última columna de la fila 3,
+        # justo contra la hoja, en 3 de las 4 copias y no en la cuarta. La
+        # copia que zafa es la que cae al principio de la vuelta.
+        #
+        # Se lee en el CENTRO de la banda y no en su arranque: el arranque cae
+        # justo sobre la frontera de fila y el redondeo decide al azar.
+        t_peso = ((((capa // ciclo) + 0.5) * ciclo * dt_capa)
+                  if peso_por_banda else t)
         amp = amplitud_fondo + (amp_de((capa // ciclo) * ciclo * dt_capa)
-                                - amplitud_fondo) * peso(angulo, t)
+                                - amplitud_fondo) * peso(ang_pua, t_peso)
         amp *= crecida(capa)
         if amp <= 0.0:
             return base
-        n = int(puas_de((capa // ciclo) * ciclo * dt_capa))
-        fase = angulo * n / TAU + deriva * t * n
         return base + amp * _pulso(fase % 1.0, ocupacion, filo)
+
+    # `comun.py` escribe acá el número de vuelta antes de cada vuelta.
+    radio.capa_actual = capa_actual
 
     _avisar(silueta, altura, radio_medio, radio, pulsa, lisas, con_patron,
             lista_puas, amplitud, deriva, altura_capa, ocupacion, filo,

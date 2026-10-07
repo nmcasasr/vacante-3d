@@ -157,13 +157,87 @@ relieve. En `hoja-degradada` (1.25 contra 7) es el 82 %, y las hojas saltan
 mucho más. No es la técnica de puente: es el fondo alto. Si el dibujo importa
 más que el relieve al tacto, hay que bajar el fondo.
 
-## El piso: dos arreglos, los dos vistos en impresiones
+## El piso: tres arreglos, los tres vistos en impresiones
 
-Todos los archivos llevan `--base-borde 4` y `--base-solape 0.92`. Los dos
-defectos por defecto están APAGADOS (`0` y `1.0`): una perilla que cambia una
-calibración no puede venir encendida, o regenerar una pieza vieja con su
-comando de siempre da otra pieza. El hongo, el peine y el gusanito se regeneran
-byte a byte con sus comandos originales.
+Todos los archivos llevan `--base-borde 4`, `--base-solape 0.92` y
+`--base-flujo-exacto`. Los tres vienen APAGADOS por defecto (`0`, `1.0` y
+off): una perilla que cambia una calibración no puede venir encendida, o
+regenerar una pieza vieja con su comando de siempre da otra pieza. El hongo, el
+peine y el gusanito se regeneran byte a byte con sus comandos originales.
+
+### El piso metía 33 % de material de más — `--base-flujo-exacto`
+
+Visto en una impresión: *"las primeras vueltas se generan bien pero desde la 17
+más o menos se empiezan a generar mal"*.
+
+Las pasadas del piso van a **0.946 mm**, pero la extrusión estaba escrita para
+un cordón de **1.2**: 0.960 mm² de material en una franja que mide
+0.946 x 0.8 = **0.757 mm²**. Son dos errores que se suman —`area_model=
+"rectangle"` sobrestima un cordón aplastado un 17 %, y `--base-solape` aprieta
+la separación otro 9 % sin avisarle al caudal—. El piso crece por encima de la
+boquilla, la boquilla lo ara, y **cada pasada le empuja el sobrante a la de
+afuera**: por eso empeora hacia el borde y no de golpe.
+
+| piso | pasadas | separación | llenado |
+|---|---|---|---|
+| hongo `--piso 65` (impreso, OK) | 4 | 1.028 mm | 101 % |
+| hongo `--piso 45` | 13 | 1.028 mm | 110 % |
+| hongo `--piso 25` | 23 | 1.028 mm | 112 % |
+| hongo `--piso 10` | 30 | 1.028 mm | **117 %** |
+| cupón velocidad, antes | 34 | 0.947 mm | **133 %** |
+| cupón velocidad, ahora | 34 | 0.947 mm | **106 %** |
+
+**El piso del hongo también sobre-extruye**, y la primera versión de esta nota
+decía lo contrario. Que el hongo mida 101 % es efecto de BORDE de un anillo de
+4 pasadas —el cordón sobresale 0.6 mm por lado y en un anillo angosto eso es
+casi todo—, no una propiedad suya: moviendo el corte a `--piso 10` llega a
+117 %, que es el techo por pasada, `0.96 / (1.028 x 0.8)`.
+
+Así que la diferencia nunca fue el ANCHO del piso sino la cuenta del caudal:
+**117 % contra 133 %**. Los 16 puntos son `--base-solape 0.92`, que aprieta la
+separación de 1.028 a 0.947. El hongo se imprime bien a muchos tamaños, o sea
+que 117 % está probado; 133 % es lo que se vio fallar.
+
+Arreglado el caudal, el solape deja de importar: **106 % con 0.92 contra 107 %
+con 1.0**. Se deja en 0.92 porque da un anillo doble menos. Y el piso arreglado
+queda POR DEBAJO del hongo, que es la pieza de referencia.
+
+El mismo arreglo saca el **arrastre de 4.82 mm**: el reborde salía cinco
+anillos y volvía al contorno de un solo tirón EXTRUYENDO, dejando una loma
+radial cruzando el piso que después la pared tenía que montar. Volver al
+contorno no es imprimir, es moverse — ahora va sin extruir. `verificar_
+continuidad.py` lo informa como "viaje deliberado" (tuvo que aprenderlo: sin
+eso el viaje le cortaba el cuerpo y medía la pared sola, dando verde sin haber
+mirado el piso).
+
+**Lo que NO se arregló, a propósito:** la vuelta de cierre del reborde vuelve a
+pasar por el contorno. Probado al revés —parando la espiral una pasada antes—
+quedan **6.6 % del piso sin cubrir justo debajo de la pared**: peor el remedio.
+
+### Al medir el piso, sacar la primera vuelta de la PARED
+
+Con `capas_base=1` la primera vuelta de la pared va a la MISMA z que el piso,
+así que "todo lo que está en z=0.8" son las dos cosas. Medirlas juntas mete las
+púas en la cuenta del piso, y eso inventó tres defectos que no existían: un
+piso que "ondulaba 5.6 mm", un "arrastre de 4.21 mm" y un "anillo doble". Los
+tres eran la pared.
+
+Separadas —el piso extruye `fusion x alto` y la pared `ancho x altura_capa`, o
+sea que la SECCIÓN las distingue— el piso arreglado mide:
+
+| | llenado | anillos dobles | peor tramo extruido | sin cubrir |
+|---|---|---|---|---|
+| antes (por construcción, 0.960/0.757) | **127 %** | | **4.82 mm** | 0 % |
+| ahora, medido | **100 %** | 0 | 1.39 mm | 0 % |
+
+### El piso con forma de estrella — `--base-redonda`
+
+`sin-cadencia/hoja_crestas_fondo5_pico9mm` tiene `lisas=0`, así que su PRIMERA
+vuelta ya lleva patrón, y con `--capas-transicion 0` el contorno que sigue el
+piso son las púas a amplitud completa: el piso salía como una estrella de 96
+puntas, con **9.3 % sin cubrir**. Con `--base-redonda` el piso sigue la silueta
+lisa y queda en 0.12 %. Sólo esa pieza lo necesita; las demás arrancan con
+vuelta lisa (`lisas>=1`) y su contorno de fondo ya es redondo.
 
 ### El piso no se pegaba A SÍ MISMO — `--base-solape 0.92`
 

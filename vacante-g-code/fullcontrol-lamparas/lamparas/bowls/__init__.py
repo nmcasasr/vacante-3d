@@ -65,6 +65,11 @@ def pasos_bowl(
     base_borde: float = 0.0,
     base_solape: float = 1.0,
     base_altura: float = 0.0,
+    base_flujo_exacto: bool = False,
+    base_redonda: bool = False,
+    base_agujero=None,
+    base_agujero_retraccion: float = 0.0,
+    base_agujero_flujo: float = 0.0,
 ) -> list:
     """
     Arma los pasos de FullControl de un bowl.
@@ -218,6 +223,11 @@ def pasos_bowl(
         base_borde=base_borde,
         base_solape=base_solape,
         base_altura=base_altura,
+        base_flujo_exacto=base_flujo_exacto,
+        base_redonda=base_redonda,
+        base_agujero=base_agujero,
+        base_agujero_retraccion=base_agujero_retraccion,
+        base_agujero_flujo=base_agujero_flujo,
         base_solida=base_solida,
         hueco=hueco,
         refuerzo_hueco=refuerzo_hueco,

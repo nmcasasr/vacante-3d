@@ -78,6 +78,7 @@
   "--ventilador",
   "100",
   "--pendiente-silueta",
+  "--base-flujo-exacto",
   "--nombre",
   "florero-kadzi/2-floreros/hoja-degradada/alto70_pico7mm"
  ],

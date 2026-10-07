@@ -250,10 +250,31 @@ def radio_de_hueco(diametro: float, ancho: float, holgura: float = 0.3) -> float
     return (diametro + ancho + holgura) / 2
 
 
+def distancia_fusion(ancho: float, alto: float, solape: float = 1.0) -> float:
+    """
+    A qué distancia hay que poner los EJES de dos pasadas planas para que se
+    fundan en vez de rozarse: `ancho - 0.215 * alto`, la misma que usa
+    `verificar_pieza.py` y la que usa cualquier slicer para el relleno sólido.
+
+    Está acá, suelta, porque el número lo necesitan DOS cosas —el avance de la
+    espiral del piso y el caudal con el que se llena ese avance— y mientras
+    estuvo escrito en un solo lado el recorrido se apretó y el flujo no se
+    enteró: 0.960 mm² de material entrando en una ranura de 0.946 × 0.8 =
+    0.757 mm², o sea 127 %. El piso salía abombado y se despegaba.
+
+    `solape` es el margen de seguridad (0.92 calibrado); por debajo los
+    cordones se pisan y por encima no se tocan, y la ventana es estrecha.
+    """
+    return (ancho - 0.215 * alto) * max(0.3, min(1.0, solape))
+
+
 def _espiral_base(forma: Callable[[float], float], perfil: Perfil, paso_arco: float = 1.0,
                   radio_interior: float = 0.0, refuerzo: int = 0,
                   borde: float = 0.0, solape: float = 1.0,
-                  z: float = 0.0):
+                  z: float = 0.0, flujo_exacto: bool = False,
+                  agujero: Optional[Callable[[float, float], bool]] = None,
+                  agujero_retraccion: float = 0.0,
+                  agujero_flujo: float = 0.0, ancho_base: float = 0.0):
     """
     Espiral que rellena el fondo de la pieza, del centro hacia afuera. Es lo que
     le da piso a un bowl sin romper el trazo continuo del modo vaso: se imprime
@@ -336,7 +357,7 @@ def _espiral_base(forma: Callable[[float], float], perfil: Perfil, paso_arco: fl
     # para el relleno sólido—. Con cordón de 1.2: 1.114 con capa de 0.4 y 1.028
     # con capa de 0.8. Por eso el defecto se agravó al engordar la capa: la
     # distancia de fusión baja mientras el avance seguía clavado en 1.2.
-    fusion = (perfil.ancho - 0.215 * perfil.altura_capa) * max(0.3, min(1.0, solape))
+    fusion = distancia_fusion(perfil.ancho, perfil.altura_capa, solape)
     avance = fusion / (r_max - ri)
     puntos = []
     angulo = 0.0
@@ -369,17 +390,70 @@ def _espiral_base(forma: Callable[[float], float], perfil: Perfil, paso_arco: fl
     # como `avance * angulo / 2pi`, así que arrastrar los 8 giros del collar
     # hacía arrancar el piso al 23% del anillo: quedaba un agujero enorme
     # alrededor del hueco, justo lo que el collar venía a reforzar.
+    # --- el piso calado -------------------------------------------------
+    #
+    # `agujero(x, y)` dice si ese punto cae en un hueco. La espiral NO cambia
+    # de recorrido: sigue siendo la misma, y lo único que pasa es que sobre los
+    # huecos el extrusor se apaga. Deformarla para esquivarlos sería otra cosa
+    # y mucho más difícil —un hueco de varias piezas sueltas parte cada vuelta
+    # en arcos— mientras que apagando el caudal el trazo del PISO deja de ser
+    # continuo pero la pieza sigue saliendo de una sola pasada.
+    #
+    # Se apaga si CUALQUIERA de los dos extremos del segmento cae en el hueco:
+    # el cordón se deposita a lo largo del segmento, así que mirando sólo el
+    # punto de llegada el hueco sale mordido de un lado.
+    estado = {"on": True, "prev": False}
+
+    def _poner(x: float, y: float, zz: float) -> None:
+        if agujero is not None:
+            dentro = agujero(x, y)
+            quiere = not (dentro or estado["prev"])
+            if agujero_flujo > 0.0:
+                # SURCO en vez de calado: no se corta el hilo, se adelgaza.
+                #
+                # El logo queda como una canaleta en la cara de abajo en vez de
+                # un agujero. Cuesta menos que calar —el piso sigue siendo un
+                # trazo continuo, sin un solo viaje ni retracción— pero no
+                # drena, y se ve mucho menos: es un relieve de primera capa,
+                # no un hueco.
+                if quiere != estado["on"]:
+                    w = ancho_base * (1.0 if quiere else agujero_flujo)
+                    puntos.append(fc.ExtrusionGeometry(
+                        area_model="rectangle", width=w, height=z))
+                    estado["on"] = quiere
+                puntos.append(fc.Point(x=x, y=y, z=zz))
+                estado["prev"] = dentro
+                return
+            if quiere != estado["on"]:
+                # Retracción en cada cruce. Los viajes salen como G0 a F6000,
+                # que ya ayuda, pero son ~200 cruces sobre los huecos y en PETG
+                # sin retraer eso es una telaraña de hilos justo sobre el
+                # dibujo, que es lo único que se quiere ver.
+                if not quiere and agujero_retraccion > 0:
+                    puntos.append(fc.ManualGcode(
+                        text=f"G1 E-{agujero_retraccion:.3f} F2100 ; retraer para cruzar el calado"))
+                puntos.append(fc.Extruder(on=quiere))
+                if quiere and agujero_retraccion > 0:
+                    puntos.append(fc.ManualGcode(
+                        text=f"G1 E{agujero_retraccion:.3f} F2100 ; devolver al volver a apoyar"))
+                estado["on"] = quiere
+            estado["prev"] = dentro
+        puntos.append(fc.Point(x=x, y=y, z=zz))
+
     ang0 = angulo
     s = 0.0
     while s <= 1.0:
         r = ri + s * (forma(angulo) - ri)
-        puntos.append(fc.Point(x=cx + r * math.cos(angulo), y=cy + r * math.sin(angulo), z=z))
+        _poner(cx + r * math.cos(angulo), cy + r * math.sin(angulo), z)
         # paso angular adaptativo: segmentos de largo ~constante en toda la espiral
         angulo += paso_arco / max(r, 0.6)
         s = avance * (angulo - ang0) / (2 * math.pi)
     # cierre exacto sobre el contorno, para empalmar con la pared
-    puntos.append(fc.Point(x=cx + forma(angulo) * math.cos(angulo),
-                           y=cy + forma(angulo) * math.sin(angulo), z=z))
+    _poner(cx + forma(angulo) * math.cos(angulo),
+           cy + forma(angulo) * math.sin(angulo), z)
+    if agujero is not None and not estado["on"]:
+        puntos.append(fc.Extruder(on=True))
+        estado["on"] = True
 
     # --- el reborde ------------------------------------------------------
     #
@@ -401,12 +475,23 @@ def _espiral_base(forma: Callable[[float], float], perfil: Perfil, paso_arco: fl
     # de cierre y eso movía 171 593 instrucciones del hongo impreso, que es el
     # control de que una perilla nueva no toca lo que ya estaba.
     for k in (list(range(1, n_borde + 1)) + [0]) if n_borde else []:
+        # La vuelta de cierre (k = 0) es un REGRESO, no una pasada nueva: el
+        # reborde ya salió hacia afuera y hay que volver al contorno para
+        # empalmar la pared. Con el caudal atado a la separación real
+        # (`flujo_exacto`) ese regreso extruye `n_borde * fusion` de más en un
+        # solo segmento —medido: 4.82 mm de filamento arrastrados— y deja un
+        # gurruño en el canto. Se viaja.
+        if k == 0 and flujo_exacto:
+            puntos.append(fc.Extruder(on=False))
+            puntos.append(fc.Point(x=cx + forma(angulo) * math.cos(angulo),
+                                   y=cy + forma(angulo) * math.sin(angulo), z=z))
+            puntos.append(fc.Extruder(on=True))
         objetivo = 2 * math.pi
         recorrido = 0.0
         while recorrido < objetivo:
             r = forma(angulo) + k * fusion
             puntos.append(fc.Point(x=cx + r * math.cos(angulo),
-                                   y=cy + r * math.sin(angulo), z=z))
+                                   y=cy + r * math.sin(angulo), z=z))  # el reborde nunca se cala
             d = paso_arco / max(r, 0.6)
             angulo += d
             recorrido += d
@@ -473,6 +558,11 @@ def generar_pieza(
     base_borde: float = 0.0,
     base_solape: float = 1.0,
     base_altura: float = 0.0,
+    base_flujo_exacto: bool = False,
+    base_redonda: bool = False,
+    base_agujero: Optional[Callable[[float, float], bool]] = None,
+    base_agujero_retraccion: float = 0.0,
+    base_agujero_flujo: float = 0.0,
     base_solida: bool = False,
     hueco: float = 0.0,   # diámetro FINAL del agujero del piso, en mm
     refuerzo_hueco: int = 0,
@@ -775,23 +865,47 @@ def generar_pieza(
         # El piso también declara su cordón. Sale antes que la pared y sin esto
         # queda sin anotar: el injerto tiene que inventarle una capa semilla,
         # que después no cierra contra la primera capa de la pared.
+        # El ANCHO con el que se cobra el piso es la SEPARACIÓN entre pasadas,
+        # no el ancho del cordón.
+        #
+        # La espiral del piso avanza la distancia de FUSIÓN, que es menor que
+        # el cordón, pero el caudal se cobraba con el cordón entero: entraba
+        # material para una ranura de 1.2 en una ranura de 1.03. Medido 127 %
+        # de relleno en el piso de la matera y 133 % en `velocidad.gcode`. El
+        # piso se abombaba y desde la vuelta ~17 las pasadas se montaban unas
+        # sobre otras — que es exactamente lo que se vio impreso.
+        #
+        # `perfil.altura_capa` y NO `alto_piso`: tiene que ser la MISMA cuenta
+        # que hace `_espiral_base` para su avance, si no el caudal vuelve a no
+        # coincidir con la separación, que es justo lo que esto arregla.
+        ancho_piso = (distancia_fusion(perfil.ancho, perfil.altura_capa, base_solape)
+                      if base_flujo_exacto else perfil.ancho)
         puntos.append(fc.ManualGcode(text=f";Z:{alto_piso:.3f}"))
-        puntos.append(fc.ManualGcode(text=f";WIDTH:{perfil.ancho:.3f}"))
-        puntos.append(fc.ManualGcode(text=f"; LINE_WIDTH: {perfil.ancho:.3f}"))
+        puntos.append(fc.ManualGcode(text=f";WIDTH:{ancho_piso:.3f}"))
+        puntos.append(fc.ManualGcode(text=f"; LINE_WIDTH: {ancho_piso:.3f}"))
         puntos.append(fc.ManualGcode(text=f";HEIGHT:{alto_piso:.3f}"))
-        if alto_piso != perfil.altura_capa:
+        if base_flujo_exacto or alto_piso != perfil.altura_capa:
             # La SECCIÓN también cambia: un piso más grueso pone más material
             # por milímetro. Sin esto el recorrido sube pero la extrusión sigue
             # siendo la de una capa fina, y el disco sale hueco por dentro.
             puntos.append(fc.ExtrusionGeometry(
-                area_model="rectangle", width=perfil.ancho, height=alto_piso))
+                area_model="rectangle", width=ancho_piso, height=alto_piso))
+        # El piso puede seguir la silueta LISA en vez del contorno con patrón.
+        # Con `lisas=0` el patrón está en todas las vueltas, incluida la de
+        # `t=0`, así que el piso salía con forma de estrella y sobresalía de la
+        # pared en cada púa.
+        contorno_piso = ((lambda a: silueta_referencia(0.0))
+                         if (base_redonda and silueta_referencia is not None)
+                         else (lambda a: funcion_radio(a, 0.0)))
         puntos_base, angulo_inicio = _espiral_base(
-            lambda a: funcion_radio(a, 0.0), perfil,
+            contorno_piso, perfil,
             radio_interior=radio_de_hueco(hueco, perfil.ancho) if hueco else 0.0,
             refuerzo=refuerzo_hueco, borde=base_borde,
-            solape=base_solape, z=alto_piso)
+            solape=base_solape, z=alto_piso, flujo_exacto=base_flujo_exacto,
+            agujero=base_agujero, agujero_retraccion=base_agujero_retraccion,
+            agujero_flujo=base_agujero_flujo, ancho_base=ancho_piso)
         puntos.extend(puntos_base)
-        if alto_piso != perfil.altura_capa:
+        if base_flujo_exacto or alto_piso != perfil.altura_capa:
             # devolver la sección de la PARED antes de seguir
             puntos.append(fc.ExtrusionGeometry(
                 area_model="rectangle", width=perfil.ancho, height=perfil.altura_capa))
@@ -1451,6 +1565,17 @@ def generar_pieza(
             puntos.append(fc.ExtrusionGeometry(area_model="rectangle",
                                                width=perfil.ancho, height=separacion))
             ultimo_alto[0] = separacion
+
+        # El generador de patrón puede querer saber en qué VUELTA va en vez de
+        # deducirlo de `t`. No es lo mismo: `t` sale de la marcha y el arranque
+        # de la pared no cae en un múltiplo exacto de la altura de capa, así
+        # que `floor(t / dt_capa)` se incrementa A MEDIA VUELTA. Medido en la
+        # matera: la parte fraccionaria del arranque vale 0.6012 en todas las
+        # vueltas, o sea que el índice cambia al 40 % de la vuelta —la púa 22
+        # de 56— y no en la costura. Eso es un segundo escalón helicoidal en un
+        # ángulo fijo, aparte del que ya existe.
+        if hasattr(funcion_radio, "capa_actual"):
+            funcion_radio.capa_actual[0] = capa
 
         # se calcula la vuelta entera primero para poder mezclarla con su propio
         # radio medio durante la transición

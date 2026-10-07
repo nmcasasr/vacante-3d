@@ -54,6 +54,7 @@
   "--ventilador",
   "100",
   "--pendiente-silueta",
+  "--base-flujo-exacto",
   "--nombre",
   "florero-kadzi/1-cupones/grumo-crece/largos_5a13mm"
  ],

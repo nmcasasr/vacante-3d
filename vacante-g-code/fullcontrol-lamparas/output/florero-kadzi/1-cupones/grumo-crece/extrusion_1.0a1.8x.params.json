@@ -56,6 +56,7 @@
   "--ventilador",
   "100",
   "--pendiente-silueta",
+  "--base-flujo-exacto",
   "--nombre",
   "florero-kadzi/1-cupones/grumo-crece/extrusion_1.0a1.8x"
  ],

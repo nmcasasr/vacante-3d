@@ -239,6 +239,7 @@ def gusanito(
     cintura: float = 0.69,
     apoyo: float = 0.12,
     redondeo: float = 6.0,
+    recorte: float = 1.0,
 ) -> Silueta:
     """
     Una pila de esferas achatadas: la cabeza del hongo repetida a lo largo del
@@ -282,6 +283,14 @@ def gusanito(
             la pared arrancando vertical; 0.12 baja un poco más y da una base
             apenas acampanada, como la referencia. Es lo único que se abre
             hacia arriba en toda la pieza, y con 0.12 son 5 grados.
+        recorte: fracción de la forma que se usa, medida desde abajo. 1.0 (por
+            defecto) es la pieza entera, terminada en el ápice. Menos que eso
+            la corta antes y la deja ABIERTA arriba, que es lo que quiere una
+            lámpara: cerrar el ápice es un puente que crece con el radio —3.1
+            mm con Ø60, 12.2 mm con Ø86.5, y a los 12 se descuelga—. El corte
+            natural es el último cuello: con `apoyo=0` y 4 lóbulos, t=0.9586.
+            Ojo con la altura: para que los lóbulos midan lo mismo hay que
+            pedir `altura * recorte`.
         redondeo: cuánto se redondea el cuello, en mm de DIFERENCIA DE RADIO
             entre los dos lóbulos. Se traduce a altura dividiendo por la
             pendiente del cruce: con 6 mm el empalme ocupa unos ±2 mm de z, o
@@ -336,6 +345,19 @@ def gusanito(
         return max(a, c) + h * h * redondeo * 0.25
 
     def silueta(t: float) -> float:
+        # `recorte` corta la pieza antes del ápice: se usa sólo el tramo
+        # [0, recorte] de la forma, estirado sobre toda la altura pedida.
+        #
+        # El ápice es una cúpula, o sea tangente horizontal, y cerrarlo es un
+        # puente que crece con el radio: con Ø60 son 3.1 mm y sale; con Ø86.5
+        # son 12.2 y ya no. Para una lámpara además no hace falta cerrarlo. El
+        # corte natural es el último CUELLO, que con `apoyo=0` y 4 lóbulos cae
+        # en t = 0.9586: ahí la pieza termina abierta en el diámetro del
+        # cuello, que es un borde parado y no un voladizo.
+        #
+        # Para que los lóbulos midan lo mismo que sin recortar hay que pedir
+        # `altura * recorte`; si no, la forma sale estirada a lo alto.
+        t = t * recorte
         # Solo los lóbulos DEFINIDOS en esta altura. Uno que no llega no vale 0:
         # vale nada, y mezclarlo como 0 inflaría el ápice, donde el lóbulo de
         # arriba está solo y la pieza tiene que cerrar en punta.
