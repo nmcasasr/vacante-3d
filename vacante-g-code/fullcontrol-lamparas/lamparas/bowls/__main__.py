@@ -107,6 +107,19 @@ def _cli() -> None:
                         "orientacion de la FIGURA, no en la de impresion: la caperuza tiene el "
                         "encastre arriba en el ensamblaje y tiene que ir contra la cama para poder "
                         "imprimirse. Sin esto sale al reves y no encastra ni se sostiene.")
+    p.add_argument("--perfil-lobulos", type=int, default=0, metavar="N",
+                   help="partir la silueta en N pisos que se inflan hacia afuera, como una copa "
+                        "de arbol en nubes: cada piso es una panza y entre piso y piso queda un "
+                        "pliegue que cae sobre el perfil original. Los pisos son de igual alto y "
+                        "el piso y la boca no se mueven (ahi hay pliegue).")
+    p.add_argument("--perfil-lobulos-amp", type=float, default=0.10, metavar="FRAC",
+                   help="cuanto se infla cada piso, como fraccion del radio a esa altura (0.10 = "
+                        "un 10 %%). Proporcional al radio a proposito: arriba y abajo, donde la "
+                        "copa cierra, los pisos se inflan menos solos.")
+    p.add_argument("--perfil-lobulos-forma", type=float, default=1.0, metavar="P",
+                   help="exponente de cada panza, |sen|^P. 1 = panza redonda y pliegue en V; "
+                        "menos de 1 = panzas mas llenas y pliegue mas marcado (pero el pliegue "
+                        "se acuesta: verificar el voladizo); mas de 1 = ondas suaves.")
     p.add_argument("--perfil-limitar", action="store_true",
                    help="recortar la pendiente del perfil para que ninguna vuelta se corra mas que "
                         "un cordon. Una cupula siempre tiene tangente horizontal en el apice y ahi "
@@ -609,6 +622,17 @@ def _cli() -> None:
             info = {**info, "alto": info["alto"] * k,
                     "r_min": info["r_min"] * k, "r_max": info["r_max"] * k,
                     "r_base": info["r_base"] * k, "r_boca": info["r_boca"] * k}
+        if args.perfil_lobulos > 0:
+            # Va DESPUES de escalar y antes de todo lo que mide: los pisos son
+            # parte de la silueta lisa, así que `--pendiente-silueta`, la marcha
+            # y el aviso de voladizo los tienen que ver. El patrón va encima.
+            import math as _m
+            _lisa = silueta
+            _n, _a, _pf = args.perfil_lobulos, args.perfil_lobulos_amp, args.perfil_lobulos_forma
+            silueta = lambda t, _f=_lisa: _f(t) * (  # noqa: E731
+                1.0 + _a * abs(_m.sin(_m.pi * _n * t)) ** _pf)
+            info = {**info, "r_max": max(silueta(i / 2000) for i in range(2001))}
+            print(f"  {_n} pisos inflados un {100 * _a:g} % (forma {_pf:g})")
         # La altura sale del modelo salvo que la pidas distinta: el DXF ya la
         # dice, y repetirla a mano es la forma más fácil de que no coincidan.
         if not any(a == "--altura" for a in _sys.argv):
