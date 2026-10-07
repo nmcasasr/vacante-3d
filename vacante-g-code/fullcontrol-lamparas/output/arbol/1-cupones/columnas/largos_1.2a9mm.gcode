@@ -6,9 +6,10 @@
 ;     --piso-refuerzo 0 --boquilla 0.8 --ancho-linea 1.2 --altura-capa 0.8
 ;     --segundos-vuelta 0 --velocidad 480 --material PETG --temperatura 240 --temp-cama 70
 ;     --ventilador 100 --p puas=72 --p barrido_puas=45,68,83,90,97,99,98,93,83,70,50,35
-;     --p amplitud=9 --p amplitud_fondo=1.2 --p ocupacion=0.30 --p lisas=2 --p
-;     con_patron=1 --p crecer=0 --p puente_lento=0.35 --p mascara=sectores --p cantidad=5
-;     --pendiente-silueta --base-flujo-exacto --nombre arbol/1-cupones/largos_1.2a9mm
+;     --p amplitud=9 --p amplitud_fondo=1.2 --p ocupacion=0.30 --p crecer=0 --p
+;     puente_lento=0.35 --p mascara=sectores --p cantidad=5 --pendiente-silueta
+;     --base-flujo-exacto --p lisas=2 --p con_patron=1 --nombre
+;     arbol/1-cupones/columnas/largos_1.2a9mm
 ;===============================================================
 ; Time to print!!!!!
 ; GCode created with FullControl - tell us what you're printing!

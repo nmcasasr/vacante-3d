@@ -191,6 +191,7 @@ def construir(
     peso_por_pua: bool = False,
     peso_por_banda: bool = False,
     banda_por_vuelta: bool = False,
+    intercalar: int = 0,
     suave_borde: float = 5.0,
     tomas: int = 5,
     deriva: float = 0.0,
@@ -330,6 +331,12 @@ def construir(
         suave_borde: en cuántos mm de ALTURA se desvanece el borde de la figura,
             y `tomas` con cuántas muestras. No es un parámetro estético: es lo
             que acota el salto de radio por vuelta. Ver abajo.
+        intercalar: 1 corre los grumos MEDIA PÚA en una fila con patrón sí y en
+            la otra no, así que cada grumo cae entre los dos de la fila de
+            abajo: tresbolillo, como las hojas de una copa. 0 (por defecto) los
+            apila en columnas, que es lo que llevan los floreros. Si la fila de
+            abajo tiene otra cantidad de púas (`barrido_puas`), el corrimiento
+            es media púa de la fila NUEVA.
         deriva: vueltas que rota la textura a lo largo de la altura. **Dejalo en
             0**; ver el docstring del módulo.
         desde, hasta: en qué tramo de la altura (0..1) hay púas. El zócalo liso
@@ -446,6 +453,34 @@ def construir(
     # vieja, que es la que usan los sondeos de diagnóstico.
     capa_actual: list = [None]
 
+    # El `t` con que ARRANCÓ cada vuelta, anotado la primera vez que se la ve.
+    # Con paso adaptativo —la bola del árbol— las vueltas no suben lo mismo y
+    # `vuelta x dt_capa` deja de ser la altura: hay más vueltas que
+    # `altura / altura_capa`, así que las bandas de `barrido_puas` y `barrido`
+    # se corrían hacia arriba y las últimas caían todas en la última banda.
+    t_de_vuelta: dict = {}
+
+    def _vuelta(t: float) -> int:
+        """El número de vuelta: el de verdad si `comun.py` lo dejó, si no `t`."""
+        if banda_por_vuelta and capa_actual[0] is not None:
+            t_de_vuelta.setdefault(capa_actual[0], t)
+            return capa_actual[0]
+        return math.floor(t / dt_capa)
+
+    def _t_banda(capa: int) -> float:
+        """El `t` donde arranca el ciclo de esa vuelta: ahí se leen las bandas."""
+        inicio = (capa // ciclo) * ciclo
+        if banda_por_vuelta and inicio in t_de_vuelta:
+            return t_de_vuelta[inicio]
+        return inicio * dt_capa
+
+    def _corrimiento(capa: int) -> float:
+        """Media púa en los ciclos impares con `intercalar`: el tresbolillo."""
+        return 0.5 if (intercalar and (capa // ciclo) % 2) else 0.0
+
+    def _fase(angulo: float, t: float, capa: int, n: int) -> float:
+        return angulo * n / TAU + deriva * t * n + _corrimiento(capa)
+
     def pulsa(capa: int) -> bool:
         """True si a esa vuelta le toca patrón."""
         if lisas <= 0:
@@ -514,15 +549,14 @@ def construir(
         f = flujo_de(t)
         if f == 1.0:
             return 1.0
-        capa = (capa_actual[0] if (banda_por_vuelta and capa_actual[0] is not None)
-                else math.floor(t / dt_capa))
+        capa = _vuelta(t)
         if not pulsa(capa):
             return 1.0
         # Sigue la forma del pulso, no un escalón: el turupe se engorda donde
         # está y el valle queda con la sección nominal. Con un escalón, el
         # cambio de sección cae en mitad del flanco y se lee como un anillo.
-        n = int(puas_de((capa // ciclo) * ciclo * dt_capa))
-        fase = angulo * n / TAU + deriva * t * n
+        n = int(puas_de(_t_banda(capa)))
+        fase = _fase(angulo, t, capa, n)
         return 1.0 + (f - 1.0) * _pulso(fase % 1.0, ocupacion, filo)
 
     lento_de = _bandas(barrido_lento, puente_lento)
@@ -549,14 +583,13 @@ def construir(
         que sale 7 mm, que es mucho más que sus nodos. Por eso es una perilla y
         no una decisión tomada acá.
         """
-        capa = (capa_actual[0] if (banda_por_vuelta and capa_actual[0] is not None)
-                else math.floor(t / dt_capa))
+        capa = _vuelta(t)
         if crecer or lisas <= 0:
             return False, capa
         if not pulsa(capa) or (capa % ciclo) != int(lisas):
             return False, capa
-        n = int(puas_de((capa // ciclo) * ciclo * dt_capa))
-        fase = (angulo * n / TAU + deriva * t * n) % 1.0
+        n = int(puas_de(_t_banda(capa)))
+        fase = _fase(angulo, t, capa, n) % 1.0
         if lento_alcance == "todo":
             # todo el pulso: desde que despega de la pared hasta que vuelve
             return _pulso(fase, ocupacion, filo) > 0.0, capa
@@ -568,7 +601,7 @@ def construir(
         punta, capa = _en_punta(angulo, t)
         if not punta:
             return 1.0
-        return max(0.05, lento_de((capa // ciclo) * ciclo * dt_capa))
+        return max(0.05, lento_de(_t_banda(capa)))
 
     espera_de = _bandas(barrido_espera, float(espera_ms))
     _contador = [0, False]   # [cuántas puntas van, si la anterior estaba dentro]
@@ -590,12 +623,11 @@ def construir(
         ms = espera_de(t)
         if ms <= 0:
             return 0.0
-        capa = (capa_actual[0] if (banda_por_vuelta and capa_actual[0] is not None)
-                else math.floor(t / dt_capa))
+        capa = _vuelta(t)
         if crecer or lisas <= 0 or not pulsa(capa) or (capa % ciclo) != int(lisas):
             return 0.0
-        n = int(puas_de((capa // ciclo) * ciclo * dt_capa))
-        fase = (angulo * n / TAU + deriva * t * n) % 1.0
+        n = int(puas_de(_t_banda(capa)))
+        fase = _fase(angulo, t, capa, n) % 1.0
         ini = (ocupacion - ocupacion * filo) / 2
         dentro = ini <= fase <= ini + ocupacion * filo
         # UNA pausa por púa, en el FLANCO de entrada a la meseta. Buscar "el
@@ -635,8 +667,7 @@ def construir(
         # del punto donde el recorrido ya tiene su costura, y eso agrega un
         # SEGUNDO escalón helicoidal en vez de esconder el cambio en el que ya
         # existe. Con `floor` los dos coinciden.
-        capa = (capa_actual[0] if (banda_por_vuelta and capa_actual[0] is not None)
-                else math.floor(t / dt_capa))
+        capa = _vuelta(t)
         if not pulsa(capa):
             return base
         # El pulso está en TODA la vuelta; lo que cambia es cuánto sale. En el
@@ -651,8 +682,8 @@ def construir(
         # ningún cordón (medido: 2.28 mm contra 1.2 en un cupón de 4.8 a 12).
         # Leyéndola al arranque, cada grumo crece entero con una sola amplitud y
         # el cambio de banda cae donde ya hay vueltas lisas.
-        n = int(puas_de((capa // ciclo) * ciclo * dt_capa))
-        fase = angulo * n / TAU + deriva * t * n
+        n = int(puas_de(_t_banda(capa)))
+        fase = _fase(angulo, t, capa, n)
         # La máscara se lee en el CENTRO DE LA PÚA, no en el punto.
         #
         # Evaluándola punto a punto, una púa que cae sobre el borde del dibujo
@@ -680,7 +711,7 @@ def construir(
         # leyendo en `k+0.5` devuelve la columna `k+1`. Se compensa con
         # `patron_corrimiento=-1`, que existe justo para alinear el dibujo con
         # la rejilla de púas. Las dos cosas van juntas.
-        ang_pua = ((math.floor(fase) + 0.5 - deriva * t * n) * TAU / n
+        ang_pua = ((math.floor(fase) + 0.5 - deriva * t * n - _corrimiento(capa)) * TAU / n
                    if peso_por_pua else angulo)
         # La máscara se lee también una sola vez por BANDA, no por punto.
         #
@@ -700,7 +731,7 @@ def construir(
         # justo sobre la frontera de fila y el redondeo decide al azar.
         t_peso = ((((capa // ciclo) + 0.5) * ciclo * dt_capa)
                   if peso_por_banda else t)
-        amp = amplitud_fondo + (amp_de((capa // ciclo) * ciclo * dt_capa)
+        amp = amplitud_fondo + (amp_de(_t_banda(capa))
                                 - amplitud_fondo) * peso(ang_pua, t_peso)
         amp *= crecida(capa)
         if amp <= 0.0:

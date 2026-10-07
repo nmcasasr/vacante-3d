@@ -47,10 +47,6 @@
   "--p",
   "ocupacion=0.30",
   "--p",
-  "lisas=2",
-  "--p",
-  "con_patron=1",
-  "--p",
   "crecer=0",
   "--p",
   "puente_lento=0.35",
@@ -60,10 +56,18 @@
   "cantidad=5",
   "--pendiente-silueta",
   "--base-flujo-exacto",
+  "--p",
+  "lisas=3",
+  "--p",
+  "con_patron=1",
+  "--p",
+  "banda_por_vuelta=1",
+  "--p",
+  "intercalar=1",
   "--nombre",
-  "arbol/1-cupones/largos_1.2a9mm"
+  "arbol/1-cupones/intercalado/largos_1.2a9mm"
  ],
- "nombre": "arbol/1-cupones/largos_1.2a9mm",
+ "nombre": "arbol/1-cupones/intercalado/largos_1.2a9mm",
  "borrador": [
   "--segmentos",
   "120",
@@ -144,24 +148,6 @@
   },
   {
    "flag": "--p",
-   "clave": "lisas",
-   "valor": 2.0,
-   "min": 0.0,
-   "max": 6.0,
-   "paso": 0.03,
-   "que": "cu\u00e1ntas vueltas seguidas van DERECHAS, sin pulsar."
-  },
-  {
-   "flag": "--p",
-   "clave": "con_patron",
-   "valor": 1.0,
-   "min": 0.0,
-   "max": 3.0,
-   "paso": 0.015,
-   "que": "cu\u00e1ntas vueltas seguidas pulsan, despu\u00e9s de las lisas. El ciclo `lisas + con_patron` se repite hasta arriba. Con `lisas=0` el patr\u00f3n est\u00e1 en todas las vueltas. Las vueltas lisas son las costillas continuas que se ven en la pieza de referencia entre fila y\u2026"
-  },
-  {
-   "flag": "--p",
    "clave": "crecer",
    "valor": 0.0,
    "min": 0.0,
@@ -186,6 +172,42 @@
    "max": 20.0,
    "paso": 1.0,
    "que": "cu\u00e1ntos gajos."
+  },
+  {
+   "flag": "--p",
+   "clave": "lisas",
+   "valor": 3.0,
+   "min": 0.0,
+   "max": 9.0,
+   "paso": 0.045,
+   "que": "cu\u00e1ntas vueltas seguidas van DERECHAS, sin pulsar."
+  },
+  {
+   "flag": "--p",
+   "clave": "con_patron",
+   "valor": 1.0,
+   "min": 0.0,
+   "max": 3.0,
+   "paso": 0.015,
+   "que": "cu\u00e1ntas vueltas seguidas pulsan, despu\u00e9s de las lisas. El ciclo `lisas + con_patron` se repite hasta arriba. Con `lisas=0` el patr\u00f3n est\u00e1 en todas las vueltas. Las vueltas lisas son las costillas continuas que se ven en la pieza de referencia entre fila y\u2026"
+  },
+  {
+   "flag": "--p",
+   "clave": "banda_por_vuelta",
+   "valor": 1.0,
+   "min": 0.0,
+   "max": 3.0,
+   "paso": 0.015,
+   "que": ""
+  },
+  {
+   "flag": "--p",
+   "clave": "intercalar",
+   "valor": 1.0,
+   "min": 0.0,
+   "max": 3.0,
+   "paso": 0.015,
+   "que": "1 corre los grumos MEDIA P\u00daA en una fila con patr\u00f3n s\u00ed y en la otra no, as\u00ed que cada grumo cae entre los dos de la fila de abajo: tresbolillo, como las hojas de una copa. 0 (por defecto) los apila en columnas, que es lo que llevan los floreros. Si la fila\u2026"
   }
  ],
  "mapeo": {

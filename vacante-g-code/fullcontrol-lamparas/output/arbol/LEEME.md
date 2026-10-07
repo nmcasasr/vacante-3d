@@ -8,9 +8,20 @@ por el hueco de abajo.
 Todo es cordón **1.2 mm**, capa **0.8**, PETG a 240 °C, cama 70, ventilador 100,
 8 mm/s con `puente_lento=0.35` en la punta.
 
-## `1-cupones/largos_1.2a9mm`
+## Los cupones
 
-Bola **Ø80 x 59 mm** (`--perfil-escala 0.45`), hueco abajo Ø20, boca arriba Ø12.
+**La carpeta dice CÓMO está hecho. El nombre del archivo dice CON QUÉ NÚMEROS.**
+
+Los dos son la misma bola **Ø80 x 59 mm** (`--perfil-escala 0.45`), hueco abajo
+Ø20, boca arriba Ø12, con los mismos cinco largos. Cambia cómo se ordenan los
+grumos:
+
+- **`1-cupones/intercalado/largos_1.2a9mm`** — EL QUE VA. **3 vueltas lisas + 1
+  con patrón**, como la matera, y cada fila de grumos corrida media púa
+  respecto de la anterior: cada grumo cae entre los dos de abajo, al
+  tresbolillo, como las hojas de la copa. Filas cada ~3.2 mm. ~2 h.
+- `1-cupones/columnas/largos_1.2a9mm` — el primer intento: 2 + 1, grumos
+  apilados en columnas como el florero. Queda de comparación.
 
 **Los largos van en GAJOS alrededor de la bola, no en bandas a lo alto.** En una
 bola cada altura es otra situación —abajo voladizo, en el medio pared parada,
@@ -32,12 +43,12 @@ cuarto no".
 base a la boca. Con una cantidad fija quedaban a 3.5 mm en el ecuador y
 fundidas cerca de la boca.
 
-Verificador: línea fina 0.00 % · peor puente 11.9 mm (el tope es 12) ·
-contacto 12 % — el mismo número que `florero-kadzi/1-cupones/grumo-puentea`:
-es el grumo colgando, buscado. Da NO IMPRIMIBLE por eso y sólo por eso.
+Verificador, los dos: línea fina 0.00 % · peor puente 11.9 mm (el tope es 12) ·
+contacto ~12 % — el mismo número que `florero-kadzi/1-cupones/grumo-puentea`:
+es el grumo colgando, buscado. Dan NO IMPRIMIBLE por eso y sólo por eso.
 
-Tiempo: ~2.4 h estimadas por recorrido x1.4. El estimador sale corto; el de
-Orca al laminar es el bueno.
+Los tiempos son por recorrido x1.4 y salen cortos; el de Orca al laminar es el
+bueno.
 
 **Qué mirar al imprimirlo:** qué largo se lee como follaje y no como púa; si en
 la mitad de abajo (voladizo) los grumos cuelgan como cordones o se caen; y si
@@ -51,3 +62,12 @@ subida hasta el piso: el primer intento salió con cordón de 1.2 x 0.223, 19 %
 de línea fina y puentes de 130 mm. Ninguna receta vieja cambia: las 114 que
 usaban la opción son de paso fijo y no pasan por la marcha (comprobado con
 `matriz`; el hongo sale byte a byte igual).
+
+`puas.py`, todo apagado por defecto (las recetas viejas salen byte a byte
+iguales: matriz, largos_3a9mm, velocidad, matera60_romo_piso_kadzi, hongo):
+
+- `intercalar=1` corre media púa los grumos de una fila con patrón sí y otra no.
+- Con `banda_por_vuelta=1` la cadencia cuenta VUELTAS de verdad y las bandas
+  de `barrido_puas`/`barrido` se leen en el `t` real donde arranca el ciclo.
+  En la bola hace falta: con paso adaptativo las vueltas no suben lo mismo, y
+  `vuelta x dt_capa` no es la altura.
