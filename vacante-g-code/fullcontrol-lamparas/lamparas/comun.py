@@ -866,6 +866,26 @@ def generar_pieza(
         n = max(1, round(altura / paso))
         ts = [j / n for j in range(n + 1)]
         zs = [j * altura / n for j in range(n + 1)]
+    elif pendiente_silueta and silueta_referencia is not None:
+        # La marcha, igual que la extrusión con `pendiente_silueta`, mide la
+        # inclinación sobre la SILUETA LISA. Es el caso de una cúpula CON
+        # relieve —el árbol: la bola del hongo cubierta de grumos—, que necesita
+        # la marcha adaptativa por la cúpula y no puede dejar que el relieve la
+        # gobierne: cada grumo entrando y saliendo se lee como una pared
+        # acostada, y el paso se achica hasta el piso. Medido en el primer cupón
+        # del árbol: cordón declarado de 1.2 x 0.223 en vez de 0.8, 19 % del
+        # recorrido por debajo de 0.10 mm y puentes de 130 mm en el ecuador.
+        #
+        # Con paso fijo no pasa por acá, y todas las recetas que ya usaban
+        # `--pendiente-silueta` son de paso fijo: ninguna se mueve.
+        sr = silueta_referencia
+
+        def _pendiente_lisa(t: float, h: float = 5e-3) -> float:
+            a, b = min(1.0, t + h), max(0.0, t - h)
+            return abs(sr(a) - sr(b)) / ((a - b) or 1e-9)
+
+        ts, zs = marcha_vertical(None, altura, paso, pendiente=_pendiente_lisa,
+                                 delta_radio=lambda t, t2: abs(sr(t2) - sr(t)))
     else:
         ts, zs = marcha_vertical(None, altura, paso, pendiente=_pendiente,
                                  delta_radio=_delta_radio)
