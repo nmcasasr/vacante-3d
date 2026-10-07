@@ -376,6 +376,87 @@ def gusanito(
     return silueta
 
 
+def gusano_modulo(
+    radio_max: float = 39.0,
+    cintura: float = 0.6405,
+    achatado: float = 0.7355,
+    labio: float = 6.0,
+    holgura: float = 0.6,
+    pared: float = 1.2,
+    tapa: int = 0,
+    boca: float = 0.0,
+) -> Silueta:
+    """
+    UN lóbulo del gusanito, para imprimirlo suelto y apilarlo: el gusano
+    modular.
+
+    El módulo arranca en la cama abierto en el diámetro del CUELLO, se abre
+    hasta el ecuador y vuelve a cerrar hasta un LABIO vertical, un poco más
+    angosto que el cuello. Encastre:
+
+        - el labio del de abajo entra por la boca del de arriba;
+        - el borde de la boca del de arriba se apoya en el hombro del de abajo,
+          justo donde ese hombro vuelve a pasar por el radio del cuello.
+
+    Ese punto cae a `2·sqrt(1 - cintura²)·b` sobre la base del de abajo, que es
+    exactamente el paso entre lóbulos del gusanito. O sea que apilados dan el
+    MISMO gusano: mismos lóbulos, mismo paso, el cuello en el mismo radio. Lo
+    único que cambia es que el cuello es una V (la costura entre dos piezas)
+    y no el cuello redondeado de la pieza entera.
+
+    `tapa=1` es el mismo lóbulo sin labio y cerrado en cúpula: la cabeza. Cierra
+    igual que el ápice del gusanito, así que su puente crece con el radio (ver
+    `output/gusanito-grande/LEEME.md`).
+
+    La silueta está en `t` como todas, pero la geometría es en mm: la altura
+    que hay que pedirle al generador es `silueta.altura`. Cualquier otra
+    estira el lóbulo y el encastre deja de coincidir.
+
+    Args:
+        radio_max: radio del ecuador del lóbulo.
+        cintura: radio del cuello como fracción de `radio_max`. 0.6405 es la
+            del gusanito grande.
+        achatado: semieje vertical del lóbulo como fracción de `radio_max`.
+            0.7355 es el del gusanito grande (el original más el 7 % de estirón).
+        labio: alto en mm del tramo vertical de arriba.
+        holgura: juego RADIAL entre la cara de afuera del labio y la de adentro
+            de la boca del módulo de arriba. La boca es la primera capa, que
+            sale aplastada y se come hacia adentro; por eso no va más apretado.
+        pared: ancho del cordón. El labio se mete `pared + holgura` respecto
+            del cuello para que las dos caras queden a `holgura`.
+        tapa: 1 = cerrada en cúpula y sin labio.
+        boca: sólo con `tapa=1`. Deja la cúpula ABIERTA arriba, cortada donde
+            su radio baja a esta fracción de `radio_max`. 0 = cerrada. Es para
+            las tapas grandes: desde Ø150 la cúpula no cierra ni siendo una
+            esfera redonda (17 mm al aire con Ø150, 23 con Ø180; se descuelga
+            a los 12).
+    """
+    if not 0.0 < cintura < 1.0:
+        raise ValueError("gusano_modulo: 'cintura' va entre 0 y 1")
+    R = radio_max
+    b = achatado * R
+    rc = cintura * R
+    rl = rc - pared - holgura
+    if rl <= 0:
+        raise ValueError("gusano_modulo: el labio no entra; subí 'cintura' o 'radio_max'")
+    zc = math.sqrt(1.0 - cintura * cintura) * b          # centro del lóbulo
+    if tapa:
+        altura = zc + math.sqrt(1.0 - boca * boca) * b
+    else:
+        zl = zc + math.sqrt(1.0 - (rl / R) ** 2) * b      # donde arranca el labio
+        altura = zl + labio
+
+    def silueta(t: float) -> float:
+        z = t * altura
+        if not tapa and z >= zl:
+            return rl
+        u = (z - zc) / b
+        return R * math.sqrt(max(0.0, 1.0 - u * u))
+
+    silueta.altura = altura
+    return silueta
+
+
 SILUETAS = {
     "bol": bol,
     "trompeta": trompeta,
@@ -386,4 +467,5 @@ SILUETAS = {
     "campana": campana,
     "candelero": candelero,
     "gusanito": gusanito,
+    "gusano_modulo": gusano_modulo,
 }
