@@ -239,6 +239,7 @@ def gusanito(
     cintura: float = 0.69,
     apoyo: float = 0.12,
     redondeo: float = 6.0,
+    recorte: float = 1.0,
 ) -> Silueta:
     """
     Una pila de esferas achatadas: la cabeza del hongo repetida a lo largo del
@@ -282,6 +283,14 @@ def gusanito(
             la pared arrancando vertical; 0.12 baja un poco más y da una base
             apenas acampanada, como la referencia. Es lo único que se abre
             hacia arriba en toda la pieza, y con 0.12 son 5 grados.
+        recorte: fracción de la forma que se usa, medida desde abajo. 1.0 (por
+            defecto) es la pieza entera, terminada en el ápice. Menos que eso
+            la corta antes y la deja ABIERTA arriba, que es lo que quiere una
+            lámpara: cerrar el ápice es un puente que crece con el radio —3.1
+            mm con Ø60, 12.2 mm con Ø86.5, y a los 12 se descuelga—. El corte
+            natural es el último cuello: con `apoyo=0` y 4 lóbulos, t=0.9586.
+            Ojo con la altura: para que los lóbulos midan lo mismo hay que
+            pedir `altura * recorte`.
         redondeo: cuánto se redondea el cuello, en mm de DIFERENCIA DE RADIO
             entre los dos lóbulos. Se traduce a altura dividiendo por la
             pendiente del cruce: con 6 mm el empalme ocupa unos ±2 mm de z, o
@@ -336,6 +345,19 @@ def gusanito(
         return max(a, c) + h * h * redondeo * 0.25
 
     def silueta(t: float) -> float:
+        # `recorte` corta la pieza antes del ápice: se usa sólo el tramo
+        # [0, recorte] de la forma, estirado sobre toda la altura pedida.
+        #
+        # El ápice es una cúpula, o sea tangente horizontal, y cerrarlo es un
+        # puente que crece con el radio: con Ø60 son 3.1 mm y sale; con Ø86.5
+        # son 12.2 y ya no. Para una lámpara además no hace falta cerrarlo. El
+        # corte natural es el último CUELLO, que con `apoyo=0` y 4 lóbulos cae
+        # en t = 0.9586: ahí la pieza termina abierta en el diámetro del
+        # cuello, que es un borde parado y no un voladizo.
+        #
+        # Para que los lóbulos midan lo mismo que sin recortar hay que pedir
+        # `altura * recorte`; si no, la forma sale estirada a lo alto.
+        t = t * recorte
         # Solo los lóbulos DEFINIDOS en esta altura. Uno que no llega no vale 0:
         # vale nada, y mezclarlo como 0 inflaría el ápice, donde el lóbulo de
         # arriba está solo y la pieza tiene que cerrar en punta.
@@ -354,6 +376,87 @@ def gusanito(
     return silueta
 
 
+def gusano_modulo(
+    radio_max: float = 39.0,
+    cintura: float = 0.6405,
+    achatado: float = 0.7355,
+    labio: float = 6.0,
+    holgura: float = 0.6,
+    pared: float = 1.2,
+    tapa: int = 0,
+    boca: float = 0.0,
+) -> Silueta:
+    """
+    UN lóbulo del gusanito, para imprimirlo suelto y apilarlo: el gusano
+    modular.
+
+    El módulo arranca en la cama abierto en el diámetro del CUELLO, se abre
+    hasta el ecuador y vuelve a cerrar hasta un LABIO vertical, un poco más
+    angosto que el cuello. Encastre:
+
+        - el labio del de abajo entra por la boca del de arriba;
+        - el borde de la boca del de arriba se apoya en el hombro del de abajo,
+          justo donde ese hombro vuelve a pasar por el radio del cuello.
+
+    Ese punto cae a `2·sqrt(1 - cintura²)·b` sobre la base del de abajo, que es
+    exactamente el paso entre lóbulos del gusanito. O sea que apilados dan el
+    MISMO gusano: mismos lóbulos, mismo paso, el cuello en el mismo radio. Lo
+    único que cambia es que el cuello es una V (la costura entre dos piezas)
+    y no el cuello redondeado de la pieza entera.
+
+    `tapa=1` es el mismo lóbulo sin labio y cerrado en cúpula: la cabeza. Cierra
+    igual que el ápice del gusanito, así que su puente crece con el radio (ver
+    `output/gusanito-grande/LEEME.md`).
+
+    La silueta está en `t` como todas, pero la geometría es en mm: la altura
+    que hay que pedirle al generador es `silueta.altura`. Cualquier otra
+    estira el lóbulo y el encastre deja de coincidir.
+
+    Args:
+        radio_max: radio del ecuador del lóbulo.
+        cintura: radio del cuello como fracción de `radio_max`. 0.6405 es la
+            del gusanito grande.
+        achatado: semieje vertical del lóbulo como fracción de `radio_max`.
+            0.7355 es el del gusanito grande (el original más el 7 % de estirón).
+        labio: alto en mm del tramo vertical de arriba.
+        holgura: juego RADIAL entre la cara de afuera del labio y la de adentro
+            de la boca del módulo de arriba. La boca es la primera capa, que
+            sale aplastada y se come hacia adentro; por eso no va más apretado.
+        pared: ancho del cordón. El labio se mete `pared + holgura` respecto
+            del cuello para que las dos caras queden a `holgura`.
+        tapa: 1 = cerrada en cúpula y sin labio.
+        boca: sólo con `tapa=1`. Deja la cúpula ABIERTA arriba, cortada donde
+            su radio baja a esta fracción de `radio_max`. 0 = cerrada. Es para
+            las tapas grandes: desde Ø150 la cúpula no cierra ni siendo una
+            esfera redonda (17 mm al aire con Ø150, 23 con Ø180; se descuelga
+            a los 12).
+    """
+    if not 0.0 < cintura < 1.0:
+        raise ValueError("gusano_modulo: 'cintura' va entre 0 y 1")
+    R = radio_max
+    b = achatado * R
+    rc = cintura * R
+    rl = rc - pared - holgura
+    if rl <= 0:
+        raise ValueError("gusano_modulo: el labio no entra; subí 'cintura' o 'radio_max'")
+    zc = math.sqrt(1.0 - cintura * cintura) * b          # centro del lóbulo
+    if tapa:
+        altura = zc + math.sqrt(1.0 - boca * boca) * b
+    else:
+        zl = zc + math.sqrt(1.0 - (rl / R) ** 2) * b      # donde arranca el labio
+        altura = zl + labio
+
+    def silueta(t: float) -> float:
+        z = t * altura
+        if not tapa and z >= zl:
+            return rl
+        u = (z - zc) / b
+        return R * math.sqrt(max(0.0, 1.0 - u * u))
+
+    silueta.altura = altura
+    return silueta
+
+
 SILUETAS = {
     "bol": bol,
     "trompeta": trompeta,
@@ -364,4 +467,5 @@ SILUETAS = {
     "campana": campana,
     "candelero": candelero,
     "gusanito": gusanito,
+    "gusano_modulo": gusano_modulo,
 }
