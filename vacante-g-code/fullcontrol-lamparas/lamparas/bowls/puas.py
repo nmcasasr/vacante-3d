@@ -76,6 +76,7 @@ amplitud en cada vuelta, en todos los ángulos a la vez. El módulo lo mide y lo
 dice.
 """
 
+import bisect
 import math
 from typing import Optional, Tuple
 
@@ -192,6 +193,7 @@ def construir(
     peso_por_banda: bool = False,
     banda_por_vuelta: bool = False,
     intercalar: int = 0,
+    paso_mm: float = 0.0,
     suave_borde: float = 5.0,
     tomas: int = 5,
     deriva: float = 0.0,
@@ -334,9 +336,12 @@ def construir(
         intercalar: 1 corre los grumos MEDIA PÚA en una fila con patrón sí y en
             la otra no, así que cada grumo cae entre los dos de la fila de
             abajo: tresbolillo, como las hojas de una copa. 0 (por defecto) los
-            apila en columnas, que es lo que llevan los floreros. Si la fila de
-            abajo tiene otra cantidad de púas (`barrido_puas`), el corrimiento
-            es media púa de la fila NUEVA.
+            apila en columnas, que es lo que llevan los floreros. Cada fila se
+            arma desde la de abajo, así que intercala aunque cambie la cantidad
+            de púas (`barrido_puas`, `paso_mm`): ver el bloque del tresbolillo.
+        paso_mm: si es > 0, la cantidad de púas de cada fila sale de su radio
+            para que entre grumo y grumo haya siempre estos mm. Reemplaza a
+            `puas` y `barrido_puas`. Va con `intercalar=1`.
         deriva: vueltas que rota la textura a lo largo de la altura. **Dejalo en
             0**; ver el docstring del módulo.
         desde, hasta: en qué tramo de la altura (0..1) hay púas. El zócalo liso
@@ -474,12 +479,110 @@ def construir(
             return t_de_vuelta[inicio]
         return inicio * dt_capa
 
-    def _corrimiento(capa: int) -> float:
-        """Media púa en los ciclos impares con `intercalar`: el tresbolillo."""
-        return 0.5 if (intercalar and (capa // ciclo) % 2) else 0.0
+    # --- el TRESBOLILLO, fila por fila ------------------------------------
+    #
+    # La primera versión corría media púa una fila sí y otra no, con cada fila
+    # armada pareja desde el ángulo 0. Eso sólo intercala si las dos filas
+    # tienen la MISMA cantidad de púas: con n abajo y n+Δ arriba la diferencia
+    # de fase crece con el ángulo, y la fila queda intercalada cerca de 0°,
+    # apilada a 360/(2Δ) grados de ahí, y así alrededor. Medido en el primer
+    # cupón del árbol: 97-100 % de grumos en el medio dentro de una banda de
+    # `barrido_puas`, 25-40 % en cada cambio de banda —o sea, al azar—, y con
+    # filas cada 3 mm y bandas cada 5 casi una fila de cada dos era un cambio.
+    #
+    # Ahora cada fila se arma A PARTIR DE LA ANTERIOR: sus púas empiezan en
+    # los puntos medios de las de abajo, que es intercalar por definición, sin
+    # importar cuántas haya. Si la fila nueva necesita más o menos púas —en la
+    # bola el radio cambia—, se agregan o se sacan DE A UNA, repartidas
+    # alrededor y rotando de fila en fila (ángulo de oro) para que los
+    # defectos no se apilen en una costura vertical. Cada defecto descoloca
+    # ~2 grumos, contra media vuelta de antes.
+    #
+    # Una fila es la lista de ángulos donde ARRANCA cada celda; la fase de un
+    # punto es `j + (cuánto avanzó dentro de la celda j)`, así que `_pulso`
+    # sigue recibiendo lo mismo. Con la misma cantidad en todas las filas
+    # reproduce el corrimiento de media púa de antes.
+    _filas_reales: dict = {}
+    _filas_sonda: dict = {}
+
+    def _siguiente_fila(prev: list, n: int, k: int) -> list:
+        m = len(prev)
+        medios = sorted(((prev[j] + (prev[j + 1] if j + 1 < m else prev[0] + TAU)) / 2) % TAU
+                        for j in range(m))
+        # Más de un defecto cada 5 celdas y las ventanas de reacomodo se
+        # pisan: la fila se queda corta y alcanza a la cuenta en las siguientes.
+        d = max(-(m // 5), min(m // 5, n - m))
+        if d == 0:
+            return medios
+        giro = (k * 0.6180339887498949) % 1.0
+        donde_set = {int((i + giro) * m / abs(d)) % m for i in range(abs(d))}
+        # Se trabaja DESENROLLADO, crecientes desde medios[0], para no pelear
+        # con el cruce por 0 en el reacomodo.
+        base = [medios[0] + ((a - medios[0]) % TAU) for a in medios]
+        nueva, defectos = [], []
+        for j, a in enumerate(base):
+            sig = base[j + 1] if j + 1 < m else base[0] + TAU
+            if d > 0:
+                nueva.append(a)
+                if j in donde_set:
+                    defectos.append(len(nueva))
+                    nueva.append((a + sig) / 2)
+            else:
+                if j in donde_set:
+                    defectos.append(len(nueva))   # el hueco cae ANTES de éste
+                    continue
+                nueva.append(a)
+        L = len(nueva)
+
+        def en(i: int) -> float:
+            return nueva[i % L] + TAU * (i // L)
+
+        # Reacomodo local: alrededor de cada defecto los vecinos se reparten
+        # parejos entre dos púas fijas, así el agregado no queda a media celda
+        # de sus vecinos ni el hueco con el doble de ancho.
+        for p in defectos:
+            ini, fin = (p - 2, p + 2) if d > 0 else (p - 2, p + 1)
+            a0, a1 = en(ini), en(fin)
+            pasos = fin - ini
+            for i in range(ini + 1, fin):
+                nueva[i % L] = (a0 + (a1 - a0) * (i - ini) / pasos) - TAU * (i // L)
+        return sorted(a % TAU for a in nueva)
+
+    def _fila(k: int, real: bool) -> list:
+        cache = _filas_reales if real else _filas_sonda
+        if k in cache:
+            return cache[k]
+        t_k = (t_de_vuelta.get(k * ciclo) if real else None)
+        if t_k is None:
+            t_k = k * ciclo * dt_capa
+        n = int(puas_de(t_k))
+        fila = ([j * TAU / n for j in range(n)] if k <= 0
+                else _siguiente_fila(_fila(k - 1, real), n, k))
+        cache[k] = fila
+        return fila
+
+    def _celda(angulo: float, capa: int):
+        """(índice, arranque, fin) de la celda de ese ángulo en la fila de esa vuelta."""
+        fila = _fila(capa // ciclo, bool(banda_por_vuelta and capa_actual[0] is not None))
+        a = angulo % TAU
+        j = bisect.bisect_right(fila, a) - 1
+        if j < 0:
+            return len(fila) - 1, fila[-1] - TAU, fila[0]
+        fin = fila[j + 1] if j + 1 < len(fila) else fila[0] + TAU
+        return j, fila[j], fin
 
     def _fase(angulo: float, t: float, capa: int, n: int) -> float:
-        return angulo * n / TAU + deriva * t * n + _corrimiento(capa)
+        if intercalar:
+            j, ini, fin = _celda(angulo, capa)
+            return j + ((angulo % TAU) - ini) / ((fin - ini) or 1e-9)
+        return angulo * n / TAU + deriva * t * n
+
+    def _centro_pua(angulo: float, t: float, capa: int, n: int, fase: float) -> float:
+        """El ángulo del centro de la púa de ese punto: ahí se lee la máscara."""
+        if intercalar:
+            _, ini, fin = _celda(angulo, capa)
+            return (ini + fin) / 2
+        return (math.floor(fase) + 0.5 - deriva * t * n) * TAU / n
 
     def pulsa(capa: int) -> bool:
         """True si a esa vuelta le toca patrón."""
@@ -541,6 +644,18 @@ def construir(
 
     lista_puas = [max(4, int(round(v))) for v in _lista(barrido_puas)] or [puas]
     puas_de = _bandas(",".join(str(v) for v in lista_puas), puas)
+    if paso_mm and paso_mm > 0:
+        # La cantidad sale del RADIO de cada fila: el mismo paso en mm de la
+        # base a la boca, sin bandas calculadas a mano. Pensado para ir con
+        # `intercalar`, que arma cada fila desde la de abajo y absorbe el
+        # cambio de cantidad de a una púa; sin intercalar, cada cambio corre
+        # las columnas.
+        def puas_de(t: float) -> int:
+            return max(4, int(round(TAU * silueta(min(1.0, max(0.0, t))) / paso_mm)))
+        muestra = [puas_de(k / 200) for k in range(201)]
+        lista_puas = [min(muestra), max(muestra)]
+        print(f"  paso_mm={paso_mm:g}: de {min(muestra)} a {max(muestra)} púas por vuelta, "
+              f"según el radio")
     amp_de = _bandas(barrido, amplitud)
     flujo_de = _bandas(flujo_barrido, flujo)
 
@@ -711,8 +826,7 @@ def construir(
         # leyendo en `k+0.5` devuelve la columna `k+1`. Se compensa con
         # `patron_corrimiento=-1`, que existe justo para alinear el dibujo con
         # la rejilla de púas. Las dos cosas van juntas.
-        ang_pua = ((math.floor(fase) + 0.5 - deriva * t * n - _corrimiento(capa)) * TAU / n
-                   if peso_por_pua else angulo)
+        ang_pua = (_centro_pua(angulo, t, capa, n, fase) if peso_por_pua else angulo)
         # La máscara se lee también una sola vez por BANDA, no por punto.
         #
         # Es el mismo problema que `ang_pua` pero en el otro eje. Una vuelta

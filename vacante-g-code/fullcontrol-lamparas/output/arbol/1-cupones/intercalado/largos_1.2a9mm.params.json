@@ -39,7 +39,7 @@
   "--p",
   "puas=72",
   "--p",
-  "barrido_puas=45,68,83,90,97,99,98,93,83,70,50,35",
+  "hasta=0.95",
   "--p",
   "amplitud=9",
   "--p",
@@ -54,8 +54,6 @@
   "mascara=sectores",
   "--p",
   "cantidad=5",
-  "--pendiente-silueta",
-  "--base-flujo-exacto",
   "--p",
   "lisas=3",
   "--p",
@@ -64,6 +62,8 @@
   "banda_por_vuelta=1",
   "--p",
   "intercalar=1",
+  "--pendiente-silueta",
+  "--base-flujo-exacto",
   "--nombre",
   "arbol/1-cupones/intercalado/largos_1.2a9mm"
  ],
@@ -118,6 +118,15 @@
    "max": 288.0,
    "paso": 1.0,
    "que": "cu\u00e1ntas p\u00faas entran en una vuelta. Lo que importa de verdad es el PASO que resulta, `2\u00b7pi\u00b7radio / puas`: por debajo de un cord\u00f3n las p\u00faas vecinas se funden y vuelve a ser una pared ondulada. El m\u00f3dulo imprime el paso en mm para que no haya que hacer la cuenta."
+  },
+  {
+   "flag": "--p",
+   "clave": "hasta",
+   "valor": 0.95,
+   "min": 0.0,
+   "max": 1.0,
+   "paso": 0.01,
+   "que": "en qu\u00e9 tramo de la altura (0..1) hay p\u00faas. El z\u00f3calo liso de abajo no es decorativo: es donde la pieza se agarra a la cama."
   },
   {
    "flag": "--p",
@@ -207,7 +216,7 @@
    "min": 0.0,
    "max": 3.0,
    "paso": 0.015,
-   "que": "1 corre los grumos MEDIA P\u00daA en una fila con patr\u00f3n s\u00ed y en la otra no, as\u00ed que cada grumo cae entre los dos de la fila de abajo: tresbolillo, como las hojas de una copa. 0 (por defecto) los apila en columnas, que es lo que llevan los floreros. Si la fila\u2026"
+   "que": "1 corre los grumos MEDIA P\u00daA en una fila con patr\u00f3n s\u00ed y en la otra no, as\u00ed que cada grumo cae entre los dos de la fila de abajo: tresbolillo, como las hojas de una copa. 0 (por defecto) los apila en columnas, que es lo que llevan los floreros. Cada fila\u2026"
   }
  ],
  "mapeo": {

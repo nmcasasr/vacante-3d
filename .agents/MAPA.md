@@ -82,6 +82,7 @@ pieza de 180 000 segmentos.
 | `verificar_piso.py` | Ø del disco de apoyo y del hueco | el disco plano del g-code |
 | `vista_gcode.py` | frontal y planta a PNG | el ojo |
 | `vista_relieve.py` | la pieza DESENROLLADA a PNG, y el período de la textura | el ojo, y el conteo contra una pieza sin figura |
+| `verificar_intercalado.py` | el tresbolillo: cuántos grumos caen en el medio de los dos de abajo | la fila de abajo |
 | `verificar_campo.py` | campo de deformación JS contra Python | uno contra otro |
 | `verificar_ams.py` | bloque de cambio de filamento | un 3mf real de Bambu |
 | `verificar_rosca.py` | contención, apoyo y voladizo de la `FuncionRadio` | la envolvente medida |

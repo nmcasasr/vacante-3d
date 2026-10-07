@@ -19,9 +19,34 @@ grumos:
 - **`1-cupones/intercalado/largos_1.2a9mm`** — EL QUE VA. **3 vueltas lisas + 1
   con patrón**, como la matera, y cada fila de grumos corrida media púa
   respecto de la anterior: cada grumo cae entre los dos de abajo, al
-  tresbolillo, como las hojas de la copa. Filas cada ~3.2 mm. ~2 h.
+  tresbolillo. **72 púas en TODAS las filas.** Filas cada ~3.2 mm. ~1.8 h.
 - `1-cupones/columnas/largos_1.2a9mm` — el primer intento: 2 + 1, grumos
   apilados en columnas como el florero. Queda de comparación.
+
+### Por qué 72 púas fijas, y no una cantidad que siga al radio
+
+La primera versión intercalada (la que se imprimió) cambiaba la cantidad de
+púas en 12 bandas para que el paso quedara parejo, y **falló justo en los
+cambios de banda**: con n abajo y n+Δ arriba la diferencia de fase crece con el
+ángulo, así que la fila queda intercalada en un lado de la bola y apilada en el
+otro. Medido con `verificar_intercalado.py`:
+
+| versión | en el medio | apilados |
+|---|---|---|
+| bandas a mano (la impresa) | 70.9 % | 14.2 % |
+| cantidad por radio, cada fila armada desde la de abajo | 86.1 % | 6.6 % |
+| **72 fijas** | **99.1 %** | **0.4 %** |
+
+Si la cantidad cambia entre filas, **siempre** quedan grumos encima: cada grumo
+que se agrega tiene que pasar por arriba de uno de abajo en algún lado. Con la
+cantidad fija cada fila es exactamente la de abajo corrida media púa, y el
+99.1 % es 100 % en todas las filas salvo la primera (los grumos están naciendo
+en la rampa de `desde`) y el borde de arriba.
+
+Lo que cuesta: el paso sigue al radio, como los meridianos de un globo.
+Ecuador (r 40) 3.5 mm, r 24 → 2.1 mm, r 17 → 1.5 mm. Por debajo de ~1.5 mm se
+funden, así que el patrón se apaga en la tapa casi plana de arriba
+(`hasta=0.95`); abajo ya arranca en `desde=0.03`.
 
 **Los largos van en GAJOS alrededor de la bola, no en bandas a lo alto.** En una
 bola cada altura es otra situación —abajo voladizo, en el medio pared parada,
@@ -38,12 +63,10 @@ El ángulo 0 es +X de la cama y crece antihorario visto desde arriba. El corte
 entre gajos es duro a propósito: tiene que poder leerse "el tercero sirve y el
 cuarto no".
 
-**La cantidad de púas sigue al radio**, en 12 bandas a lo alto
-(`barrido_puas=45,68,83,90,97,99,98,93,83,70,50,35`): ~2.5 mm entre grumos de la
-base a la boca. Con una cantidad fija quedaban a 3.5 mm en el ecuador y
-fundidas cerca de la boca.
+En `columnas/` la cantidad sí sigue al radio, en 12 bandas
+(`barrido_puas=45,68,83,90,97,99,98,93,83,70,50,35`); sin intercalar no importa.
 
-Verificador, los dos: línea fina 0.00 % · peor puente 11.9 mm (el tope es 12) ·
+Verificador, los dos: línea fina 0.00 % · peor puente 11.3–11.9 mm (el tope es 12) ·
 contacto ~12 % — el mismo número que `florero-kadzi/1-cupones/grumo-puentea`:
 es el grumo colgando, buscado. Dan NO IMPRIMIBLE por eso y sólo por eso.
 
@@ -66,7 +89,13 @@ usaban la opción son de paso fijo y no pasan por la marcha (comprobado con
 `puas.py`, todo apagado por defecto (las recetas viejas salen byte a byte
 iguales: matriz, largos_3a9mm, velocidad, matera60_romo_piso_kadzi, hongo):
 
-- `intercalar=1` corre media púa los grumos de una fila con patrón sí y otra no.
+- `intercalar=1` arma cada fila con patrón desde la de abajo: sus púas arrancan
+  en los puntos medios de las de abajo. Con la cantidad fija eso es media púa
+  exacta. Si la cantidad cambia (`barrido_puas`, `paso_mm`) agrega o saca
+  púas de a una, repartidas y rotando con el ángulo de oro; es lo mejor que se
+  puede con cantidad variable (86 %), y por eso el árbol va con cantidad fija.
+- `paso_mm` saca la cantidad de púas de cada fila del radio. Queda para quien
+  prefiera el paso parejo al intercalado perfecto.
 - Con `banda_por_vuelta=1` la cadencia cuenta VUELTAS de verdad y las bandas
   de `barrido_puas`/`barrido` se leen en el `t` real donde arranca el ciclo.
   En la bola hace falta: con paso adaptativo las vueltas no suben lo mismo, y
