@@ -77,6 +77,39 @@ bueno.
 la mitad de abajo (voladizo) los grumos cuelgan como cordones o se caen; y si
 arriba, donde la copa cierra casi plana, los grumos se ven o se aplastan.
 
+## `2-copas/` — los tamaños del hongo, para ver el tiempo
+
+Las dos medidas del hongo, con la técnica del cupón intercalado (3 + 1, cantidad
+fija, el patrón apagado en la tapa con `hasta=0.95`) y UN solo largo por pieza:
+
+- **`copa_D245_grumoNmm`** — el tamaño de `hongo_latest`, el impreso: escala
+  1.38, corte en 109.2, espejo, hueco Ø65. **Ø244 x 183 mm.** 221 púas.
+- **`copa_mini_grumoNmm`** — el tamaño de `hongo_mini`: escala 0.35, corte en
+  124.4, hueco Ø11.55. **Ø62 x 41 mm.** 56 púas.
+
+La cantidad de púas escala con el tamaño (72 x escala / 0.45) para que el
+espacio entre grumos sea el del cupón.
+
+| pieza | 3 mm | 6 mm | 9 mm | el hongo liso |
+|---|---|---|---|---|
+| Ø244 (real) | ~16.3 h | ~22.9 h | ~29.6 h | `hongo_latest` ~4.9 h |
+| Ø62 (mini) | ~1.0 h | ~1.3 h | ~1.6 h | `hongo_mini` ~1.5 h |
+
+Estimados por recorrido x1.4: salen cortos, el de Orca es el bueno. Ojo al
+comparar con el hongo: `hongo_latest` va a **16 mm/s** y las copas a **8**, la
+velocidad de Squeezy que usa todo lo de grumos. A la misma velocidad el hongo
+liso sería ~9.8 h, así que los grumos le suman entre 6.5 h (3 mm) y 20 h (9 mm).
+
+**El tiempo lo domina el viaje de los grumos**, no la pared: cada mm de largo
+suma ~2.2 h en la grande. Las palancas, de más a menos efecto: el largo del
+grumo, la cantidad de púas (paso más abierto), más vueltas lisas entre filas, y
+subir la velocidad de las vueltas lisas al 16 mm/s del hongo (frenando sólo en
+el grumo).
+
+Verificador (las de 6 mm): línea fina 0.00 % las dos, peor puente 8.4–8.5 mm.
+Contacto 15.5 % la mini y 18.8 % la grande, contra el ~12 % del cupón: es el
+grumo colgando, pero en la grande es más. Intercalado: 99.2 % la mini, 99.7 % la grande.
+
 ## Lo que hizo falta en el código
 
 `--pendiente-silueta` ahora gobierna también la MARCHA adaptativa, no sólo la
