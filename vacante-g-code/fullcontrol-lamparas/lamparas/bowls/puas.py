@@ -194,6 +194,9 @@ def construir(
     banda_por_vuelta: bool = False,
     intercalar: int = 0,
     paso_mm: float = 0.0,
+    grumo_lento: float = 1.0,
+    gajos_grumo: str = "",
+    gajos_punta: str = "",
     suave_borde: float = 5.0,
     tomas: int = 5,
     deriva: float = 0.0,
@@ -255,6 +258,17 @@ def construir(
             pieza de referencia se descuelga, y es parte de cómo se ve.
 
             Con 0, `puente_lento` es lo que hace que ese puente salga bien.
+        grumo_lento: qué fracción de la velocidad se usa en TODO el grumo, ida y
+            vuelta, fuera de la punta. 1.0 (por defecto) = la de la pieza. Sirve
+            para subir la velocidad de la pieza sin subir la del grumo: con
+            `--velocidad 960`, `grumo_lento=0.5` deja el grumo a 8 mm/s y
+            `puente_lento=0.175` la punta donde estaba (los dos redondean a 180
+            mm/min). `puente_lento` sigue siendo fracción de la velocidad de
+            la PIEZA, no del grumo.
+        gajos_grumo, gajos_punta: `grumo_lento` y `puente_lento` por GAJO
+            alrededor de la pieza: `"0.5,0.5,0.75,0.75,1.0"` parte la vuelta en
+            cinco gajos iguales desde 0°. Vacío = el valor de siempre en toda la
+            pieza. Para el cupón de velocidades.
         puente_lento: qué fracción de la velocidad se usa donde el grumo está
             al aire. **No adelgaza la línea**: la sección la fija la geometría y
             no el `F`, así que bajar la velocidad deposita lo mismo en más
@@ -711,12 +725,38 @@ def construir(
         ini = (ocupacion - ocupacion * filo) / 2
         return ini <= fase <= ini + ocupacion * filo, capa
 
+    # Velocidades por GAJO alrededor de la pieza, para el cupón de velocidades
+    # del árbol. Van por ángulo y no en bandas a lo alto como `barrido_lento`
+    # por lo mismo que los largos: en una bola cada altura es otra situación
+    # (voladizo, pared parada, cierre), y en gajos cada velocidad pasa por las
+    # tres. Mismo corte duro que `superficie.sectores`, y el gajo 1 arranca en
+    # 0°, así que si van juntos cada gajo de velocidad cae en uno de largo.
+    lista_grumo = list(_lista(gajos_grumo))
+    lista_punta = list(_lista(gajos_punta))
+
+    def _del_gajo(valores: list, angulo: float) -> float:
+        return valores[min(len(valores) - 1, int((angulo % TAU) / TAU * len(valores)))]
+
     def funcion_velocidad(angulo: float, t: float) -> float:
-        """Velocidad en ese punto: plena salvo en la punta de un grumo al aire."""
+        """Velocidad en ese punto: plena salvo en el grumo, y más lenta en su punta."""
         punta, capa = _en_punta(angulo, t)
-        if not punta:
-            return 1.0
-        return max(0.05, lento_de(_t_banda(capa)))
+        if punta:
+            if lista_punta:
+                return max(0.05, _del_gajo(lista_punta, angulo))
+            return max(0.05, lento_de(_t_banda(capa)))
+        if lista_grumo and pulsa(capa):
+            n = int(puas_de(_t_banda(capa)))
+            if _pulso(_fase(angulo, t, capa, n) % 1.0, ocupacion, filo) > 0.0:
+                return max(0.05, _del_gajo(lista_grumo, angulo))
+        # El CUERPO del grumo, ida y vuelta, a `grumo_lento`. Es para poder
+        # subir la velocidad de la pieza —las vueltas lisas y los valles— sin
+        # que el grumo vaya más rápido de lo que ya está probado: en el árbol
+        # la pieza va a 16 mm/s como el hongo y el grumo a 8 como Squeezy.
+        if grumo_lento < 1.0 and pulsa(capa):
+            n = int(puas_de(_t_banda(capa)))
+            if _pulso(_fase(angulo, t, capa, n) % 1.0, ocupacion, filo) > 0.0:
+                return max(0.05, grumo_lento)
+        return 1.0
 
     espera_de = _bandas(barrido_espera, float(espera_ms))
     _contador = [0, False]   # [cuántas puntas van, si la anterior estaba dentro]

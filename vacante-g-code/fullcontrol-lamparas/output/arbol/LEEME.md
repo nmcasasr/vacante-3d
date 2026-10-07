@@ -77,6 +77,40 @@ bueno.
 la mitad de abajo (voladizo) los grumos cuelgan como cordones o se caen; y si
 arriba, donde la copa cierra casi plana, los grumos se ven o se aplastan.
 
+### `1-cupones/velocidades/grumo9mm_punta3a8_grumo8a16`
+
+Del cupón de largos el que más gustó fue el de 9 mm, así que esto va con
+**grumos de 9 mm en toda la bola** y lo que cambia por gajo es la velocidad.
+Misma bola y misma densidad que el intercalado (72 púas, 3 + 1). Las vueltas
+lisas y los valles van a **16 mm/s** en todo el cupón, como el hongo impreso.
+
+    gajo 1  (0–72°)     grumo  8 mm/s   punta 3 mm/s   lo de antes: la referencia
+    gajo 2  (72–144°)   grumo  8        punta 4        la punta de Squeezy, la mitad
+    gajo 3  (144–216°)  grumo 12        punta 4
+    gajo 4  (216–288°)  grumo 12        punta 6
+    gajo 5  (288–360°)  grumo 16        punta 8        sin frenar el grumo
+
+El ángulo 0 es +X de la cama y crece antihorario visto desde arriba, igual que
+en el de largos. ~1.5 h. Verificador: línea fina 0.00 %, peor puente 9.9 mm,
+contacto 17 % (más que el de largos porque acá todos los grumos miden 9).
+Intercalado 99.1 %.
+
+**Lo que hay en juego**, la copa real (Ø244) de 9 mm con cada gajo:
+
+| gajo | 221 púas, 3 + 1 (como el cupón) | 150 púas, 5 + 1 (menos densa) |
+|---|---|---|
+| todo a 8 mm/s (la de `2-copas/`) | ~29.6 h | — |
+| 1 | ~23.0 h | ~10.8 h |
+| 2 | ~19.9 h | ~10.7 h |
+| 3 | ~18.6 h | ~8.8 h |
+| 4 | ~15.5 h | ~8.6 h |
+| 5 | ~13.3 h | ~7.6 h |
+
+Sólo pasar lo liso a 16 mm/s ya baja de 29.6 a 23 h. La densidad pesa tanto
+como la velocidad: 150 púas con 5 lisas entre filas es menos de la mitad.
+Ojo, abrir más el paso no siempre ahorra: con 110 púas tardaba MÁS que con 150,
+porque la ocupación es fracción del paso y cada grumo se hace más ancho.
+
 ## `2-copas/` — los tamaños del hongo, para ver el tiempo
 
 Las dos medidas del hongo, con la técnica del cupón intercalado (3 + 1, cantidad
@@ -127,6 +161,9 @@ iguales: matriz, largos_3a9mm, velocidad, matera60_romo_piso_kadzi, hongo):
   exacta. Si la cantidad cambia (`barrido_puas`, `paso_mm`) agrega o saca
   púas de a una, repartidas y rotando con el ángulo de oro; es lo mejor que se
   puede con cantidad variable (86 %), y por eso el árbol va con cantidad fija.
+- `grumo_lento` frena el cuerpo del grumo (ida y vuelta) aparte de la punta,
+  para subir la velocidad de la pieza sin subir la del grumo.
+  `gajos_grumo`/`gajos_punta` hacen lo mismo por gajo alrededor de la pieza.
 - `paso_mm` saca la cantidad de púas de cada fila del radio. Queda para quien
   prefiera el paso parejo al intercalado perfecto.
 - Con `banda_por_vuelta=1` la cadencia cuenta VUELTAS de verdad y las bandas
