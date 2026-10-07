@@ -619,6 +619,173 @@ def glitch3(
     return deformacion
 
 
+def onda_apilada(
+    lobulos: float = 3.0,
+    amplitud: float = 10.0,
+    giro: float = 1.0,
+    sesgo: float = 0.45,
+    nervios: int = 72,
+    nervio: float = 1.6,
+    torsion: float = 0.0,
+    serpenteo: float = 0.35,
+    extremos: float = 0.10,
+    desfase: float = 0.0,
+) -> Deformacion:
+    """
+    El jarrón deformado de la referencia: lóbulos apilados + nervio fino.
+
+    Es la deformación OPUESTA a `glitch3`, y la elección es deliberada. El
+    glitch quiere un corte, y por eso su primitiva no puede ser un seno. Acá lo
+    que se busca es lo contrario —una pared que se hincha y se estrangula sin
+    una sola arista— así que un seno es exactamente la primitiva correcta. Lo
+    que hace que no parezca un jarrón torneado más son otras dos cosas:
+
+    - **El lóbulo es HELICOIDAL, no un anillo.** La fase lleva `giro * ángulo`,
+      así que la panza no está a la misma altura en todo el contorno: se corre
+      girando al subir. Con `giro=1` la sección es un círculo descentrado cuyo
+      centro rota, y por eso la silueta de la izquierda y la de la derecha son
+      distintas a la misma altura —el escalón de la referencia—. Con lóbulos
+      horizontales la pieza sale simétrica y se lee como cerámica de torno.
+    - **La onda va sesgada.** `sin(x + sesgo*sin(x))` tiene la cresta ancha y el
+      valle apretado: la panza es una superficie llena y el estrangulamiento un
+      pliegue corto. Un seno puro reparte igual las dos cosas y queda blando.
+
+    Encima corre el **nervio**: una onda triangular de muchos ciclos por vuelta,
+    siempre hacia AFUERA, cuya fase se corre con la altura. Es el "continuous
+    zigzag" de la referencia y, en la pantalla, hace de plisado clásico. No
+    cuesta nada de voladizo: al depender casi solo del ángulo, cada vuelta cae
+    sobre la nervadura de la de abajo.
+
+    Está escrita con `numpy` en vez de `math` a propósito: las mismas funciones
+    valen para un escalar (lo que pide el generador de g-code, punto por punto)
+    y para la malla entera (lo que pide `vista_forma.py`). Con dos versiones,
+    una se desincroniza de la otra y se juzga una forma que no es la que se
+    imprime.
+
+    Args:
+        lobulos: cuántas panzas entran en la altura de la pieza.
+        amplitud: cuánto sale y entra la panza, en mm.
+        giro: vueltas de corrimiento del lóbulo por ciclo. 0 = anillos
+            horizontales simétricos; 1 = el escalón asimétrico de la referencia.
+        sesgo: 0 = seno puro; 0.4-0.8 = cresta ancha y valle apretado.
+        nervios: cuántos pliegues por vuelta. `segmentos` del recorrido tiene
+            que dar al menos ~8 puntos por pliegue o el triángulo sale astillado.
+        nervio: altura del pliegue, en mm.
+        torsion: vueltas que gira el nervio de abajo a arriba.
+        serpenteo: cuánto ondula el nervio al pasar por cada panza. Es lo que
+            hace que los pliegues serpenteen en vez de subir rectos.
+        extremos: fracción de la altura en que la deformación nace y muere. La
+            base tiene que apoyar redonda en la cama y la boca tiene que quedar
+            circular para recibir el aro.
+    """
+    import numpy as np
+
+    # `giro` TIENE que ser entero: es cuántas veces cabe el lóbulo en una
+    # vuelta, y con 0.4 el campo vale distinto en 0° y en 360°. La pieza queda
+    # partida por un escalón vertical de toda la altura —se ve en la celda 4 de
+    # `output/glitch/interpretaciones.png`— y ese escalón no es un voladizo
+    # cualquiera: es la pared entera saltando de golpe en un solo ángulo.
+    if abs(float(giro) - round(float(giro))) > 1e-9:
+        raise ValueError(
+            f"giro={giro}: tiene que ser entero, si no el campo no cierra la "
+            f"vuelta y queda una costura vertical en toda la pieza.")
+    n_lob, giro_f, ses = float(lobulos), float(round(giro)), float(sesgo)
+    amp, n_ner, h_ner = float(amplitud), int(nervios), float(nervio)
+    tor, ser, ext = float(torsion), float(serpenteo), min(0.49, max(0.0, extremos))
+
+    def envolvente(t):
+        """1 en el cuerpo, 0 en los dos bordes, con derivada 0 al llegar."""
+        if ext <= 0:
+            return 1.0 + 0.0 * t
+        u = np.clip(np.minimum(t, 1.0 - t) / ext, 0.0, 1.0)
+        return u * u * (3.0 - 2.0 * u)
+
+    def deformacion(angulo, t):
+        env = envolvente(t)
+        fase = TAU * n_lob * t + giro_f * angulo + desfase
+        s = np.sin(fase + ses * np.sin(fase))
+        bulto = amp * s
+
+        # Onda triangular en [0, 1]: el pliegue solo sale hacia afuera. Metiendo
+        # también hacia adentro, la mitad del nervio queda por dentro de la
+        # pieza —no se ve, y en la pared de un cordón adelgaza la pantalla justo
+        # donde más luz pasa.
+        u = n_ner * angulo / TAU + tor * t + ser * np.sin(TAU * n_lob * t)
+        tri = 2.0 * np.abs(u - np.floor(u) - 0.5)
+        return env * (bulto + h_ner * tri)
+
+    return deformacion
+
+
+def jalada(
+    silueta: Callable[[float], float],
+    tirones: float = 2.5,
+    tiro: float = 12.0,
+    nervios: int = 70,
+    nervio: float = 1.8,
+    extremos: float = 0.10,
+) -> Deformacion:
+    """
+    La pieza no se hincha: se JALA. El eje se corre, la sección no cambia.
+
+    Es la diferencia con `onda_apilada`, y es la que decide si la forma se lee
+    como la referencia o como un pastel de pisos. Midiendo el ancho del jarrón
+    del reel a la altura de cada "estrangulamiento" y a la de cada "panza", los
+    números dan casi iguales: **no hay panzas**. El diámetro es constante en
+    toda la pieza y lo único que se mueve es dónde está el centro. El bulto de
+    un lado y la muesca del otro son la misma sección corrida, vista de perfil.
+
+    Modular el radio produce lo contrario: el contorno izquierdo y el derecho se
+    van para lados opuestos, la pieza engorda y adelgaza, y se pierden las
+    proporciones del objeto. Corriendo el centro, los dos contornos se van para
+    el MISMO lado y el objeto se sigue entendiendo: es el mismo cuerpo, tirado.
+
+    La sección es el círculo exacto y no la aproximación de primer orden
+    `R + D·cos(a-φ)`. Con un tiro de 12 sobre un radio de 80 la diferencia llega
+    a ~0.9 mm, y es justo la que hace que la sección deje de ser un círculo y
+    empiece a ser un huevo: el defecto que hay que evitar.
+
+    El **nervio va en ángulo global**, no pegado a la sección corrida, y eso no
+    es un descuido: es lo que produce el estirado. Dos pliegues vecinos están
+    siempre a `2π/nervios`, así que del lado hacia donde se corrió el centro
+    quedan más lejos EN MILÍMETROS y del otro más cerca. Los pliegues se abren
+    donde el cuerpo se va y se aprietan donde vuelve, todos a la vez y con la
+    misma onda: la sincronía de la referencia sale de ahí, no de agregarle
+    torsión ni serpenteo a cada pliegue por su cuenta. Eso último fue lo que
+    hizo ver las primeras versiones como ruido.
+
+    Args:
+        silueta: `silueta(t) -> radio`. Hace falta acá porque la sección exacta
+            depende del radio, y una copia del número se desincroniza.
+        tirones: cuántas vueltas gira la dirección del tirón de abajo a arriba.
+            Visto de frente, cuántas veces se va de un lado al otro.
+        tiro: cuánto se corre el centro, en mm. Es el ÚNICO parámetro de la
+            deformación grande; no hay amplitud de panza porque no hay panza.
+        nervios, nervio: cuántos pliegues por vuelta y cuánto sobresalen.
+        extremos: fracción de la altura en que el tirón nace y muere. La base
+            tiene que apoyar centrada en la cama y la boca quedar concéntrica
+            con el aro.
+    """
+    import numpy as np
+
+    n_tir, d_max, ext = float(tirones), float(tiro), min(0.49, max(0.0, extremos))
+    n_ner, h_ner = int(nervios), float(nervio)
+
+    def deformacion(angulo, t):
+        u = np.clip(np.minimum(t, 1.0 - t) / ext, 0.0, 1.0) if ext > 0 else 1.0
+        d = d_max * (u * u * (3.0 - 2.0 * u))
+        fi = TAU * n_tir * t
+        r = silueta(t)
+        c = np.cos(angulo - fi)
+        # radio del círculo de radio `r` cuyo centro está a `d` en la dirección
+        # `fi`, medido desde el eje de la pieza
+        corrido = d * c + np.sqrt(np.maximum(r * r - (d * np.sin(angulo - fi)) ** 2, 0.0))
+        v = n_ner * angulo / TAU
+        return (corrido - r) + h_ner * 2.0 * np.abs(v - np.floor(v) - 0.5)
+
+    return deformacion
+
+
 def aletas(
     vuelo: float = 38.0,
     cuantas: int = 8,
@@ -706,6 +873,8 @@ ESTRUCTURAS = {
     "glitch": glitch,
     "glitch2": glitch2,
     "glitch3": glitch3,
+    "onda_apilada": onda_apilada,
+    "jalada": jalada,
     "aletas": aletas,
     "bultos": bultos,
     "hoyuelos": hoyuelos,
