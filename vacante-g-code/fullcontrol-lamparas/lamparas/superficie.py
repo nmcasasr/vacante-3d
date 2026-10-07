@@ -388,6 +388,86 @@ def flores(
     return mascara
 
 
+# --- el isotipo de Kadzi -------------------------------------------------
+#
+# Leído del SVG de la marca (`Isotipo.svg`, viewBox 425.19 x 425.23, con la `y`
+# hacia ABAJO como manda SVG). Son cuatro piezas: un triángulo grande apuntando
+# a la izquierda, dos chicos apuntando a la derecha y un rombo. Juntas se leen
+# como una K.
+#
+# Se guardan en las coordenadas del SVG y no normalizadas para que se pueda
+# volver al archivo y comparar número por número si el dibujo cambia.
+_ISO_LADO = 425.19
+_ISO_SD = 135.29 * math.sqrt(2) / 2      # semidiagonal del rombo (un cuadrado a 45°)
+_ISO_PARTES = (
+    [(212.59, 0.04), (314.64, 102.08), (212.59, 204.13)],          # triángulo de arriba
+    [(212.59, 221.14), (314.64, 323.18), (212.59, 425.23)],        # el de abajo
+    [(329.5, 212.6 - _ISO_SD), (329.5 + _ISO_SD, 212.6),
+     (329.5, 212.6 + _ISO_SD), (329.5 - _ISO_SD, 212.6)],          # el rombo
+    [(191.33, 0.0), (191.33, 425.19), (0.0, 212.59)],              # el triángulo grande
+)
+
+
+def _en_poligono(x: float, y: float, poly) -> bool:
+    """Punto dentro de un polígono, por cruces de rayo."""
+    n = len(poly)
+    dentro = False
+    for i in range(n):
+        x1, y1 = poly[i]
+        x2, y2 = poly[(i + 1) % n]
+        if (y1 > y) != (y2 > y) and x < (x2 - x1) * (y - y1) / (y2 - y1) + x1:
+            dentro = not dentro
+    return dentro
+
+
+def _encoger(poly, k: float):
+    """El polígono encogido hacia su centro un factor `k` (1.0 = igual)."""
+    cx = sum(x for x, _ in poly) / len(poly)
+    cy = sum(y for _, y in poly) / len(poly)
+    return [(cx + (x - cx) * k, cy + (y - cy) * k) for x, y in poly]
+
+
+def _en_isotipo(du: float, dv: float, lado: float, giro: float,
+                separacion: float = 0.0) -> bool:
+    """
+    El isotipo inscrito en un cuadrado de `lado` mm, girado `giro` grados.
+
+    `du` va a la derecha y `dv` hacia ARRIBA, los dos en mm desde el centro del
+    dibujo. Con `giro=90` el triángulo grande —que en el archivo apunta a la
+    izquierda— queda apuntando hacia ARRIBA, que es como va en la pieza.
+
+    El giro se deshace sobre la CONSULTA en vez de rotar los polígonos: así los
+    puntos quedan escritos igual que en el SVG y el giro es una perilla.
+    """
+    if lado <= 0 or abs(du) > lado or abs(dv) > lado:
+        return False
+    g = math.radians(-giro)
+    px, py = du, -dv                      # a `y` hacia abajo, como el SVG
+    qx = px * math.cos(g) - py * math.sin(g)
+    qy = px * math.sin(g) + py * math.cos(g)
+    # `lado` es la SEMI-caja, así que la escala es media viewBox por semi-caja.
+    # Con `_ISO_LADO` entero el dibujo salía a la mitad de lo pedido.
+    x = qx / lado * (_ISO_LADO / 2) + _ISO_LADO / 2
+    y = qy / lado * (_ISO_LADO / 2) + _ISO_LADO / 2
+    if not (0.0 <= x <= _ISO_LADO and 0.0 <= y <= 425.23):
+        return False
+    # `separacion` ENCOGE cada pieza para ensanchar los huecos entre ellas.
+    #
+    # Es lo que hace que el dibujo se LEA. Los triángulos y el rombo se
+    # distinguen por los huecos que los separan, y esos huecos miden ~1.5 mm en
+    # un isotipo de 16, mientras que una púa mide 2.62: la rejilla se los come y
+    # el logo sale como una mancha alta y pareja. Medido, el relieve cruzando el
+    # logo daba 3.6 4.0 4.0 4.2 4.0 — sin un solo valle.
+    #
+    # Ensanchando el hueco hasta que quepa una púa entera, ahí SÍ falta una púa
+    # y el hueco se ve. Va en mm de superficie, que es como se piensa: "quiero
+    # 3 mm de aire entre los triángulos".
+    if separacion <= 0.0:
+        return any(_en_poligono(x, y, P) for P in _ISO_PARTES)
+    k = max(0.05, 1.0 - separacion / lado)
+    return any(_en_poligono(x, y, _encoger(P, k)) for P in _ISO_PARTES)
+
+
 def hoja(
     columnas: int = 4,
     filas: int = 1,
@@ -403,6 +483,21 @@ def hoja(
     k: int = 1,
     brazo: float = 0.62,
     borde_mm: float = 1.5,
+    iso_mm: float = 0.0,
+    iso_giro: float = 90.0,
+    iso_giro2: float = -90.0,
+    iso_separacion: float = 0.0,
+    iso_t: float = 0.5,
+    iso_t2: float = 0.0,
+    patron: str = "",
+    patron_puas: int = 60,
+    patron_fila_mm: float = 3.6,
+    patron_fila0: int = 2,
+    patron_corrimiento: int = 0,
+    patron_alineado: bool = False,
+    giro_celdas: float = 0.0,
+    patron_z0: float = 0.8,
+    patron_copias: int = 4,
     radio_mm: float = 25.0,
     altura_mm: float = 75.0,
 ) -> Mascara:
@@ -478,6 +573,10 @@ def hoja(
             `amplitud_fondo + (amplitud - amplitud_fondo) x degradado`. Con 0.2
             sobre un fondo de 1.25 y una figura de 7, el centro sale a 2.4 mm.
 
+            **NEGATIVO da vuelta la hoja**: con -0.2 el relieve baja hacia el
+            CONTORNO y sube hacia el eje, o sea abombada hacia afuera. El tallo
+            NO se da vuelta, porque ya nace alto en el medio.
+
             **El TALLO va al revés**: alto en el medio y fino en los cantos,
             que es como es un tallo. Con la regla de la hoja saldría como una
             canaleta, hundido justo en el eje.
@@ -488,6 +587,39 @@ def hoja(
         k: 1 dibuja los dos brazos; 0 deja la hoja con la nervadura sola.
         brazo: la pendiente de los brazos, en fracción de `largo/ancho`. 0.62
             los saca a media altura del borde, que es la proporción del logo.
+        iso_mm: tamaño del ISOTIPO de Kadzi, en mm de lado, dibujado en el hueco
+            entre dos hojas. 0 (por defecto) no lo dibuja y la máscara queda
+            como estaba. Ojo con la rejilla: el isotipo tiene rasgos finos —el
+            rombo y los triángulos chicos— y por debajo de unos 14 mm se
+            empastan en el punto del patrón.
+        iso_giro: grados del isotipo de ARRIBA. 90 (por defecto) deja el
+            TRIÁNGULO GRANDE apuntando hacia arriba; en el archivo de la marca
+            apunta a la izquierda.
+        iso_giro2: grados del de ABAJO. -90 lo deja espejado respecto del de
+            arriba, o sea con el triángulo grande hacia abajo.
+        patron: el dibujo YA RESUELTO sobre la rejilla, un carácter por púa y
+            una línea por fila (una fila = un ciclo `lisas + con_patron`). `0`
+            o `#` ponen púa. Las líneas se separan con `/` o salto de línea.
+            Es lo que hay que usar cuando el dibujo tiene rasgos del tamaño de
+            una púa: un polígono muestreado se come los huecos y sale una
+            mancha pareja; la rejilla imprime exactamente lo escrito.
+        patron_puas: cuántas púas tiene la vuelta, para mapear ángulo a columna.
+        patron_fila_mm: alto de una fila en mm, o sea
+            `(lisas + con_patron) x altura_capa`.
+        patron_fila0: en qué BANDA de la cadencia arranca la fila de abajo del
+            dibujo. Se cuenta en bandas y no en mm a propósito: cada `0` es una
+            columna de púas durante una banda entera, así que las filas tienen
+            que caer sobre las bandas o cada punto queda partido entre dos.
+        patron_z0: z donde arranca la primera banda, o sea el espesor del piso.
+        patron_copias: cuántas veces se repite alrededor de la pieza.
+        iso_separacion: cuánto se ENCOGE cada pieza del isotipo, en mm, para
+            ensanchar los huecos entre ellas. 0 deja el dibujo tal cual. Hace
+            falta porque los huecos originales son más finos que una púa y el
+            patrón se los come: el logo sale como una mancha alta y pareja. Con
+            el hueco de una púa o más, ahí FALTA una púa y el dibujo se lee.
+        iso_t: altura relativa del isotipo de ARRIBA.
+        iso_t2: altura del de ABAJO, en el mismo hueco. 0 lo apaga y queda uno
+            solo.
         borde_mm: en cuántos mm se desvanece el CONTORNO. Las venas no se
             desvanecen: son las que tienen que leerse filosas.
         radio_mm, altura_mm: el tamaño real de la pieza. Los inyecta el patrón.
@@ -500,12 +632,60 @@ def hoja(
     # medio tallo por encima del centro del conjunto
     subida = tallo_mm / 2
 
+    # PARIDAD: cuántas celdas de púa puede cubrir la hoja sin salir torcida.
+    #
+    # La celda de la púa `k` es la fase [k, k+1). Con la hoja centrada en un
+    # BORDE de celda —que es donde cae sola, en `c/columnas * TAU`— ninguna
+    # celda es su propio espejo: la celda 0 se refleja en la -1, la 1 en la -2.
+    # La hoja cubre entonces un número PAR de celdas y al hueco le quedan PAR.
+    # Y el logo mide 9 columnas, impar: nunca encaja centrado.
+    #
+    # Corriendo la hoja MEDIA CELDA el eje pasa por el centro de una celda, esa
+    # celda es su propio espejo y los dos números pasan a impares. De regalo,
+    # el centro del hueco cae exacto en el centro de la celda `kc`, que es
+    # donde va la columna del medio del logo, así que el dibujo no se mueve.
+    #
+    # `giro_celdas` se mide en celdas de púa, no en grados, porque lo que hay
+    # que alinear es la rejilla y no la geometría.
+    giro = giro_celdas / max(1, patron_puas) * TAU
+
     centros = []
     for f in range(filas):
         t_c = (f + 0.5) / filas
         corrimiento = 0.5 * (f % 2)
         for c in range(columnas):
-            centros.append(((c + corrimiento) / columnas * TAU, t_c))
+            centros.append(((c + corrimiento) / columnas * TAU + giro, t_c))
+
+    # Los dos isotipos van APILADOS EN EL MISMO HUECO —uno arriba (`iso_t`) y
+    # otro abajo (`iso_t2`)—, entre dos hojas. Eso pide hojas ANCHAS DE POCAS:
+    # con dos hojas en una vuelta de 157 mm el hueco mide 60 y pico, y ahí el
+    # logo entra grande. Con cuatro hojas el hueco baja a 15.3 mm y no entra
+    # nada legible.
+    _iso_huecos = [(c + 0.5) / columnas * TAU + giro for c in range(columnas)]
+
+    # --- el dibujo como REJILLA -------------------------------------------
+    #
+    # `patron` es el dibujo ya resuelto sobre la rejilla del patrón: un
+    # carácter por PÚA y una línea por FILA (una fila = un ciclo
+    # `lisas + con_patron`). `0` o `#` ponen púa, cualquier otra cosa la deja.
+    #
+    # Existe porque un polígono muestreado NO es lo mismo que la rejilla. El
+    # isotipo dibujado como polígono y muestreado por el patrón sale con los
+    # huecos comidos —miden menos que una púa— y el logo queda como una mancha
+    # alta y pareja. Con la rejilla, lo que se escribe es exactamente lo que se
+    # imprime, púa por púa, y no hay nada que interpretar.
+    _rej = [f for f in patron.replace("\n", "/").split("/") if f.strip()]
+    _rej_nf = len(_rej)
+    _rej_nc = max((len(f) for f in _rej), default=0)
+    # Cada anillo lleva su propio giro: en el croquis los dos isotipos están
+    # ESPEJADOS —el de arriba con el triángulo grande arriba, el de abajo con
+    # el grande abajo— y así la pareja se lee como una composición y no como el
+    # mismo sello repetido.
+    iso_anillos = []
+    if iso_mm > 0:
+        iso_anillos.append((iso_t, iso_giro))
+        if iso_t2 > 0:
+            iso_anillos.append((iso_t2, iso_giro2))
 
     def _media_anchura(dv: float) -> float:
         """Media anchura de la hoja a esa altura, 0 fuera."""
@@ -570,6 +750,53 @@ def hoja(
                 or abs(dv + m * du) / norma <= vena_mm / 2)
 
     def mascara(angulo: float, t: float) -> float:
+        if _rej_nf:
+            # La fila se cuenta sobre la MISMA rejilla de bandas que usa la
+            # cadencia, no sobre una altura libre. Cada `0` es una columna de
+            # púas durante una banda entera; si las filas no caen sobre las
+            # bandas, cada punto queda partido entre dos y el dibujo se borra.
+            # Las bandas se cuentan desde el ARRANQUE DE LA PARED, que es
+            # donde empieza la cadencia: `t=0`. Restarle el piso corría todo
+            # media banda y las filas salían de a pares.
+            banda = int(t * altura_mm / patron_fila_mm + 1e-9)
+            j = (_rej_nf - 1) - (banda - patron_fila0)   # fila 0 = la de arriba
+            if 0 <= j < _rej_nf:
+                fila = _rej[j]
+                # Sin `+ 0.5`: la celda `k` es la fase [k, k+1), que es
+                # justo lo que ocupa la púa `k` —su pulso arranca en `k`—, y
+                # su centro `k+0.5` es el punto de lectura de `peso_por_pua`.
+                #
+                # Con `+ 0.5` la celda iba de `k-0.5` a `k+0.5` y pasaban dos
+                # cosas malas: la frontera de la rejilla caía en mitad del
+                # pico (medido: 20 de 56 púas a z=10 leían dos celdas), y el
+                # punto de lectura caía EXACTO sobre la frontera de redondeo,
+                # así que el error de coma flotante decidía la columna púa por
+                # púa (medido: el logo baja de 320/324 a 275/324 y las cuatro
+                # copias dejan de coincidir entre sí).
+                k = (int((angulo % TAU) / TAU * patron_puas
+                         + (0.0 if patron_alineado else 0.5)) % patron_puas)
+                # Las copias van en los HUECOS entre hojas: con el mismo
+                # origen que las hojas, el dibujo cae encima de ellas.
+                #
+                # El centro se REDONDEA A PÚA ENTERA. Con 60 púas y 4 copias el
+                # hueco cae en 7.5, o sea ENTRE dos púas, y entonces la 7 y la 8
+                # daban las dos `round(±0.5) = 0`: las dos caían en la misma
+                # columna del dibujo y cada punto salía de a dos púas.
+                for r in range(max(1, patron_copias)):
+                    kc = round((r + 0.5) * patron_puas / max(1, patron_copias))
+                    i = (k - kc) + _rej_nc // 2 + patron_corrimiento
+                    if 0 <= i < len(fila) and fila[i] in "0#":
+                        return 1.0
+        # El isotipo se consulta PRIMERO y manda: cae donde no hay hoja, así que
+        # no compite con ella, y devolver 1 de una evita recorrer las hojas.
+        for t_iso, g_iso in iso_anillos:
+            dv_iso = (t - t_iso) * altura_mm
+            if abs(dv_iso) > iso_mm / 2:
+                continue
+            for a_iso in _iso_huecos:
+                if _en_isotipo(_envolver(angulo - a_iso) * radio_mm,
+                               dv_iso, iso_mm / 2, g_iso, iso_separacion):
+                    return 1.0
         mejor = 0.0
         for centro_a, centro_t in centros:
             du = _envolver(angulo - centro_a) * radio_mm
@@ -579,7 +806,7 @@ def hoja(
                 continue
             if _en_vena(du, dv):
                 return 0.0      # la vena manda sobre la carne
-            if degradado > 0.0:
+            if degradado != 0.0:
                 if dv < -semi_l and tallo_mm > 0:
                     # EL TALLO VA AL REVÉS QUE LA HOJA: alto en el medio y fino
                     # en los cantos, o sea redondeado como un tallo de verdad.
@@ -601,7 +828,15 @@ def hoja(
                     media = _media_anchura(dv)
                     lado = abs(du) / media if media > 1e-9 else 1.0
                     e = min(1.0, max(abs(dv) / semi_l, lado))
-                carne *= degradado + (1.0 - degradado) * max(0.0, e)
+                    # Con `degradado` NEGATIVO la hoja va al revés: baja hacia
+                    # el CONTORNO y sube hacia el eje, o sea abombada hacia
+                    # afuera en vez de hacia adentro. Sólo se da vuelta acá: el
+                    # tallo (la rama de arriba) ya nace alto en el medio, que es
+                    # como es un tallo, y darlo vuelta lo volvería una canaleta.
+                    if degradado < 0.0:
+                        e = 1.0 - e
+                d = abs(degradado)
+                carne *= d + (1.0 - d) * max(0.0, e)
             mejor = max(mejor, carne)
             if mejor >= 1.0:
                 return 1.0

@@ -60,6 +60,7 @@
   "--ventilador",
   "100",
   "--pendiente-silueta",
+  "--base-flujo-exacto",
   "--nombre",
   "florero-kadzi/1-cupones/matriz"
  ],

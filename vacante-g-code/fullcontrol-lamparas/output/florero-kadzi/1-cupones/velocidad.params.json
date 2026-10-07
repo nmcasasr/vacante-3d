@@ -39,6 +39,7 @@
   "0.92",
   "--base-altura",
   "0.8",
+  "--base-flujo-exacto",
   "--p",
   "puas=48",
   "--p",

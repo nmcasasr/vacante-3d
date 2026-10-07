@@ -58,6 +58,7 @@
   "--ventilador",
   "100",
   "--pendiente-silueta",
+  "--base-flujo-exacto",
   "--nombre",
   "florero-kadzi/1-cupones/grumo-puentea/largos_3a9mm"
  ],

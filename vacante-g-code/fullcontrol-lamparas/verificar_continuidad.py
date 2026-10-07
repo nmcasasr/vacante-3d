@@ -91,15 +91,28 @@ def leer(ruta):
 
 def cuerpo_de(pts):
     """
-    La tirada más larga de movimientos que extruyen hacia adelante.
+    La tirada más larga de movimientos que extruyen hacia adelante, y los
+    viajes SUELTOS que quedaron dentro.
 
     Los movimientos de una pausa (marcados por `leer`) no la cortan: la
     boquilla sigue donde estaba.
+
+    Un viaje suelto tampoco, y por la misma razón que las pausas: el piso lleva
+    uno deliberado —volver al contorno sin extruir, en vez de arrastrar un
+    cordón de 4.8 mm cruzándolo— y contarlo como corte deja el piso ENTERO
+    afuera del cuerpo. Pasó: el cuerpo arrancaba en la línea 3001 y el
+    verificador daba verde sobre la pared sola, sin haber mirado la base.
+
+    Pero tolerar huecos a secas se traga la purga, que son 180 mm cruzando la
+    cama y es justo lo que hay que dejar afuera. Por eso se unen DOS TIRADAS
+    LARGAS separadas por UN SOLO movimiento sin extruir: la purga son cuatro
+    movimientos sueltos y no llega. Los viajes así unidos se devuelven para que
+    se informen, no para esconderlos — un viaje sigue siendo un viaje.
     """
     def sigue(p):
         return p[5] or (p[3] is not None and p[3] > 0)
 
-    mejor = (0, 0)
+    tiradas = []
     i = 0
     while i < len(pts):
         if not sigue(pts[i]):
@@ -108,10 +121,24 @@ def cuerpo_de(pts):
         j = i
         while j < len(pts) and sigue(pts[j]):
             j += 1
-        if j - i > mejor[1] - mejor[0]:
-            mejor = (i, j)
+        tiradas.append((i, j))
         i = j
-    return mejor
+    if not tiradas:
+        return 0, 0, []
+
+    LARGO = 100          # una tirada corta no es un tramo de la pieza
+    unidas, viajes = [tiradas[0]], [[]]
+    for a, b in tiradas[1:]:
+        ant = unidas[-1]
+        if (a - ant[1] == 1 and b - a > LARGO and ant[1] - ant[0] > LARGO
+                and not pts[ant[1]][5]):
+            unidas[-1] = (ant[0], b)
+            viajes[-1].append(ant[1])
+        else:
+            unidas.append((a, b))
+            viajes.append([])
+    k = max(range(len(unidas)), key=lambda n: unidas[n][1] - unidas[n][0])
+    return unidas[k][0], unidas[k][1], viajes[k]
 
 
 def main():
@@ -125,7 +152,8 @@ def main():
     args = p.parse_args()
 
     pts, pausas = leer(args.gcode)
-    a, b = cuerpo_de(pts)
+    a, b, sueltos = cuerpo_de(pts)
+    lineas_viaje = {pts[i][4] for i in sueltos}
     cuerpo = [p for p in pts[a:b] if not p[5]]
     if len(cuerpo) < 2:
         sys.exit(f"{args.gcode}: no se encontró un cuerpo continuo")
@@ -152,16 +180,23 @@ def main():
         subida.append(z1 - z0)
         if z1 < z0 - 1e-9:
             bajadas.append((z1 - z0, ln))
-        if (e1 is None or e1 <= 0) and d > 0.01:
+        if (e1 is None or e1 <= 0) and d > 0.01 and ln not in lineas_viaje:
             viajes.append((d, ln))
 
     ds = sorted(d for d, _ in saltos)
     p50 = ds[len(ds) // 2]
     p999 = ds[min(len(ds) - 1, int(len(ds) * 0.999))]
     corte = (args.vuelo + p50) if args.vuelo > 0 else p999 * 1.5
-    grandes = sorted(((d, ln) for d, ln in saltos if d > corte), reverse=True)
+    # Un viaje deliberado es ADEMÁS un paso grande de XY, y contarlo dos veces
+    # lo haría aparecer como salto además de como viaje.
+    grandes = sorted(((d, ln) for d, ln in saltos
+                      if d > corte and ln not in lineas_viaje), reverse=True)
 
     print("\n1. CONTINUIDAD DEL TRAZO")
+    if sueltos:
+        print(f"   viajes deliberados: {len(sueltos)} · sin extruir y sin retraer, "
+              f"líneas {', '.join(str(pts[i][4]) for i in sueltos[:6])}. "
+              f"No cortan el trazo, pero son viajes.")
     if pausas:
         ms = sum(p for p, _ in pausas)
         print(f"   pausas deliberadas: {len(pausas)} · {ms / 1000:.1f} s en total "

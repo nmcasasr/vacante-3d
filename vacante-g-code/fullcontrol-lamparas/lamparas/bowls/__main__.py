@@ -48,6 +48,28 @@ def _kv(texto: str):
     return clave.strip(), valor
 
 
+def _agujero_isotipo(args):
+    """
+    `(x, y) -> bool`: si ese punto del piso cae dentro del isotipo, no se
+    extruye y queda calado.
+
+    Va en coordenadas ABSOLUTAS de cama, que es lo que ve la espiral, así que
+    hay que restarle el centro de la pieza —(128, 128), el centro de la cama—.
+    `dv` va hacia ARRIBA igual que en la pared, para que el dibujo se lea en el
+    mismo sentido mirando la matera de frente o por abajo.
+    """
+    if not getattr(args, "hueco_isotipo", 0.0):
+        return None
+    from ..superficie import _en_isotipo
+    lado = args.hueco_isotipo / 2.0
+
+    def dentro(x: float, y: float) -> bool:
+        return _en_isotipo(x - 128.0, y - 128.0, lado,
+                           args.hueco_isotipo_giro, args.hueco_isotipo_separacion)
+
+    return dentro
+
+
 def _cli() -> None:
     p = argparse.ArgumentParser(prog="lamparas.bowls", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -163,6 +185,42 @@ def _cli() -> None:
                         "pasada con 0.4 mm de espesor: un papel. El hongo aguanta porque toda "
                         "la pieza va a 0.8. Esto pide el espesor del piso sin tocar el de la "
                         "pared. No es capas-base, que son vueltas de la PARED.")
+    p.add_argument("--base-flujo-exacto", action="store_true",
+                   help="calcular la extrusion del PISO contra la separacion entre pasadas y "
+                        "no contra el ancho del cordon, y sacar la vuelta de cierre del "
+                        "reborde, que imprimia encima de si misma. Sin esto el piso mete 27%% "
+                        "de material de mas por construccion: las pasadas van a 0.946 mm y la "
+                        "extrusion esta escrita para 1.2. Medido en 1-cupones/velocidad.gcode, "
+                        "139%% de lo que cabe en 0.8 mm; el piso sube por encima de la boquilla, "
+                        "la boquilla lo ara y las vueltas de afuera salen cada vez peor. "
+                        "Apagado por defecto: mueve el piso de toda pieza maciza y el gusanito "
+                        "impreso tiene uno.")
+    p.add_argument("--hueco-isotipo", type=float, default=0.0, metavar="MM",
+                   help="cala el PISO con el isotipo de Kadzi, de ese tamano en mm. El piso "
+                        "deja de ser trazo continuo: el isotipo son cuatro piezas sueltas, "
+                        "asi que la espiral se apaga y viaja sobre cada una. La pared no se "
+                        "toca. Sirve de drenaje en una matera.")
+    p.add_argument("--hueco-surco", type=float, default=0.0, metavar="FACTOR",
+                   help="en vez de CALAR el logo, hace un SURCO: multiplica el ancho del "
+                        "cordon por este factor encima del dibujo (ej 0.45). El piso sigue "
+                        "siendo trazo continuo, sin viajes ni retracciones, pero no drena "
+                        "y se ve mucho menos que un calado.")
+    p.add_argument("--hueco-retraccion", type=float, default=0.8, metavar="MM",
+                   help="retraccion en cada cruce del calado del piso (por defecto 0.8). "
+                        "Sin esto quedan hilos cruzando los huecos del logo.")
+    p.add_argument("--hueco-isotipo-giro", type=float, default=90.0, metavar="GRADOS",
+                   help="giro del isotipo del piso. 90 (por defecto) deja el triangulo grande "
+                        "apuntando hacia arriba, igual que en la pared.")
+    p.add_argument("--hueco-isotipo-separacion", type=float, default=0.0, metavar="MM",
+                   help="encoge cada pieza del isotipo para ensanchar el aire entre ellas.")
+    p.add_argument("--base-redonda", action="store_true",
+                   help="el PISO sigue la silueta LISA en vez del contorno con relieve. Con "
+                        "--capas-transicion 0 y una cadencia que arranca con patron (lisas=0), "
+                        "el contorno del fondo son las puas a amplitud completa y el piso sale "
+                        "con forma de estrella: medido, 5.6 mm de ondulacion y 9.3%% del piso "
+                        "SIN CUBRIR, con el hueco justo debajo de la pared. No se fuerza siempre "
+                        "porque hay siluetas que ondulan en planta de verdad y ahi un piso "
+                        "redondo sobresale donde la pared se mete.")
     p.add_argument("--pendiente-silueta", action="store_true",
                    help="medir la inclinacion de la pared sobre la SILUETA LISA en vez del "
                         "radio con patron. En una pared VERTICAL con picos, la derivada ve "
@@ -728,6 +786,11 @@ def _cli() -> None:
             base_borde=args.base_borde,
             base_solape=args.base_solape,
             base_altura=args.base_altura,
+            base_flujo_exacto=args.base_flujo_exacto,
+            base_redonda=args.base_redonda,
+            base_agujero=_agujero_isotipo(args),
+            base_agujero_retraccion=args.hueco_retraccion,
+            base_agujero_flujo=args.hueco_surco,
             paso_fijo={"auto": None, "medir": "auto",
                        "fijo": True, "adaptativo": False}[args.paso],
         )
