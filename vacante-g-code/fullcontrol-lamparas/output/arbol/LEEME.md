@@ -77,37 +77,42 @@ bueno.
 la mitad de abajo (voladizo) los grumos cuelgan como cordones o se caen; y si
 arriba, donde la copa cierra casi plana, los grumos se ven o se aplastan.
 
-### `1-cupones/velocidades/grumo9mm_punta3a8_grumo8a16`
+### `1-cupones/velocidades/grumo9mm_punta3a8`
 
 Del cupón de largos el que más gustó fue el de 9 mm, así que esto va con
-**grumos de 9 mm en toda la bola** y lo que cambia por gajo es la velocidad.
-Misma bola y misma densidad que el intercalado (72 púas, 3 + 1). Las vueltas
-lisas y los valles van a **16 mm/s** en todo el cupón, como el hongo impreso.
+**grumos de 9 mm en toda la bola**. Misma bola y misma densidad que el
+intercalado (72 púas, 3 + 1). Lo liso va a **16 mm/s** (como el hongo
+impreso) y el grumo a **8** en todo el cupón; lo único que cambia por gajo es
+la PUNTA:
 
-    gajo 1  (0–72°)     grumo  8 mm/s   punta 3 mm/s   lo de antes: la referencia
-    gajo 2  (72–144°)   grumo  8        punta 4        la punta de Squeezy, la mitad
-    gajo 3  (144–216°)  grumo 12        punta 4
-    gajo 4  (216–288°)  grumo 12        punta 6
-    gajo 5  (288–360°)  grumo 16        punta 8        sin frenar el grumo
+    gajo 1  (0–60°)     punta 3 mm/s   la de siempre: la referencia
+    gajo 2  (60–120°)   punta 4        la de Squeezy, la mitad del grumo
+    gajo 3  (120–180°)  punta 5
+    gajo 4  (180–240°)  punta 6
+    gajo 5  (240–300°)  punta 7
+    gajo 6  (300–360°)  punta 8        sin frenado extra: igual que el grumo
 
-El ángulo 0 es +X de la cama y crece antihorario visto desde arriba, igual que
-en el de largos. ~1.5 h. Verificador: línea fina 0.00 %, peor puente 9.9 mm,
-contacto 17 % (más que el de largos porque acá todos los grumos miden 9).
-Intercalado 99.1 %.
+El ángulo 0 es +X de la cama y crece antihorario visto desde arriba. ~1.8 h.
+Verificador: línea fina 0.00 %, peor puente 9.9 mm, contacto 17 % (más que el
+de largos porque acá todos los grumos miden 9). Intercalado 99.1 %. Sin pausas.
 
-**Lo que hay en juego**, la copa real (Ø244) de 9 mm con cada gajo:
+**Por qué la punta y no el grumo.** En la copa real de 9 mm (lo liso a 16):
 
-| gajo | 221 púas, 3 + 1 (como el cupón) | 150 púas, 5 + 1 (menos densa) |
-|---|---|---|
-| todo a 8 mm/s (la de `2-copas/`) | ~29.6 h | — |
-| 1 | ~23.0 h | ~10.8 h |
-| 2 | ~19.9 h | ~10.7 h |
-| 3 | ~18.6 h | ~8.8 h |
-| 4 | ~15.5 h | ~8.6 h |
-| 5 | ~13.3 h | ~7.6 h |
+| | punta 3 | punta 4 | punta 6 | punta 8 |
+|---|---|---|---|---|
+| grumo 8 | 23.0 h | 19.9 h | 16.8 h | 15.2 h |
+| grumo 16 | 21.0 h | 17.9 h | 14.8 h | 13.3 h |
 
-Sólo pasar lo liso a 16 mm/s ya baja de 29.6 a 23 h. La densidad pesa tanto
-como la velocidad: 150 púas con 5 lisas entre filas es menos de la mitad.
+La punta ahorra ~8 h, el grumo ~2. Con punta 3, grumo 8 y liso 16 la punta se
+lleva el **54 % del tiempo** (12.5 h de 23): 96 m de recorrido lento en ~19 700
+puntas, ~5 mm cada una. No es sólo el extremo: el grumo tiene pocas muestras,
+el movimiento que LLEGA a la punta arranca a media subida, y el `F` vale para
+todo ese movimiento. O sea que hoy media subida de cada grumo va a 3 mm/s —así
+eran también los floreros, y es lo que funcionó—.
+
+Sin el 1.4 de aceleración y todo a 8 mm/s, la copa grande era ~29.6 h; pasar
+lo liso a 16 ya la deja en 23. Con 150 púas y 5 lisas entre filas (menos
+densa, intercalado 100 %) va de ~10.8 h (punta 3) a ~7.6 h (punta 8, grumo 16).
 Ojo, abrir más el paso no siempre ahorra: con 110 púas tardaba MÁS que con 150,
 porque la ocupación es fracción del paso y cada grumo se hace más ancho.
 

@@ -59,15 +59,15 @@
   "--p",
   "intercalar=1",
   "--p",
-  "gajos_grumo=0.5,0.5,0.75,0.75,1.0",
+  "grumo_lento=0.5",
   "--p",
-  "gajos_punta=0.1875,0.25,0.25,0.375,0.5",
+  "gajos_punta=0.1875,0.25,0.3125,0.375,0.4375,0.5",
   "--pendiente-silueta",
   "--base-flujo-exacto",
   "--nombre",
-  "arbol/1-cupones/velocidades/grumo9mm_punta3a8_grumo8a16"
+  "arbol/1-cupones/velocidades/grumo9mm_punta3a8"
  ],
- "nombre": "arbol/1-cupones/velocidades/grumo9mm_punta3a8_grumo8a16",
+ "nombre": "arbol/1-cupones/velocidades/grumo9mm_punta3a8",
  "borrador": [
   "--segmentos",
   "120",
@@ -199,6 +199,15 @@
    "max": 3.0,
    "paso": 0.015,
    "que": "1 corre los grumos MEDIA P\u00daA en una fila con patr\u00f3n s\u00ed y en la otra no, as\u00ed que cada grumo cae entre los dos de la fila de abajo: tresbolillo, como las hojas de una copa. 0 (por defecto) los apila en columnas, que es lo que llevan los floreros. Cada fila\u2026"
+  },
+  {
+   "flag": "--p",
+   "clave": "grumo_lento",
+   "valor": 0.5,
+   "min": 0.0,
+   "max": 1.5,
+   "paso": 0.0075,
+   "que": "qu\u00e9 fracci\u00f3n de la velocidad se usa en TODO el grumo, ida y vuelta, fuera de la punta. 1.0 (por defecto) = la de la pieza. Sirve para subir la velocidad de la pieza sin subir la del grumo: con `--velocidad 960`, `grumo_lento=0.5` deja el grumo a 8 mm/s y\u2026"
   }
  ],
  "mapeo": {
