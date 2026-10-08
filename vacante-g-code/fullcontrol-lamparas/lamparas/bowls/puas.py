@@ -197,6 +197,7 @@ def construir(
     grumo_lento: float = 1.0,
     gajos_grumo: str = "",
     gajos_punta: str = "",
+    lienzo: str = "",
     suave_borde: float = 5.0,
     tomas: int = 5,
     deriva: float = 0.0,
@@ -269,6 +270,13 @@ def construir(
             alrededor de la pieza: `"0.5,0.5,0.75,0.75,1.0"` parte la vuelta en
             cinco gajos iguales desde 0°. Vacío = el valor de siempre en toda la
             pieza. Para el cupón de velocidades.
+        lienzo: un JSON pintado grumo por grumo (el de la matera de
+            corazones): `{"filas": {"<banda>": "0110…"}}`, una cadena por banda
+            con patrón —`banda = vuelta // (lisas + con_patron)`— y un carácter
+            por celda de la fila, contando desde la celda 0 de esa fila. `1` =
+            grumo de `amplitud`, `0` = de `amplitud_fondo`. Reemplaza a la
+            máscara. Pensado con `intercalar=1` y cantidad fija de púas, que es
+            cuando las celdas de cada fila están quietas.
         puente_lento: qué fracción de la velocidad se usa donde el grumo está
             al aire. **No adelgaza la línea**: la sección la fija la geometría y
             no el `F`, así que bajar la velocidad deposita lo mismo en más
@@ -734,6 +742,17 @@ def construir(
     lista_grumo = list(_lista(gajos_grumo))
     lista_punta = list(_lista(gajos_punta))
 
+    filas_lienzo = {}
+    if lienzo:
+        import json as _json
+        with open(lienzo, encoding="utf-8") as f:
+            filas_lienzo = {int(b): str(v) for b, v in _json.load(f)["filas"].items()}
+
+    def _del_lienzo(capa: int, fase: float) -> float:
+        fila = filas_lienzo.get(capa // ciclo, "")
+        k = int(math.floor(fase))
+        return 1.0 if 0 <= k < len(fila) and fila[k] == "1" else 0.0
+
     def _del_gajo(valores: list, angulo: float) -> float:
         return valores[min(len(valores) - 1, int((angulo % TAU) / TAU * len(valores)))]
 
@@ -885,8 +904,8 @@ def construir(
         # justo sobre la frontera de fila y el redondeo decide al azar.
         t_peso = ((((capa // ciclo) + 0.5) * ciclo * dt_capa)
                   if peso_por_banda else t)
-        amp = amplitud_fondo + (amp_de(_t_banda(capa))
-                                - amplitud_fondo) * peso(ang_pua, t_peso)
+        amp = amplitud_fondo + (amp_de(_t_banda(capa)) - amplitud_fondo) * (
+            _del_lienzo(capa, fase) if filas_lienzo else peso(ang_pua, t_peso))
         amp *= crecida(capa)
         if amp <= 0.0:
             return base
