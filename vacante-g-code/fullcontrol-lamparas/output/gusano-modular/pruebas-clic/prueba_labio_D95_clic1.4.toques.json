@@ -1,0 +1,16 @@
+{
+ "toques": [
+  {
+   "tipo": "jalar",
+   "forma": "circulo",
+   "caida": "suave",
+   "angulo": 0,
+   "simetria": 2,
+   "t": 0.49444444444444446,
+   "radio_t": 0.17777777777777778,
+   "radio_grados": 6.005060082597388,
+   "fuerza": 1.4,
+   "nota": "clic: dos bolitas en la base del labio"
+  }
+ ]
+}

@@ -83,6 +83,14 @@ flojo o no entra:
 Los "pisados" del verificador (en `verif/`) están en la primera vuelta y en el
 cierre de la cúpula, igual que en el gusanito; en la pared hay 0.
 
+## El clic (en prueba)
+
+`--clic MM` le pone al labio dos bolitas enfrentadas, pegadas al hombro. El
+anillo de la boca del módulo de arriba pasa por encima, hace clic y queda
+trabado debajo. La boca no cambia, así que un módulo con clic encaja en uno
+sin clic y al revés. Las piezas cortas para elegir cuánto sale la bolita están
+en `pruebas-clic/` (ver su LEEME).
+
 ## Generar de nuevo
 
     python gen_gusano_modular.py              # Ø58, Ø78 y Ø95

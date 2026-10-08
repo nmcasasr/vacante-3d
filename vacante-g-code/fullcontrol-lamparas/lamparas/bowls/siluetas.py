@@ -385,6 +385,8 @@ def gusano_modulo(
     pared: float = 1.2,
     tapa: int = 0,
     boca: float = 0.0,
+    desde: float = 0.0,
+    hasta: float = 0.0,
 ) -> Silueta:
     """
     UN lóbulo del gusanito, para imprimirlo suelto y apilarlo: el gusano
@@ -430,6 +432,10 @@ def gusano_modulo(
             las tapas grandes: desde Ø150 la cúpula no cierra ni siendo una
             esfera redonda (17 mm al aire con Ø150, 23 con Ø180; se descuelga
             a los 12).
+        desde, hasta: imprimir sólo un TRAMO del módulo, en mm desde su boca
+            (0 = desde la boca / hasta el final). Es para las pruebas de
+            encastre: la boca sola (`hasta=3.2`) o el hombro con el labio
+            (`desde=...`), que tardan minutos en vez de una hora.
     """
     if not 0.0 < cintura < 1.0:
         raise ValueError("gusano_modulo: 'cintura' va entre 0 y 1")
@@ -446,14 +452,24 @@ def gusano_modulo(
         zl = zc + math.sqrt(1.0 - (rl / R) ** 2) * b      # donde arranca el labio
         altura = zl + labio
 
+    z_fin = hasta if 0.0 < hasta < altura else altura
+    if not 0.0 <= desde < z_fin:
+        raise ValueError("gusano_modulo: 'desde' tiene que quedar debajo de 'hasta'")
+    tramo = z_fin - desde
+
     def silueta(t: float) -> float:
-        z = t * altura
+        z = desde + t * tramo
         if not tapa and z >= zl:
             return rl
         u = (z - zc) / b
         return R * math.sqrt(max(0.0, 1.0 - u * u))
 
-    silueta.altura = altura
+    silueta.altura = tramo
+    if not tapa:
+        # Dónde arranca el labio y con qué radio: el clic de
+        # `gen_gusano_modular.py --clic` va pegado ahí.
+        silueta.labio_desde = zl - desde
+        silueta.radio_labio = rl
     return silueta
 
 

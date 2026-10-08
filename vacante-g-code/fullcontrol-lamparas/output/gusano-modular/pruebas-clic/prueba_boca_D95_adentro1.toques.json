@@ -1,0 +1,16 @@
+{
+ "toques": [
+  {
+   "tipo": "jalar",
+   "forma": "circulo",
+   "caida": "suave",
+   "angulo": 0,
+   "simetria": 2,
+   "t": 0.25,
+   "radio_t": 0.5,
+   "radio_grados": 5.649774881112519,
+   "fuerza": -1.0,
+   "nota": "protuberancia hacia adentro en la boca"
+  }
+ ]
+}
