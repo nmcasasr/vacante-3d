@@ -58,15 +58,11 @@ TAPAS = {
 
 
 # El clic es llave y cerradura: la base de cada módulo lleva dos cuñas hacia
-# adentro (ver BOCA_*) y la parte de arriba, dos MUESCAS hacia adentro en el
-# mismo ángulo, donde esas cuñas caen cuando el módulo de arriba está apoyado.
-#
-# Las cuñas van en las dos primeras vueltas de la base: con el módulo apoyado
-# ocupan desde ~0.4 mm debajo del asiento (medio cordón) hasta ~1.6 por encima.
-# Eso es el final del hombro, no el labio: el labio arranca ~1.05 sobre el
-# asiento. La muesca se centra ahí, plana (`meseta`) en ese tramo y con el
-# borde suave para que el radio no salte de golpe entre vueltas.
-CLIC_CENTRO = 0.6    # mm sobre el asiento
+# adentro (ver BOCA_*) y arriba van dos MUESCAS hacia adentro en el mismo
+# ángulo, donde entran esas cuñas. La muesca va SÓLO en el labio, desde donde
+# arranca para arriba: en el hombro se vería y no hace falta. Simulado con los
+# cordones de los dos g-code, la base queda 0.4 mm más alta que sin clic (la
+# cuña apoya en el borde del hombro, justo debajo del labio).
 CLIC_ALTO = 3.6      # mm, de borde a borde (plana en el 60 % del medio)
 CLIC_ANCHO = 8.0     # mm, alrededor: un poco más que la cuña (6) para que entre
 
@@ -108,7 +104,7 @@ def muesca(s, hondo: float, angulo: float) -> dict:
     medio = CLIC_ALTO / 2
     return {"tipo": "jalar", "forma": "circulo", "caida": "meseta",
             "angulo": angulo, "simetria": 2,
-            "t": (s.asiento + CLIC_CENTRO) / s.altura, "radio_t": medio / s.altura,
+            "t": (s.labio_desde + medio) / s.altura, "radio_t": medio / s.altura,
             "radio_grados": math.degrees(CLIC_ANCHO / 2 / s.radio_labio),
             "fuerza": -hondo, "nota": f"muesca de {hondo:g} mm para la cuña de la base"}
 

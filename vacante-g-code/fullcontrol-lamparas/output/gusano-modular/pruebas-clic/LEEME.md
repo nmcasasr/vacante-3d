@@ -34,21 +34,19 @@ cama:** después no hay cómo distinguirlas a ojo, son 0.2 mm de diferencia.
 Para probar, se gira la base hasta que sus cuñas caigan en un par, y se pasa
 al siguiente.
 
-Las tres cubren el mismo lugar: el final del hombro, que es donde cae la cuña
-con el módulo apoyado. El labio arranca ~1 mm más arriba.
+Las muescas van **sólo en el labio**, desde donde arranca para arriba (4
+vueltas). El hombro, la parte de la esfera, queda liso.
 
 ## Cómo funciona, según la simulación
 
 Apoyé la base sobre la boca con los cordones reales de los dos g-code:
 
-- **Al bajar, la cuña pisa el labio ~0.23 mm.** El juego entre base y labio es
-  0.6 y la cuña entra 0.85. Para pasar, el labio o la base tienen que ceder
-  esas décimas, y al llegar abajo la cuña cae en la muesca: **ese es el clic**.
-  Si no cede, la base queda apoyada arriba del labio.
-- **Muescas de 0.8 y 1.0 no alcanzaban:** la cuña quedaba ~1.9 mm más alta,
-  apoyada en el hombro, porque ahí el hombro todavía se está abriendo.
-  Recién con **1.2** la cuña cabe y la base asienta donde siempre. Por eso
-  las pruebas van de 1.2 a 1.6.
+- **Al bajar, la cuña roza el labio ~0.23 mm.** El juego entre base y labio es
+  0.6 y la cuña entra 0.85. Para pasar, el plástico tiene que ceder esas
+  décimas, y al llegar abajo la cuña cae en la muesca: **ese es el clic**.
+- **Ya abajo, la base queda 0.4 mm más alta que sin clic.** La cuña está en
+  las dos primeras vueltas de la base, y la de más abajo apoya en el borde del
+  hombro, justo debajo de donde arranca el labio y la muesca.
 
 La simulación es rígida y en un corte, así que no sabe cuánto cede el PETG:
 eso lo dice la prueba.
