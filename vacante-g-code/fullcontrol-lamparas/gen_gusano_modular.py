@@ -103,19 +103,40 @@ def con_toques(cmd: list, toques: list, sufijo: str) -> list:
     return cmd[:i - 1] + ["--toques", ruta] + cmd[i - 1:]
 
 
-def clic(cmd: list, s, hondo: float) -> list:
-    """Las dos muescas donde entran las cuñas de la base del módulo de arriba."""
+def muesca(s, hondo: float, angulo: float) -> dict:
+    """Dos muescas enfrentadas (`angulo` y `angulo`+180) donde entran las cuñas."""
     medio = CLIC_ALTO / 2
-    t = {"tipo": "jalar", "forma": "circulo", "caida": "meseta",
-         "angulo": BOCA_ANGULO, "simetria": 2,
-         "t": (s.asiento + CLIC_CENTRO) / s.altura, "radio_t": medio / s.altura,
-         "radio_grados": math.degrees(CLIC_ANCHO / 2 / s.radio_labio),
-         "fuerza": -hondo, "nota": "muesca para la cuña de la base de arriba"}
-    cmd = con_toques(cmd, [t], f"_clic{hondo:g}")
-    # Lo mismo que la cuña de la base: la subida sobre la silueta lisa (si no,
-    # el borde de la muesca se lee como pared acostada y las vueltas de
-    # alrededor suben menos) y sin la mezcla de las primeras capas (con relieve
-    # en la pieza, la mezcla toca las primeras vueltas aunque no tengan nada).
+    return {"tipo": "jalar", "forma": "circulo", "caida": "meseta",
+            "angulo": angulo, "simetria": 2,
+            "t": (s.asiento + CLIC_CENTRO) / s.altura, "radio_t": medio / s.altura,
+            "radio_grados": math.degrees(CLIC_ANCHO / 2 / s.radio_labio),
+            "fuerza": -hondo, "nota": f"muesca de {hondo:g} mm para la cuña de la base"}
+
+
+def clic(cmd: list, s, hondo: float) -> list:
+    """El módulo: las dos muescas donde entran las cuñas del de arriba."""
+    return sin_mezcla(con_toques(cmd, [muesca(s, hondo, BOCA_ANGULO)], f"_clic{hondo:g}"))
+
+
+def muestrario(cmd: list, s, hondos: list) -> list:
+    """
+    La prueba: TODAS las profundidades en una sola boca. Cada una es un par
+    enfrentado (la base tiene dos cuñas enfrentadas) y los pares van cada
+    180/n grados, arrancando a 30° de la costura (0°, +X): mirando desde arriba
+    y girando antihorario desde la costura, de la menos honda a la más honda.
+    """
+    paso = 180.0 / len(hondos)
+    toques = [muesca(s, h, paso / 2 + k * paso) for k, h in enumerate(sorted(hondos))]
+    return sin_mezcla(con_toques(cmd, toques, "_muescas" + "_".join(f"{h:g}" for h in sorted(hondos))))
+
+
+def sin_mezcla(cmd: list) -> list:
+    """
+    La subida sobre la silueta lisa (si no, el borde de la muesca se lee como
+    pared acostada y las vueltas de alrededor suben menos) y sin la mezcla de
+    las primeras capas (con relieve en la pieza, la mezcla toca las primeras
+    vueltas aunque no tengan nada). Lo mismo que lleva la cuña de la base.
+    """
     i = cmd.index("--nombre")
     return cmd[:i] + ["--pendiente-silueta", "--capas-transicion", "0"] + cmd[i:]
 
@@ -157,8 +178,8 @@ def pruebas(d: float, a) -> None:
     s = gusano_modulo(radio_max=r, desde=desde, **base)
     con_piso = [x for x in RECETA if x != "--sin-base"]
     cmd = comando(s, r, f"{carpeta}/prueba_labio_D{d:g}", con_piso, desde=desde, **base)
-    for c in a.clic:
-        subprocess.run(clic(list(cmd), s, c), check=True)
+    if a.clic:
+        subprocess.run(muestrario(list(cmd), s, a.clic), check=True)
 
 
 def main() -> None:

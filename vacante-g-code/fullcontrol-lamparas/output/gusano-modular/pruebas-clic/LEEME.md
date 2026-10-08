@@ -15,15 +15,27 @@ la cama quedan alineados. Fuera de las cuñas y las muescas, cada pieza es
 | pieza | qué es | tiempo* |
 |---|---|---|
 | `prueba_boca_D95_clic1` | **la base**: las primeras vueltas del módulo, con las dos cuñas de ~0.85 mm | ~6 min |
-| `prueba_labio_D95_clic1.2` | **la boca**: el hombro y el labio del módulo con base chica, muescas de 1.2 mm | ~18 min |
-| `prueba_labio_D95_clic1.4` | ídem, muescas de 1.4 mm | ~18 min |
-| `prueba_labio_D95_clic1.6` | ídem, muescas de 1.6 mm | ~18 min |
+| `prueba_labio_D95_muescas1.2_1.4_1.6` | **la boca**: el hombro y el labio del módulo con base chica, con las tres profundidades de muesca | ~18 min |
 
 \* Calculado sobre el recorrido; el que da Orca es el bueno.
 
-**El número es qué tan honda es la muesca**, en mm hacia adentro. Las tres
-cubren el mismo lugar: el final del hombro, que es donde cae la cuña con el
-módulo apoyado. El labio arranca ~1 mm más arriba.
+**La boca trae las tres profundidades**, en mm hacia adentro. Como la base
+tiene dos cuñas enfrentadas, cada profundidad es un par enfrentado, uno cada
+60°. Mirando la pieza en la cama, desde adelante:
+
+    adelante y atrás                     1.4 mm
+    adelante-derecha y atrás-izquierda   1.6 mm
+    adelante-izquierda y atrás-derecha   1.2 mm
+
+(en ángulos: 90°/270° → 1.4, 150°/330° → 1.6, 30°/210° → 1.2)
+
+**Marcar la de adelante con un punto de marcador antes de sacarla de la
+cama:** después no hay cómo distinguirlas a ojo, son 0.2 mm de diferencia.
+Para probar, se gira la base hasta que sus cuñas caigan en un par, y se pasa
+al siguiente.
+
+Las tres cubren el mismo lugar: el final del hombro, que es donde cae la cuña
+con el módulo apoyado. El labio arranca ~1 mm más arriba.
 
 ## Cómo funciona, según la simulación
 
@@ -48,9 +60,12 @@ eso lo dice la prueba.
 - si se sostiene al levantar la boca;
 - si sale con un tirón razonable.
 
-Verificador: las cuatro dan 0 % de línea fina y puentes de 4.6 mm como
-máximo.
+Verificador: las dos dan 0 % de línea fina y puentes de 4.6 mm como máximo.
 
 ## Generar de nuevo
 
     python gen_gusano_modular.py 95 --prueba --clic 1.2 1.4 1.6 --boca-adentro 1.0
+
+Y el módulo entero con la profundidad que gane:
+
+    python gen_gusano_modular.py 95 --solo-modulos --clic 1.4

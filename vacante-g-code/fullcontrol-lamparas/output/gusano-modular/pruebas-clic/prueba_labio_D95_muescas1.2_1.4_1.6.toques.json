@@ -1,0 +1,40 @@
+{
+ "toques": [
+  {
+   "tipo": "jalar",
+   "forma": "circulo",
+   "caida": "meseta",
+   "angulo": 30.0,
+   "simetria": 2,
+   "t": 0.28323048078825575,
+   "radio_t": 0.2,
+   "radio_grados": 8.006746776796517,
+   "fuerza": -1.2,
+   "nota": "muesca de 1.2 mm para la cuña de la base"
+  },
+  {
+   "tipo": "jalar",
+   "forma": "circulo",
+   "caida": "meseta",
+   "angulo": 90.0,
+   "simetria": 2,
+   "t": 0.28323048078825575,
+   "radio_t": 0.2,
+   "radio_grados": 8.006746776796517,
+   "fuerza": -1.4,
+   "nota": "muesca de 1.4 mm para la cuña de la base"
+  },
+  {
+   "tipo": "jalar",
+   "forma": "circulo",
+   "caida": "meseta",
+   "angulo": 150.0,
+   "simetria": 2,
+   "t": 0.28323048078825575,
+   "radio_t": 0.2,
+   "radio_grados": 8.006746776796517,
+   "fuerza": -1.6,
+   "nota": "muesca de 1.6 mm para la cuña de la base"
+  }
+ ]
+}
