@@ -89,6 +89,7 @@ PRUEBA_LABIO_BAJO = 3.0       # mm de hombro debajo del labio (el asiento queda 
 # entre el final de la 2.ª vuelta (270°) y el principio de la 3.ª (90°).
 BOCA_ALTO = 0.85             # mm de silueta donde corta la cuña: medido, 0.80 y 0.90 dejan las dos vueltas
 BOCA_ANGULO = 90
+BOCA_ANCHO = 6.0              # mm, alrededor (la muesca de arriba es más ancha)
 
 
 def con_toques(cmd: list, toques: list, sufijo: str) -> list:
@@ -140,7 +141,7 @@ def pruebas(d: float, a) -> None:
         t = {"tipo": "jalar", "forma": "columna", "caida": "suave",
              "angulo": BOCA_ANGULO, "simetria": 2, "t": 0.0,
              "radio_t": BOCA_ALTO / 1.5 / s.altura,
-             "radio_grados": math.degrees(CLIC_ANCHO / 2 / (r * 0.6405)),
+             "radio_grados": math.degrees(BOCA_ANCHO / 2 / (r * 0.6405)),
              "fuerza": -f, "nota": "cuña hacia adentro en las dos primeras vueltas"}
         # Sin la mezcla de las primeras capas (`--capas-transicion`): apaga la
         # deformación justo en las vueltas donde va esta protuberancia. Y la
