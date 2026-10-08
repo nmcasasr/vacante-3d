@@ -470,6 +470,9 @@ def gusano_modulo(
         # `gen_gusano_modular.py --clic` va pegado ahí.
         silueta.labio_desde = zl - desde
         silueta.radio_labio = rl
+        # Dónde se apoya la boca del módulo de arriba (el hombro pasa por el
+        # radio del cuello): ahí cae la cuña de su base.
+        silueta.asiento = 2.0 * zc - desde
     return silueta
 
 

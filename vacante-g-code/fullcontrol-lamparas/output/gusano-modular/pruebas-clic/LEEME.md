@@ -1,51 +1,56 @@
 # Pruebas del clic: Gusi Ø95
 
-Piezas cortas para probar el clic de Gusi Ø95 en minutos, sin imprimir
-módulos enteros (~1 h cada uno). Se prueba **boca clic contra labio clic**.
+El clic es **llave y cerradura**:
+
+- **la base** de cada módulo, la parte de abajo, lleva **dos cuñas hacia
+  adentro** en sus dos primeras vueltas, las que se apoyan en la cama;
+- **la boca**, la parte de arriba, lleva **dos muescas hacia adentro** en el
+  mismo ángulo. Son el lugar donde caen las cuñas del módulo de arriba cuando
+  está apoyado.
+
+Las dos van en +Y y −Y de la cama, así que dos módulos apilados como salen de
+la cama quedan alineados. Fuera de las cuñas y las muescas, cada pieza es
+**punto por punto el módulo original**, costuras incluidas.
 
 | pieza | qué es | tiempo* |
 |---|---|---|
-| `prueba_boca_D95_clic1` | la base: la parte de abajo del módulo, igual a la original, con dos cuñas de ~0.85 mm **hacia adentro** sólo en las **dos primeras vueltas** (las que se apoyan en la cama) | ~6 min |
-| `prueba_labio_D95_clic0.8` | la boca: la parte de arriba del módulo, hombro y labio con base chica, con dos bolitas **hacia afuera** de 0.7 mm | ~18 min |
-| `prueba_labio_D95_clic1.1` | ídem, bolitas de 1.05 mm | ~18 min |
-| `prueba_labio_D95_clic1.4` | ídem, bolitas de 1.4 mm | ~18 min |
+| `prueba_boca_D95_clic1` | **la base**: las primeras vueltas del módulo, con las dos cuñas de ~0.85 mm | ~6 min |
+| `prueba_labio_D95_clic1.2` | **la boca**: el hombro y el labio del módulo con base chica, muescas de 1.2 mm | ~18 min |
+| `prueba_labio_D95_clic1.4` | ídem, muescas de 1.4 mm | ~18 min |
+| `prueba_labio_D95_clic1.6` | ídem, muescas de 1.6 mm | ~18 min |
 
 \* Calculado sobre el recorrido; el que da Orca es el bueno.
 
-Las cuñas van enfrentadas y miden ~6 mm de ancho. Las de la boca van en +Y y
-−Y de la cama. Fuera de las cuñas, la boca es punto por punto la del módulo
-original, costuras incluidas. Las bolitas del labio van en el mismo ángulo
-(+Y y −Y), así que dos módulos apilados como salen de la cama quedan
-alineados. Arrancan justo encima de donde se apoya el anillo de la base y
-ocupan 4 vueltas; fuera de ellas el labio es punto por punto el original. Los labios son tramos exactos del módulo: comparados contra el
-módulo entero con clic, la bolita queda a la misma altura, con menos de
-0.1 mm de diferencia.
+**El número es qué tan honda es la muesca**, en mm hacia adentro. Las tres
+cubren el mismo lugar: el final del hombro, que es donde cae la cuña con el
+módulo apoyado. El labio arranca ~1 mm más arriba.
 
-## Cómo probar
+## Cómo funciona, según la simulación
 
-Apoyar la boca sobre cada labio de dos maneras:
+Apoyé la base sobre la boca con los cordones reales de los dos g-code:
 
-- **con las protuberancias alineadas**, la de la boca encima de la del labio:
-  la de la boca tiene que pasar por encima de la del labio y quedar trabada
-  debajo;
-- **giradas 90°**: cada protuberancia aprieta contra la pared lisa de la otra
-  pieza.
+- **Al bajar, la cuña pisa el labio ~0.23 mm.** El juego entre base y labio es
+  0.6 y la cuña entra 0.85. Para pasar, el labio o la base tienen que ceder
+  esas décimas, y al llegar abajo la cuña cae en la muesca: **ese es el clic**.
+  Si no cede, la base queda apoyada arriba del labio.
+- **Muescas de 0.8 y 1.0 no alcanzaban:** la cuña quedaba ~1.9 mm más alta,
+  apoyada en el hombro, porque ahí el hombro todavía se está abriendo.
+  Recién con **1.2** la cuña cabe y la base asienta donde siempre. Por eso
+  las pruebas van de 1.2 a 1.6.
 
-Qué mirar: si hace clic, si la boca se sostiene al levantar el labio, si sale
-con un tirón razonable, y si las protuberancias salieron limpias.
+La simulación es rígida y en un corte, así que no sabe cuánto cede el PETG:
+eso lo dice la prueba.
 
-Ojo con la boca: sus protuberancias caen a la altura del hombro curvo del
-labio. Si la boca queda levantada sobre ellas y cabecea, en vez de bajar hasta
-apoyarse, el problema es ese.
+**Qué mirar:**
 
-## Lo que no se puede
+- si baja con un clic o hay que forzarla;
+- si una vez abajo no gira, porque la cuña está en la muesca;
+- si se sostiene al levantar la boca;
+- si sale con un tirón razonable.
 
-- **Una bolita de labio más petisa.** El radio no puede crecer más de ~0.6 mm
-  por vuelta: cada vuelta sube 0.8 y, si se corre más, ya no apoya en la de
-  abajo.
-- **Que el clic del labio no tenga juego vertical.** Entre el tope del anillo
-  de la boca y donde la bolita ya agarra quedan ~0.9 mm.
+Verificador: las cuatro dan 0 % de línea fina y puentes de 4.6 mm como
+máximo.
 
 ## Generar de nuevo
 
-    python gen_gusano_modular.py 95 --prueba --clic 0.8 1.1 1.4 --boca-adentro 1.0
+    python gen_gusano_modular.py 95 --prueba --clic 1.2 1.4 1.6 --boca-adentro 1.0

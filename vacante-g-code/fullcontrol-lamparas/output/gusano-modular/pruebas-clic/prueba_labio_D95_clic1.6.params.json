@@ -52,14 +52,14 @@
   "--altura",
   "9.00",
   "--toques",
-  "output/gusano-modular/pruebas-clic/prueba_labio_D95_clic1.1.toques.json",
+  "output/gusano-modular/pruebas-clic/prueba_labio_D95_clic1.6.toques.json",
   "--pendiente-silueta",
   "--capas-transicion",
   "0",
   "--nombre",
-  "gusano-modular/pruebas-clic/prueba_labio_D95_clic1.1"
+  "gusano-modular/pruebas-clic/prueba_labio_D95_clic1.6"
  ],
- "nombre": "gusano-modular/pruebas-clic/prueba_labio_D95_clic1.1",
+ "nombre": "gusano-modular/pruebas-clic/prueba_labio_D95_clic1.6",
  "borrador": [
   "--segmentos",
   "120",
@@ -180,5 +180,5 @@
    10.20283203125
   ]
  },
- "toques": "output/gusano-modular/pruebas-clic/prueba_labio_D95_clic1.1.toques.json"
+ "toques": "output/gusano-modular/pruebas-clic/prueba_labio_D95_clic1.6.toques.json"
 }

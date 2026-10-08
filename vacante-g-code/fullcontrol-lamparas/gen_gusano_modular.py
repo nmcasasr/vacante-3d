@@ -9,9 +9,9 @@ una TAPA (el mismo lóbulo cerrado en cúpula).
     python gen_gusano_modular.py --labio 10 --solo-modulos
     python gen_gusano_modular.py 95 --solo-modulos --clic 1.0
 
-`--clic` le pone al labio dos bolitas enfrentadas, pegadas al hombro: el
-anillo de la boca del módulo de arriba pasa por encima y queda trabado debajo.
-La boca no cambia, así que un módulo con clic encaja en uno sin clic y al revés.
+`--clic` es llave y cerradura: dos muescas arriba, al final del hombro, donde
+caen las dos cuñas que la base del módulo de arriba lleva en sus dos primeras
+vueltas. Las piezas cortas para probarlo salen con `--prueba`.
 
 La geometría vive en `siluetas.gusano_modulo`. Este script sólo le pide al
 generador la altura que la silueta dice que tiene —si no, la estira y el
@@ -57,30 +57,18 @@ TAPAS = {
 }
 
 
-# Las bolitas del clic. Arrancan apenas arriba de donde empieza el labio
-# —pegadas al hombro— porque es lo único que toca el módulo de arriba: se
-# apoya en el hombro con el anillo de su primera capa (~0.8 mm de alto) y su
-# pared se abre enseguida (en Ø95, 2.5 mm de luz a 1.2 mm del asiento). Más
-# arriba en el labio no tocarían nada.
+# El clic es llave y cerradura: la base de cada módulo lleva dos cuñas hacia
+# adentro (ver BOCA_*) y la parte de arriba, dos MUESCAS hacia adentro en el
+# mismo ángulo, donde esas cuñas caen cuando el módulo de arriba está apoyado.
 #
-# El labio arranca ~1 mm sobre el asiento, así que el anillo de la boca queda
-# justo debajo de la bolita. Una protuberancia hacia ADENTRO en la boca, que era
-# la otra opción, cae contra el hombro curvo y deja el módulo levantado sobre
-# las dos bolitas.
-#
-# 3.2 mm de alto porque en el labio las vueltas suben de a 0.8: con menos, la
-# espiral puede pasar 0.4 mm al costado del centro y la bolita sale a medias.
-CLIC_ALTO = 3.2      # mm
-CLIC_ANCHO = 6.0     # mm, alrededor
-# Dónde arranca la bolita respecto del labio. El anillo de la boca de arriba
-# termina ~0.25 mm DEBAJO del arranque del labio (el labio empieza ~1.05 sobre
-# el asiento y el anillo mide 0.8), así que la bolita puede empezar un pelo
-# antes del labio sin levantar el módulo. Más arriba deja juego: medido con la
-# bolita arrancando 0.05 sobre el labio, el anillo subía ~1 mm antes de trabar.
-# No se puede hacer más petisa: el radio no puede crecer más de ~0.6 mm por
-# vuelta (sube 0.8) o la vuelta no apoya, y con 1.1 mm de bolita eso son dos
-# vueltas de subida y dos de bajada.
-CLIC_SOBRE_LABIO = -0.15  # mm
+# Las cuñas van en las dos primeras vueltas de la base: con el módulo apoyado
+# ocupan desde ~0.4 mm debajo del asiento (medio cordón) hasta ~1.6 por encima.
+# Eso es el final del hombro, no el labio: el labio arranca ~1.05 sobre el
+# asiento. La muesca se centra ahí, plana (`meseta`) en ese tramo y con el
+# borde suave para que el radio no salte de golpe entre vueltas.
+CLIC_CENTRO = 0.6    # mm sobre el asiento
+CLIC_ALTO = 3.6      # mm, de borde a borde (plana en el 60 % del medio)
+CLIC_ANCHO = 8.0     # mm, alrededor: un poco más que la cuña (6) para que entre
 
 
 # Las pruebas de encastre (`--prueba`): la boca sola y el hombro con el labio,
@@ -103,15 +91,6 @@ BOCA_ALTO = 0.85             # mm de silueta donde corta la cuña: medido, 0.80 
 BOCA_ANGULO = 90
 
 
-def bolitas(z: float, medio: float, radio: float, fuerza: float, s, nota: str) -> dict:
-    """Dos bolitas enfrentadas centradas a `z` mm del arranque de la pieza."""
-    return {"tipo": "jalar", "forma": "circulo", "caida": "suave",
-            "angulo": BOCA_ANGULO, "simetria": 2,
-            "t": z / s.altura, "radio_t": medio / s.altura,
-            "radio_grados": math.degrees(CLIC_ANCHO / 2 / radio),
-            "fuerza": fuerza, "nota": nota}
-
-
 def con_toques(cmd: list, toques: list, sufijo: str) -> list:
     """Escribe el archivo de toques junto a la pieza y lo pasa con `--toques`."""
     i = cmd.index("--nombre") + 1
@@ -123,14 +102,17 @@ def con_toques(cmd: list, toques: list, sufijo: str) -> list:
     return cmd[:i - 1] + ["--toques", ruta] + cmd[i - 1:]
 
 
-def clic(cmd: list, s, fuerza: float) -> list:
-    """Las dos bolitas del clic, pegadas al arranque del labio."""
+def clic(cmd: list, s, hondo: float) -> list:
+    """Las dos muescas donde entran las cuñas de la base del módulo de arriba."""
     medio = CLIC_ALTO / 2
-    t = bolitas(s.labio_desde + CLIC_SOBRE_LABIO + medio, medio, s.radio_labio, fuerza, s,
-                "clic: dos bolitas en la base del labio")
-    cmd = con_toques(cmd, [t], f"_clic{fuerza:g}")
+    t = {"tipo": "jalar", "forma": "circulo", "caida": "meseta",
+         "angulo": BOCA_ANGULO, "simetria": 2,
+         "t": (s.asiento + CLIC_CENTRO) / s.altura, "radio_t": medio / s.altura,
+         "radio_grados": math.degrees(CLIC_ANCHO / 2 / s.radio_labio),
+         "fuerza": -hondo, "nota": "muesca para la cuña de la base de arriba"}
+    cmd = con_toques(cmd, [t], f"_clic{hondo:g}")
     # Lo mismo que la cuña de la base: la subida sobre la silueta lisa (si no,
-    # el borde de la bolita se lee como pared acostada y las vueltas de
+    # el borde de la muesca se lee como pared acostada y las vueltas de
     # alrededor suben menos) y sin la mezcla de las primeras capas (con relieve
     # en la pieza, la mezcla toca las primeras vueltas aunque no tengan nada).
     i = cmd.index("--nombre")
@@ -187,9 +169,9 @@ def main() -> None:
     p.add_argument("--solo-modulos", action="store_true",
                    help="no rehacer las tapas: no llevan labio ni holgura")
     p.add_argument("--clic", type=float, nargs="+", default=[], metavar="MM",
-                   help="cuánto sale cada bolita del labio, en mm de radio. Con la holgura de "
-                        "0.6, 1.0 deja 0.4 de traba. Varios valores = una pieza por valor. "
-                        "Las tapas nunca lo llevan")
+                   help="qué tan honda es cada muesca de arriba, en mm de radio (la cuña de la "
+                        "base entra ~0.85). Varios valores = una pieza por valor. Las tapas "
+                        "nunca lo llevan")
     p.add_argument("--prueba", action="store_true",
                    help="en vez de módulos y tapas, las piezas cortas de prueba de encastre: "
                         "una boca por cada --boca-adentro (o la lisa) y un labio por cada --clic")

@@ -3,14 +3,14 @@
   {
    "tipo": "jalar",
    "forma": "circulo",
-   "caida": "suave",
+   "caida": "meseta",
    "angulo": 90,
    "simetria": 2,
-   "t": 0.49444444444444446,
-   "radio_t": 0.17777777777777778,
-   "radio_grados": 6.005060082597388,
-   "fuerza": 1.4,
-   "nota": "clic: dos bolitas en la base del labio"
+   "t": 0.28323048078825575,
+   "radio_t": 0.2,
+   "radio_grados": 8.006746776796517,
+   "fuerza": -1.4,
+   "nota": "muesca para la cuña de la base de arriba"
   }
  ]
 }
