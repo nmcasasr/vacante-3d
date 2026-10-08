@@ -57,8 +57,6 @@
   "--capas-transicion",
   "0",
   "--pendiente-silueta",
-  "--capas-base",
-  "3",
   "--nombre",
   "gusano-modular/pruebas-clic/prueba_boca_D95_clic1"
  ],

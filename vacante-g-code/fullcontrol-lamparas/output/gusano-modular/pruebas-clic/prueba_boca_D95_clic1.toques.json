@@ -6,11 +6,11 @@
    "caida": "suave",
    "angulo": 90,
    "simetria": 2,
-   "t": 0.20625,
-   "radio_t": 0.13749999999999998,
+   "t": 0.0,
+   "radio_t": 0.17708333333333331,
    "radio_grados": 5.649774881112519,
    "fuerza": -1.0,
-   "nota": "protuberancia hacia adentro, sólo en la vuelta plana"
+   "nota": "cuña hacia adentro en las dos primeras vueltas"
   }
  ]
 }

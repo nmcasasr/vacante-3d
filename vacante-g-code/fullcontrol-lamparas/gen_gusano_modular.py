@@ -94,15 +94,12 @@ CLIC_SOBRE_LABIO = -0.15  # mm
 #     asienta igual que dos módulos.
 PRUEBA_BOCA_ALTO = 3.2        # mm: 4 vueltas
 PRUEBA_LABIO_BAJO = 3.0       # mm de hombro debajo del labio (el asiento queda ~2 mm arriba del piso)
-# La protuberancia hacia adentro de la boca clic va SÓLO en las vueltas
-# PLANAS: anillos a z fija, uno encima del otro, antes de que arranque la
-# espiral. El clic se hace contra esas vueltas, no contra las que suben. El
-# módulo liso tiene una sola; la boca clic lleva tres para que la protuberancia
-# quede más alta y más marcada (~1.3 mm). Cada vuelta plana recorre una subida
-# de la marcha, ~0.44 mm de silueta. Va en 90° y 270°, lejos de la costura (0°):
-# ahí la vuelta cambia y la protuberancia caería mitad en una y mitad en otra.
-BOCA_VUELTAS_PLANAS = 3
-BOCA_SUBIDA = 0.44            # mm de silueta por vuelta plana
+# La cuña de la boca clic: hacia adentro SÓLO en las dos primeras vueltas, las
+# que se apoyan en la cama (la plana y la primera de la espiral). El resto es
+# la boca del módulo tal cual. La cuña corta seco (`columna`: el peso depende
+# sólo del ángulo y en altura se apaga de golpe a 1.5 radios); el corte cae
+# entre el final de la 2.ª vuelta (270°) y el principio de la 3.ª (90°).
+BOCA_ALTO = 0.85             # mm de silueta donde corta la cuña: medido, 0.80 y 0.90 dejan las dos vueltas
 BOCA_ANGULO = 90
 
 
@@ -152,13 +149,11 @@ def pruebas(d: float, a) -> None:
     if not a.boca_adentro:
         subprocess.run(cmd, check=True)
     for f in a.boca_adentro:
-        # `columna`: el peso depende sólo del ángulo y en altura corta seco a
-        # 1.5 radios, o sea justo al terminar la última vuelta plana.
-        alto = BOCA_VUELTAS_PLANAS * BOCA_SUBIDA / s.altura
         t = {"tipo": "jalar", "forma": "columna", "caida": "suave",
-             "angulo": BOCA_ANGULO, "simetria": 2, "t": alto / 2, "radio_t": alto / 3,
+             "angulo": BOCA_ANGULO, "simetria": 2, "t": 0.0,
+             "radio_t": BOCA_ALTO / 1.5 / s.altura,
              "radio_grados": math.degrees(CLIC_ANCHO / 2 / (r * 0.6405)),
-             "fuerza": -f, "nota": "protuberancia hacia adentro, sólo en la vuelta plana"}
+             "fuerza": -f, "nota": "cuña hacia adentro en las dos primeras vueltas"}
         # Sin la mezcla de las primeras capas (`--capas-transicion`): apaga la
         # deformación justo en las vueltas donde va esta protuberancia. Y la
         # subida medida sobre la silueta lisa (`--pendiente-silueta`): si no, el
@@ -166,8 +161,7 @@ def pruebas(d: float, a) -> None:
         # acostada y la vuelta siguiente casi no sube (0.05 mm en vez de 0.44).
         sin_mezcla = con_toques(list(cmd), [t], f"_clic{f:g}")
         i = sin_mezcla.index("--nombre")
-        subprocess.run(sin_mezcla[:i] + ["--capas-transicion", "0", "--pendiente-silueta",
-                                         "--capas-base", str(BOCA_VUELTAS_PLANAS)]
+        subprocess.run(sin_mezcla[:i] + ["--capas-transicion", "0", "--pendiente-silueta"]
                        + sin_mezcla[i:], check=True)
 
     desde = entero.labio_desde - PRUEBA_LABIO_BAJO
