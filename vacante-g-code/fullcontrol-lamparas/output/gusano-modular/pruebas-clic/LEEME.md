@@ -1,10 +1,17 @@
 # Pruebas del clic: Gusi Ø95
 
-Tres piezas cortas: el hombro y el labio de un módulo Ø95 con las dos bolitas
-del clic. Se prueban contra un módulo Ø95 **ya impreso**, que se apoya encima:
-su boca es la misma de siempre.
+Piezas cortas para probar el clic de Gusi Ø95 en minutos. Se prueban de a
+dos: **la boca encima de un labio**.
 
-| pieza | cuánto sale la bolita | traba por lado | tiempo* |
+- **`prueba_boca_D95`** — la parte de abajo de un módulo: sus primeras 4
+  vueltas, lisa (la boca no cambia con el clic). ~6 min.
+- **`prueba_labio_D95_clicN`** — la parte de arriba de un módulo: el hombro y
+  el labio con las dos bolitas, con una base chica para que se pare.
+
+Se apoya la boca sobre cada labio y se elige el que mejor cierra. La boca
+también se puede reemplazar por un módulo Ø95 ya impreso: es la misma.
+
+| labio | cuánto sale la bolita | traba por lado | tiempo* |
 |---|---|---|---|
 | `prueba_labio_D95_clic0.8` | 0.7 mm | ~0.1 mm: casi sólo roce | ~18 min |
 | `prueba_labio_D95_clic1.1` | 1.05 mm | ~0.45 mm | ~18 min |
@@ -27,7 +34,7 @@ Verificador: 0 % de línea fina, sin puentes.
 **Qué mirar:**
 
 - si hace clic;
-- si el módulo de arriba se sostiene al levantar la prueba;
+- si la boca se sostiene al levantar el labio;
 - si sale con un tirón razonable;
 - si las bolitas salieron limpias, sin hilos ni colgados debajo.
 
