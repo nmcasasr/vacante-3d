@@ -84,8 +84,9 @@ CLIC_SOBRE_LABIO = -0.15  # mm
 
 
 # Las pruebas de encastre (`--prueba`): la boca sola y el hombro con el labio,
-# para probar el clic en minutos y no en una hora por módulo: la boca va
-# encima de cada labio con bolitas. El labio liso no se saca, es el de siempre.
+# para probar el clic en minutos y no en una hora por módulo: la boca clic
+# (protuberancias hacia adentro, `--boca-adentro`) contra cada labio clic
+# (bolitas hacia afuera, `--clic`). Sin `--boca-adentro` sale la boca lisa.
 #   - boca: las primeras vueltas del módulo, igual que en la pieza (sin piso).
 #     Es la parte que se apoya en el de abajo; más arriba la pared ya se abrió.
 #   - labio: desde un poco debajo del asiento hasta el final, con piso para que
@@ -142,14 +143,15 @@ def pruebas(d: float, a) -> None:
 
     s = gusano_modulo(radio_max=r, hasta=PRUEBA_BOCA_ALTO, **base)
     cmd = comando(s, r, f"{carpeta}/prueba_boca_D{d:g}", RECETA, hasta=PRUEBA_BOCA_ALTO, **base)
-    subprocess.run(cmd, check=True)
+    if not a.boca_adentro:
+        subprocess.run(cmd, check=True)
     for f in a.boca_adentro:
         t = bolitas(BOCA_ADENTRO_CENTRO, BOCA_ADENTRO_MEDIO, r * 0.6405, -f, s,
                     "protuberancia hacia adentro en la boca")
         # Sin la mezcla de las primeras capas (`--capas-transicion`) ni la
         # primera vuelta lisa (`--capas-base`): las dos apagan la deformación
         # justo en las vueltas donde va esta protuberancia.
-        sin_mezcla = con_toques(list(cmd), [t], f"_adentro{f:g}")
+        sin_mezcla = con_toques(list(cmd), [t], f"_clic{f:g}")
         i = sin_mezcla.index("--nombre")
         subprocess.run(sin_mezcla[:i] + ["--capas-transicion", "0", "--capas-base", "0"]
                        + sin_mezcla[i:], check=True)
@@ -176,10 +178,10 @@ def main() -> None:
                         "Las tapas nunca lo llevan")
     p.add_argument("--prueba", action="store_true",
                    help="en vez de módulos y tapas, las piezas cortas de prueba de encastre: "
-                        "la boca lisa y un labio por cada --clic")
+                        "una boca por cada --boca-adentro (o la lisa) y un labio por cada --clic")
     p.add_argument("--boca-adentro", type=float, nargs="+", default=[], metavar="MM",
-                   help="con --prueba: también la boca con dos protuberancias hacia adentro "
-                        "en las primeras vueltas, para comparar contra el clic del labio")
+                   help="con --prueba: la boca clic, con dos protuberancias hacia adentro en "
+                        "las primeras vueltas, de estos mm")
     a = p.parse_args()
 
     for d in a.diametros:

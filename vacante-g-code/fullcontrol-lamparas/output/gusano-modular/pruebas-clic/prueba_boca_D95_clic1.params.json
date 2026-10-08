@@ -52,10 +52,16 @@
   "47.5",
   "--altura",
   "3.20",
+  "--toques",
+  "output/gusano-modular/pruebas-clic/prueba_boca_D95_clic1.toques.json",
+  "--capas-transicion",
+  "0",
+  "--capas-base",
+  "0",
   "--nombre",
-  "gusano-modular/pruebas-clic/prueba_boca_D95"
+  "gusano-modular/pruebas-clic/prueba_boca_D95_clic1"
  ],
- "nombre": "gusano-modular/pruebas-clic/prueba_boca_D95",
+ "nombre": "gusano-modular/pruebas-clic/prueba_boca_D95_clic1",
  "borrador": [
   "--segmentos",
   "120",
@@ -155,18 +161,20 @@
  ],
  "mapeo": {
   "z0": 0.8,
-  "z1": 4.0350097656249995,
-  "capas": 7,
+  "z1": 4.7725830078125,
+  "capas": 9,
   "z_capa": [
    0.8,
    1.22408447265625,
    1.6597045898437501,
-   2.10704345703125,
-   2.56610107421875,
-   3.03687744140625,
-   3.5193725585937496,
-   4.0350097656249995
+   2.02427978515625,
+   2.3428955078125,
+   2.6596801757812503,
+   3.0158325195312505,
+   3.4798339843750004,
+   3.9733154296875,
+   4.7725830078125
   ]
  },
- "toques": null
+ "toques": "output/gusano-modular/pruebas-clic/prueba_boca_D95_clic1.toques.json"
 }
