@@ -866,6 +866,26 @@ def generar_pieza(
         n = max(1, round(altura / paso))
         ts = [j / n for j in range(n + 1)]
         zs = [j * altura / n for j in range(n + 1)]
+    elif pendiente_silueta and silueta_referencia is not None:
+        # La marcha, igual que la extrusión con `pendiente_silueta`, mide la
+        # inclinación sobre la SILUETA LISA. Es el caso de una cúpula CON
+        # relieve —el árbol: la bola del hongo cubierta de grumos—, que necesita
+        # la marcha adaptativa por la cúpula y no puede dejar que el relieve la
+        # gobierne: cada grumo entrando y saliendo se lee como una pared
+        # acostada, y el paso se achica hasta el piso. Medido en el primer cupón
+        # del árbol: cordón declarado de 1.2 x 0.223 en vez de 0.8, 19 % del
+        # recorrido por debajo de 0.10 mm y puentes de 130 mm en el ecuador.
+        #
+        # Con paso fijo no pasa por acá, y todas las recetas que ya usaban
+        # `--pendiente-silueta` son de paso fijo: ninguna se mueve.
+        sr = silueta_referencia
+
+        def _pendiente_lisa(t: float, h: float = 5e-3) -> float:
+            a, b = min(1.0, t + h), max(0.0, t - h)
+            return abs(sr(a) - sr(b)) / ((a - b) or 1e-9)
+
+        ts, zs = marcha_vertical(None, altura, paso, pendiente=_pendiente_lisa,
+                                 delta_radio=lambda t, t2: abs(sr(t2) - sr(t)))
     else:
         ts, zs = marcha_vertical(None, altura, paso, pendiente=_pendiente,
                                  delta_radio=_delta_radio)
@@ -1373,6 +1393,16 @@ def generar_pieza(
             and not anillo_plano
         if not anillo_plano:
             z_vuelta += subida
+        # Las vueltas planas que siguen al anillo van UNA CAPA MÁS ARRIBA que su
+        # `z_capa`. El anillo no consume altura, así que la segunda vuelta plana
+        # arranca con el mismo `z_capa` que él: impresa ahí salía en la cama, al
+        # lado del anillo, y la tercera quedaba a una capa y la espiral saltaba
+        # otra de golpe. Medido con `--capas-base 3` en la boca de Gusi: anillos
+        # a z 0.80, 0.80 y 1.24, y la espiral arrancando en 1.68. Sólo pasa con
+        # dos o más vueltas planas; con una (la de todas las piezas) no hay
+        # ninguna después del anillo.
+        z_plana = z_capa + subida if (espiral and capa >= 1 and not rampa
+                                      and not anillo_plano) else z_capa
         # La misma guarda que ya tiene la atenuación del paso (más arriba): la
         # transición solo tiene sentido si hay un patrón ANGULAR que levantar.
         #
@@ -1654,7 +1684,7 @@ def generar_pieza(
         for i_seg, (fraccion, angulo, t, radio_crudo) in enumerate(crudos):
             radio = medio + (radio_crudo - medio) * mezcla
             radio_max = max(radio_max, radio)
-            z = z_capa + fraccion * subida if rampa else z_capa
+            z = z_capa + fraccion * subida if rampa else z_plana
             dz_crudo = funcion_dz(angulo, t) if funcion_dz is not None else 0.0
             z += dz_crudo * onda_capa
             if modular:
