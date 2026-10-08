@@ -84,7 +84,9 @@ CLIC_SOBRE_LABIO = -0.15  # mm
 
 
 # Las pruebas de encastre (`--prueba`): la boca sola y el hombro con el labio,
-# para probar el clic en minutos y no en una hora por módulo.
+# para probar el clic en minutos y no en una hora por módulo. Sólo las que
+# llevan algo: la boca y el labio lisos son iguales a los de cualquier módulo
+# ya impreso, que es contra lo que se prueba.
 #   - boca: las primeras vueltas del módulo, igual que en la pieza (sin piso).
 #     Es la parte que se apoya en el de abajo; más arriba la pared ya se abrió.
 #   - labio: desde un poco debajo del asiento hasta el final, con piso para que
@@ -141,7 +143,6 @@ def pruebas(d: float, a) -> None:
 
     s = gusano_modulo(radio_max=r, hasta=PRUEBA_BOCA_ALTO, **base)
     cmd = comando(s, r, f"{carpeta}/prueba_boca_D{d:g}", RECETA, hasta=PRUEBA_BOCA_ALTO, **base)
-    subprocess.run(cmd, check=True)
     for f in a.boca_adentro:
         t = bolitas(BOCA_ADENTRO_CENTRO, BOCA_ADENTRO_MEDIO, r * 0.6405, -f, s,
                     "protuberancia hacia adentro en la boca")
@@ -157,7 +158,6 @@ def pruebas(d: float, a) -> None:
     s = gusano_modulo(radio_max=r, desde=desde, **base)
     con_piso = [x for x in RECETA if x != "--sin-base"]
     cmd = comando(s, r, f"{carpeta}/prueba_labio_D{d:g}", con_piso, desde=desde, **base)
-    subprocess.run(cmd, check=True)
     for c in a.clic:
         subprocess.run(clic(list(cmd), s, c), check=True)
 
@@ -176,7 +176,8 @@ def main() -> None:
                         "Las tapas nunca lo llevan")
     p.add_argument("--prueba", action="store_true",
                    help="en vez de módulos y tapas, las piezas cortas de prueba de encastre: "
-                        "la boca y el labio (uno liso y uno por cada --clic)")
+                        "un labio por cada --clic y una boca por cada --boca-adentro. Se prueban "
+                        "contra módulos ya impresos")
     p.add_argument("--boca-adentro", type=float, nargs="+", default=[], metavar="MM",
                    help="con --prueba: también la boca con dos protuberancias hacia adentro "
                         "en las primeras vueltas, para comparar contra el clic del labio")
