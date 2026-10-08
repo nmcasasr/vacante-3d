@@ -106,7 +106,7 @@ BOCA_ANGULO = 90
 def bolitas(z: float, medio: float, radio: float, fuerza: float, s, nota: str) -> dict:
     """Dos bolitas enfrentadas centradas a `z` mm del arranque de la pieza."""
     return {"tipo": "jalar", "forma": "circulo", "caida": "suave",
-            "angulo": 0, "simetria": 2,
+            "angulo": BOCA_ANGULO, "simetria": 2,
             "t": z / s.altura, "radio_t": medio / s.altura,
             "radio_grados": math.degrees(CLIC_ANCHO / 2 / radio),
             "fuerza": fuerza, "nota": nota}
@@ -128,7 +128,13 @@ def clic(cmd: list, s, fuerza: float) -> list:
     medio = CLIC_ALTO / 2
     t = bolitas(s.labio_desde + CLIC_SOBRE_LABIO + medio, medio, s.radio_labio, fuerza, s,
                 "clic: dos bolitas en la base del labio")
-    return con_toques(cmd, [t], f"_clic{fuerza:g}")
+    cmd = con_toques(cmd, [t], f"_clic{fuerza:g}")
+    # Lo mismo que la cuña de la base: la subida sobre la silueta lisa (si no,
+    # el borde de la bolita se lee como pared acostada y las vueltas de
+    # alrededor suben menos) y sin la mezcla de las primeras capas (con relieve
+    # en la pieza, la mezcla toca las primeras vueltas aunque no tengan nada).
+    i = cmd.index("--nombre")
+    return cmd[:i] + ["--pendiente-silueta", "--capas-transicion", "0"] + cmd[i:]
 
 
 def comando(s, r: float, nombre: str, receta: list, **ps) -> list:

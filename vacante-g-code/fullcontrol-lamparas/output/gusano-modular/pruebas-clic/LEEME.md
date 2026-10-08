@@ -5,8 +5,8 @@ módulos enteros (~1 h cada uno). Se prueba **boca clic contra labio clic**.
 
 | pieza | qué es | tiempo* |
 |---|---|---|
-| `prueba_boca_D95_clic1` | la parte de abajo del módulo, igual a la original, con dos cuñas de ~0.85 mm **hacia adentro** sólo en las **dos primeras vueltas** (las que se apoyan en la cama) | ~6 min |
-| `prueba_labio_D95_clic0.8` | la parte de arriba del módulo, hombro y labio con base chica, con dos bolitas **hacia afuera** de 0.7 mm | ~18 min |
+| `prueba_boca_D95_clic1` | la base: la parte de abajo del módulo, igual a la original, con dos cuñas de ~0.85 mm **hacia adentro** sólo en las **dos primeras vueltas** (las que se apoyan en la cama) | ~6 min |
+| `prueba_labio_D95_clic0.8` | la boca: la parte de arriba del módulo, hombro y labio con base chica, con dos bolitas **hacia afuera** de 0.7 mm | ~18 min |
 | `prueba_labio_D95_clic1.1` | ídem, bolitas de 1.05 mm | ~18 min |
 | `prueba_labio_D95_clic1.4` | ídem, bolitas de 1.4 mm | ~18 min |
 
@@ -14,8 +14,10 @@ módulos enteros (~1 h cada uno). Se prueba **boca clic contra labio clic**.
 
 Las cuñas van enfrentadas y miden ~6 mm de ancho. Las de la boca van en +Y y
 −Y de la cama. Fuera de las cuñas, la boca es punto por punto la del módulo
-original, costuras incluidas. Las del labio van en +X y −X. Las del labio arrancan justo encima de donde se apoya el anillo
-de la boca. Los labios son tramos exactos del módulo: comparados contra el
+original, costuras incluidas. Las bolitas del labio van en el mismo ángulo
+(+Y y −Y), así que dos módulos apilados como salen de la cama quedan
+alineados. Arrancan justo encima de donde se apoya el anillo de la base y
+ocupan 4 vueltas; fuera de ellas el labio es punto por punto el original. Los labios son tramos exactos del módulo: comparados contra el
 módulo entero con clic, la bolita queda a la misma altura, con menos de
 0.1 mm de diferencia.
 

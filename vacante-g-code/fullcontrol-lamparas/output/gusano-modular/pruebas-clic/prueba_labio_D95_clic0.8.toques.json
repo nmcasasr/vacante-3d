@@ -4,7 +4,7 @@
    "tipo": "jalar",
    "forma": "circulo",
    "caida": "suave",
-   "angulo": 0,
+   "angulo": 90,
    "simetria": 2,
    "t": 0.49444444444444446,
    "radio_t": 0.17777777777777778,
