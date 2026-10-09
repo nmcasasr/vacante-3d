@@ -219,7 +219,7 @@ corazones.
 ## `4-lampara-puck/` — la media esfera que tapa una lámpara puck
 
 **`puck_D86_grumo9mm`** tapa una lámpara puck de Ø83.2 x 18 mm, que queda
-adentro, apoyada en la mesa con la luz para arriba. ~1.3 h: el tiempo "por F"
+adentro, apoyada en la mesa con la luz para arriba. ~1.2 h: el tiempo "por F"
 coincide con el de Orca en los tres `.gcode.3mf` laminados (1.28 h, 1.10 h,
 0.82 h contra 1.3, 1.1, 0.8), así que la meta de 1.5 h se mide con ese número
 y no con el x1.4.
@@ -242,6 +242,16 @@ y no con el x1.4.
   Las alturas son al centro, medidas desde la mesa: switch 11 ± 3.5 (el botón
   mide 5) y USB 9 ± 4 (el conector mide 6), con margen porque la capa es de 0.8.
 
-Verificador: línea fina 0.00 %, peor puente 11.1 mm (el techo de la ventana del
-switch), contacto 12 %. Intercalado 100 %. La media `media_D92` y el cupón de
-velocidades regenerados salen idénticos.
+**Capas planas (`--escalon 4.6154`, una púa).** La primera versión iba en
+espiral: cada vuelta subía 0.8 mm repartidos en los 360°, así que cada fila de
+grumos terminaba una capa más arriba de donde empezaba (y en la cúpula, hasta
+0.7 mm más adentro). Los últimos grumos de cada fila quedaban corridos contra
+los primeros, en toda la pieza, y se veía en Orca. Ahora cada vuelta va
+plana y sube a la siguiente sólo en sus últimos 4.6°, donde se saltea un grumo.
+Medido: en las 16 filas los 77 grumos tienen el pie a la misma z y al mismo
+radio, y la subida cae entre 50.7° y 54.9°.
+
+Verificador: línea fina 0.00 %, peor puente 10.4 mm (el techo de la ventana del
+switch), contacto 12 %. Intercalado 98.6 %: el 1.4 % es el grumo de al lado del
+que se saltea, que cae una fila sí y otra no. ~1.2 h. La media `media_D92` y el
+cupón de velocidades regenerados salen idénticos.

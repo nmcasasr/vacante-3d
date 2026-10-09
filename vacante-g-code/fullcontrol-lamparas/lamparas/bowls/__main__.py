@@ -162,6 +162,13 @@ def _cli() -> None:
                         "ANCHO mm medidos sobre la pared. Las puntas van redondas (radio = la "
                         "mitad del alto) para que el puente de arriba sea mas corto. Sobre el "
                         "hueco se apaga el extrusor y se retrae; la espiral no cambia.")
+    p.add_argument("--escalon", type=float, default=0.0, metavar="GRADOS",
+                   help="cada vuelta va PLANA y sube a la siguiente solo en sus ultimos GRADOS, "
+                        "en vez de subir de a poco toda la vuelta (0 = espiral, como siempre). "
+                        "Con la espiral una fila de grumos termina una capa mas arriba de donde "
+                        "empieza y los ultimos quedan corridos contra los primeros. En `puas` el "
+                        "grumo que cae en esa subida no se hace. Para una pua por vuelta: "
+                        "360 / puas.")
     p.add_argument("--altura", type=float, default=60.0, help="altura de la pared en mm")
     p.add_argument("--radio-base", type=float, help="radio del fondo en mm")
     p.add_argument("--radio-boca", type=float, help="radio de la boca en mm")
@@ -846,6 +853,7 @@ def _cli() -> None:
             base_agujero_retraccion=args.hueco_retraccion,
             base_agujero_flujo=args.hueco_surco,
             pared_agujero=_ventanas(args, silueta),
+            escalon=args.escalon / 360.0,
             paso_fijo={"auto": None, "medir": "auto",
                        "fijo": True, "adaptativo": False}[args.paso],
         )

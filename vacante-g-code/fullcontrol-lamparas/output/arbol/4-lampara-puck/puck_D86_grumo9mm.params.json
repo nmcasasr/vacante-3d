@@ -82,6 +82,8 @@
   "--base-flujo-exacto",
   "--base-borde",
   "2.4",
+  "--escalon",
+  "4.6154",
   "--nombre",
   "arbol/4-lampara-puck/puck_D86_grumo9mm"
  ],

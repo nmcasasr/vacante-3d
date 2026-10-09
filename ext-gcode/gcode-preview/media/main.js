@@ -274,6 +274,15 @@
     // de la malla y no del color.
     const segH = [];
     let curH = 0;
+    // Una marca `;Z:` por capa: la escribe Orca/Bambu y la escribe el
+    // generador de lámparas UNA VEZ POR VUELTA de la espiral. Si el archivo las
+    // trae, la capa de cada segmento es la de la última marca, y no la que sale
+    // de cortar la altura en tajadas parejas: en una cúpula el paso vertical
+    // baja a 0.12 mm arriba, y las tajadas de alto fijo partían una vuelta de
+    // grumos en dos capas del visor — la mitad de los grumos en una y el resto
+    // en la siguiente, como si faltaran.
+    const segVuelta = [];
+    const marcasZ = [];
     const changes = [];   // { seg, kind, from, to, x, y, z }
     const band = () => (manual === 0 ? tool : 3 + manual);
 
@@ -309,6 +318,8 @@
       }
       // `;HEIGHT:` se lee ANTES de descartar el comentario. Los dos dialectos:
       // `;HEIGHT:` (Prusa) y `; LAYER_HEIGHT:` (Bambu/Orca).
+      const mz = /^\s*;Z:\s*([-\d.]+)/.exec(raw);
+      if (mz) marcasZ.push(parseFloat(mz[1]));
       const mh = /;\s*(?:HEIGHT|LAYER_HEIGHT)\s*:\s*([\d.]+)/i.exec(raw);
       if (mh) {
         const v = parseFloat(mh[1]);
@@ -435,6 +446,7 @@
           segBand.push(band());
           segE.push(extruding ? de / n : 0);
           segH.push(curH);
+          segVuelta.push(marcasZ.length - 1);
           segV.push(Math.min(feed / 60, VEL_MAX));
           segA.push(accel);
           px = qx; py = qy; pz = qz;
@@ -483,11 +495,13 @@
         segBand.push(band());
         segE.push(extruding ? de : 0);
         segH.push(curH);
+        segVuelta.push(marcasZ.length - 1);
         segV.push(Math.min(feed / 60, VEL_MAX));
         segA.push(accel);
       }
     }
-    return { V, C, ext, segZ, segBand, segE, segH, segV, segA, changes, bbox, segObjeto };
+    return { V, C, ext, segZ, segBand, segE, segH, segV, segA, changes, bbox, segObjeto,
+             segVuelta, marcasZ };
   }
 
   // Estimate layer height so we can bin segments into layers by real Z. Works
@@ -1877,7 +1891,8 @@
 
   function rebuild(text, ruta) {
     const t0 = performance.now();
-    const { V, C, ext, segZ, segBand, segE, segH, segV, segA, changes, bbox, segObjeto } = parse(text);
+    const { V, C, ext, segZ, segBand, segE, segH, segV, segA, changes, bbox, segObjeto,
+            segVuelta, marcasZ } = parse(text);
     tiempo = estimarTiempo(V, segV, segA, changes);
     const travelCol = new THREE.Color(TRAVEL_COL);
 
@@ -1903,16 +1918,20 @@
 
     // Bin segments into layers by real Z (robust for planar and vase spirals).
     const layerH = estimateLayerHeight(V, ext, bbox);
+    // Con marcas `;Z:` (ver `segVuelta` en parse) cada capa es una vuelta
+    // entera; sin ellas, tajadas de alto `layerH` como siempre.
+    const porMarcas = totalSegs > 0 && marcasZ.length >= 3;
     const layers = totalSegs > 0
-      ? Math.max(1, Math.round((bbox.maxz - bbox.minz) / layerH) + 1)
+      ? (porMarcas ? marcasZ.length
+                   : Math.max(1, Math.round((bbox.maxz - bbox.minz) / layerH) + 1))
       : 0;
     const layerAt = new Array(totalSegs);
     const layerZ = new Array(layers);
     for (let s = 0; s < totalSegs; s++) {
-      let l = Math.round((segZ[s] - bbox.minz) / layerH);
+      let l = porMarcas ? segVuelta[s] : Math.round((segZ[s] - bbox.minz) / layerH);
       if (l < 0) l = 0; else if (l >= layers) l = layers - 1;
       layerAt[s] = l;
-      layerZ[l] = segZ[s];
+      layerZ[l] = porMarcas ? marcasZ[l] : segZ[s];
     }
 
     // Prefix sum: segsUpToLayer[l] = # of segments in layers 0..l (inclusive).

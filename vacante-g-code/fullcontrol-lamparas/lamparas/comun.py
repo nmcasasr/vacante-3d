@@ -565,6 +565,7 @@ def generar_pieza(
     base_agujero_flujo: float = 0.0,
     pared_agujero: Optional[Callable[[float, float], bool]] = None,
     pared_agujero_retraccion: float = 0.8,
+    escalon: float = 0.0,
     base_solida: bool = False,
     hueco: float = 0.0,   # diámetro FINAL del agujero del piso, en mm
     refuerzo_hueco: int = 0,
@@ -1626,6 +1627,22 @@ def generar_pieza(
 
         # se calcula la vuelta entera primero para poder mezclarla con su propio
         # radio medio durante la transición
+        # `escalon` (fracción de vuelta, 0 = espiral): la vuelta va PLANA —misma
+        # z y misma altura de silueta— y sube a la siguiente sólo en ese último
+        # tramo. Con la espiral la vuelta repartía la subida entera, así que una
+        # fila de grumos terminaba una capa más arriba de donde empezaba y los
+        # últimos quedaban corridos contra los primeros. El patrón se entera
+        # del tramo por `zona_subida` para no poner un grumo ahí.
+        def _avance(fr: float) -> float:
+            if escalon <= 0.0 or not rampa:
+                return fr
+            return max(0.0, (fr - (1.0 - escalon)) / escalon)
+
+        if hasattr(funcion_radio, "zona_subida"):
+            a_fin = angulo_inicio + (capa + 1) * 2 * math.pi
+            funcion_radio.zona_subida[0] = ((a_fin - escalon * 2 * math.pi, a_fin)
+                                            if escalon > 0.0 and rampa else None)
+
         crudos = []
         for seg in range(segmentos_por_capa + 1):  # +1 para cerrar la vuelta
             fraccion = seg / segmentos_por_capa
@@ -1644,7 +1661,7 @@ def generar_pieza(
             angulo = angulo_inicio + (capa + fraccion) * 2 * math.pi
             # `t` avanza dentro de la capa y sale de la marcha, no de una regla de
             # tres: las vueltas ya no suben todas lo mismo.
-            t = ts[capa] + (ts[capa + 1] - ts[capa]) * fraccion
+            t = ts[capa] + (ts[capa + 1] - ts[capa]) * _avance(fraccion)
             crudos.append((fraccion, angulo, t, funcion_radio(angulo, t)))
 
         medio = sum(r for _, _, _, r in crudos[:-1]) / segmentos_por_capa
@@ -1679,7 +1696,7 @@ def generar_pieza(
         for i_seg, (fraccion, angulo, t, radio_crudo) in enumerate(crudos):
             radio = medio + (radio_crudo - medio) * mezcla
             radio_max = max(radio_max, radio)
-            z = z_capa + fraccion * subida if rampa else z_capa
+            z = z_capa + _avance(fraccion) * subida if rampa else z_capa
             dz_crudo = funcion_dz(angulo, t) if funcion_dz is not None else 0.0
             z += dz_crudo * onda_capa
             if modular:

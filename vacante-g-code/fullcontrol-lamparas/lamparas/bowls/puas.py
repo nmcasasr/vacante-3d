@@ -609,6 +609,30 @@ def construir(
             return (ini + fin) / 2
         return (math.floor(fase) + 0.5 - deriva * t * n) * TAU / n
 
+    zona_subida: list = [None]
+
+    def _en_subida(angulo: float, capa: int) -> bool:
+        """
+        True si el grumo de ese punto toca el tramo donde la vuelta sube a la
+        siguiente (`--escalon`): ese grumo no se hace, es el "último grumo" que
+        se saltea para preparar la subida. Se mira el pulso ENTERO y no el
+        punto, para no dejar medio grumo.
+        """
+        zona = zona_subida[0]
+        if zona is None:
+            return False
+        a0, a1 = zona
+        if intercalar:
+            _, ini, fin = _celda(angulo, capa)
+            arranque = angulo - ((angulo % TAU) - ini)
+            largo = (fin - ini) * ocupacion
+        else:
+            n = int(puas_de(_t_banda(capa)))
+            fase = angulo * n / TAU
+            arranque = (math.floor(fase)) * TAU / n
+            largo = TAU / n * ocupacion
+        return arranque < a1 and arranque + largo > a0
+
     def pulsa(capa: int) -> bool:
         """True si a esa vuelta le toca patrón."""
         if lisas <= 0:
@@ -726,7 +750,7 @@ def construir(
         capa = _vuelta(t)
         if crecer or lisas <= 0:
             return False, capa
-        if not pulsa(capa) or (capa % ciclo) != int(lisas):
+        if not pulsa(capa) or (capa % ciclo) != int(lisas) or _en_subida(angulo, capa):
             return False, capa
         n = int(puas_de(_t_banda(capa)))
         fase = _fase(angulo, t, capa, n) % 1.0
@@ -770,7 +794,7 @@ def construir(
         # subir la velocidad de la pieza —las vueltas lisas y los valles— sin
         # que el grumo vaya más rápido de lo que ya está probado: en el árbol
         # la pieza va a 16 mm/s como el hongo y el grumo a 8 como Squeezy.
-        if grumo_lento < 1.0 and pulsa(capa):
+        if grumo_lento < 1.0 and pulsa(capa) and not _en_subida(angulo, capa):
             n = int(puas_de(_t_banda(capa)))
             if _pulso(_fase(angulo, t, capa, n) % 1.0, ocupacion, filo) > 0.0:
                 return max(0.05, grumo_lento)
@@ -841,7 +865,7 @@ def construir(
         # SEGUNDO escalón helicoidal en vez de esconder el cambio en el que ya
         # existe. Con `floor` los dos coinciden.
         capa = _vuelta(t)
-        if not pulsa(capa) or t < rapido_hasta:
+        if not pulsa(capa) or t < rapido_hasta or _en_subida(angulo, capa):
             return base
         # El pulso está en TODA la vuelta; lo que cambia es cuánto sale. En el
         # fondo sale `amplitud_fondo` y en la figura `amplitud`, y la máscara
@@ -912,6 +936,8 @@ def construir(
 
     # `comun.py` escribe acá el número de vuelta antes de cada vuelta.
     radio.capa_actual = capa_actual
+    # Y acá el tramo donde la vuelta sube a la siguiente (`--escalon`), o None.
+    radio.zona_subida = zona_subida
 
     _avisar(silueta, altura, radio_medio, radio, pulsa, lisas, con_patron,
             lista_puas, amplitud, deriva, altura_capa, ocupacion, filo,
