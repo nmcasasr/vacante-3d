@@ -1366,6 +1366,21 @@ def generar_pieza(
         limite_espera["z"] = z0m + (z1m - z0m) * modulacion["espera_desde"]
 
     vuelta_desde = [None]   # ángulo acumulado donde arranca la vuelta (ver `escalon`)
+    historia = []           # (a_ini, a_fin, alfa, tramo, z_capa, subida, rampa) por vuelta
+    if hasattr(funcion_radio, "perfil_vuelta"):
+        funcion_radio.ts_vueltas = ts
+
+    def _z_en(phi: float, vueltas: list):
+        """La z de la boquilla en el ángulo acumulado `phi`, si alguna de esas vueltas pasó por ahí."""
+        for a0, a1, al, tr, zc, sb, rp in reversed(vueltas):
+            if a0 - 1e-9 <= phi <= a1 + 1e-9:
+                if not rp:
+                    return zc
+                fr = (phi - a0) / max(a1 - a0, 1e-9)
+                win = min(1.0, max(0.0, (fr - (1.0 - tr)) / tr)) if tr > 0 else 0.0
+                return zc + (al * fr + (1.0 - al) * win) * sb
+        return None
+
     for capa in range(n_capas):
         # La primera capa va a z = altura_capa, no a z = 0: a z = 0 la boquilla
         # estaría apoyada contra la cama.
@@ -1628,34 +1643,36 @@ def generar_pieza(
 
         # se calcula la vuelta entera primero para poder mezclarla con su propio
         # radio medio durante la transición
-        # `escalon` (fracción de vuelta, 0 = espiral): la vuelta va PLANA —misma
-        # z y misma altura de silueta— y sube a la siguiente sólo en ese último
-        # tramo. Con la espiral la vuelta repartía la subida entera, así que una
-        # fila de grumos terminaba una capa más arriba de donde empezaba y los
-        # últimos quedaban corridos contra los primeros. El patrón se entera
-        # del tramo por `zona_subida` para no poner un grumo ahí.
-        #
-        # Y la vuelta no tiene por qué medir 360°: si el patrón sabe dónde le
-        # conviene subir (`fin_de_vuelta`), la vuelta termina ahí. `puas` lo usa
-        # para que la vuelta con grumos dé 360° justos y suba en un VALLE entre
-        # dos grumos —sin saltear ninguno—, y las vueltas lisas de antes se
-        # estiran o se acortan lo que haga falta para llegar a ese ángulo.
+        # `escalon` (fracción de vuelta, 0 = espiral pura de siempre) y un patrón
+        # con `perfil_vuelta`: cada vuelta dice dónde termina y qué parte de su
+        # subida hace de a poco (`alfa`, 1 = espiral) y qué parte de golpe en
+        # sus últimos `escalon` (la RAMPA). Para `puas`, la vuelta con grumos
+        # va plana (alfa 0) y sube en el valle entre dos grumos; las lisas de
+        # al lado van mitad y mitad, y el resto en espiral, que es donde la
+        # subida no se ve. Cada vuelta se apoya en la anterior, así que de una
+        # vuelta a la siguiente `alfa` no puede cambiar de más: el espesor es
+        # 0.8 x (1 + alfa_arriba - alfa_abajo) en el peor punto.
         a_ini = angulo_inicio if vuelta_desde[0] is None else vuelta_desde[0]
         a_fin = a_ini + 2 * math.pi
-        largo_variable = escalon > 0.0 and hasattr(funcion_radio, "fin_de_vuelta")
-        if largo_variable and rampa:
-            a_fin = funcion_radio.fin_de_vuelta(capa, a_ini)
+        alfa = 1.0
+        perfilado = escalon > 0.0 and hasattr(funcion_radio, "perfil_vuelta")
+        largo_variable = perfilado
+        if perfilado and rampa:
+            a_fin, alfa = funcion_radio.perfil_vuelta(capa, a_ini)
         vuelta_desde[0] = a_fin
         tramo = min(1.0, escalon * 2 * math.pi / max(a_fin - a_ini, 1e-9))
 
         def _avance(fr: float) -> float:
-            if escalon <= 0.0 or not rampa:
+            if not perfilado or not rampa:
                 return fr
-            return max(0.0, (fr - (1.0 - tramo)) / tramo)
+            win = min(1.0, max(0.0, (fr - (1.0 - tramo)) / tramo))
+            return alfa * fr + (1.0 - alfa) * win
+
+        historia.append((a_ini, a_fin, alfa, tramo, z_capa, subida, rampa))
 
         if hasattr(funcion_radio, "zona_subida"):
             funcion_radio.zona_subida[0] = ((a_fin - escalon * 2 * math.pi, a_fin)
-                                            if escalon > 0.0 and rampa else None)
+                                            if perfilado and rampa and alfa < 1.0 else None)
 
         crudos = []
         for seg in range(segmentos_por_capa + 1):  # +1 para cerrar la vuelta
@@ -1696,7 +1713,17 @@ def generar_pieza(
         # afecta a las primeras `capas_transicion` vueltas, donde la mezcla
         # atenúa el relieve y la separación real es algo menor que ésta.
         seps = None
-        if separacion_por_angulo:
+        if perfilado and rampa and subida > 1e-6:
+            # El espesor REAL en cada punto, contra la pasada de abajo en el
+            # mismo ángulo: con las vueltas perfiladas va de 0.5 a 1.5 veces la
+            # subida, y el cordón tiene que llenarlo, ni más ni menos.
+            seps = []
+            for fraccion, angulo, t, radio_crudo in crudos:
+                abajo = _z_en(angulo - 2 * math.pi, historia[:-1])
+                h = (z_capa + _avance(fraccion) * subida - abajo) if abajo is not None else subida
+                seps.append(max(0.25 * separacion,
+                                min(separacion * h / subida, 1.5 * perfil.altura_capa)))
+        elif separacion_por_angulo:
             sig = capa + 1
             t_a, t_b = ts[sig], ts[min(sig + 1, n_capas)]
             subida_sig = pasos_capa[min(sig + 1, len(pasos_capa) - 1)]

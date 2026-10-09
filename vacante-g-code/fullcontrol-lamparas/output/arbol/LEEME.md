@@ -242,28 +242,49 @@ y no con el x1.4.
   Las alturas son al centro, medidas desde la mesa: switch 11 ± 3.5 (el botón
   mide 5) y USB 9 ± 4 (el conector mide 6), con margen porque la capa es de 0.8.
 
-**Capas planas que suben en un valle (`--escalon 2.3077`, media púa).** La
-primera versión iba en espiral: cada vuelta subía 0.8 mm repartidos en los
-360°, así que cada fila de grumos terminaba una capa más arriba de donde
-empezaba, y los últimos grumos quedaban corridos contra los primeros, en toda
-la pieza. Ahora cada vuelta va plana y sube a la siguiente en una rampa de
-media púa, que en las vueltas con grumos cae en el VALLE entre dos grumos:
-ninguno se saltea. Saltear uno (la segunda versión) dejaba una columna de
-huecos.
+**Cómo sube cada vuelta (`--escalon 0.7`, `alfa_lisas=0.2`).**
 
-La subida no puede saltar de lugar: con capas parejas cada ángulo tiene que
-ver una subida cada 360°, y si una vuelta mide menos, en ese tramo caen dos
-(1.6 mm sin apoyo) y en otro ninguna. Así que se CORRE de a poco: 1/8 de púa
-por vuelta, que en un ciclo de 3 + 1 es la media púa que se corre la fila al
-tresbolillo. Si la subida cae en el valle de una fila, cae en el de todas. Donde
-las rampas de dos vueltas no coinciden el espesor baja a 0.8 x (1 - 1/4) = 0.6
-mm. Va avanzando: de 67° en la primera fila a 104° en la última.
+- **Zócalo:** espiral pura, como todas las piezas: la subida no se ve.
+- **Vuelta con grumos:** PLANA. Los 78 grumos tienen el pie a la misma z y al
+  mismo radio, y la vuelta sube en el valle entre el último y el primero, sin
+  saltear ninguno.
+- **Lisas de la zona con grumos:** hacen el 20 % de su subida en espiral y el
+  resto en ese mismo valle. Entre el zócalo y la primera fila, `alfa` baja de
+  a 0.25 por vuelta.
 
-Medido: 16 filas, 78 grumos cada una, todos con el pie a la misma z y del mismo
-largo dentro de la fila. Cada grumo queda entre 0.40 y 0.50 púas de los de la
-fila de abajo, y ninguno apilado. El 0.40 es la resolución: una muestra mide
-una décima de púa. `verificar_intercalado.py` da menos porque corta las filas
-en un ángulo fijo.
+Por qué así y no de otra forma (cada intento anterior dejaba algo roto):
 
-Verificador: línea fina 0.00 %, peor puente 11.6 mm, contacto 13 %. ~1.2 h.
-La media `media_D92` y el cupón de velocidades regenerados salen idénticos.
+- En espiral pura, cada fila terminaba una capa más arriba de donde empezaba,
+  y los últimos grumos quedaban corridos contra los primeros.
+- Saltear el último grumo para subir dejaba una columna de huecos.
+- Con las vueltas lisas planas, el escalón se veía en el zócalo, y corriéndolo
+  vuelta a vuelta se armaba una escalera en diagonal.
+- Una espiral pura no entra al lado de una vuelta plana: el espesor iría de
+  0.8 a 0. Cada vuelta se apoya en la anterior, y el espesor es
+  0.8 x (1 + alfa de arriba - alfa de abajo), así que `alfa` cambia de a poco.
+- Las subidas tienen que caer TODAS en el mismo ángulo. Si una vuelta subiera
+  corrida respecto de la de abajo, en el medio una ya subió y la otra no: el
+  espesor llegaba a 0.16 o a 1.4 mm. Las filas pares e impares tienen los
+  valles corridos media púa, y se pisan en [0.3, 0.5) de la celda: la rampa va
+  ahí, de 0.32 a 0.48 púa (0.7°), la misma en todas las vueltas.
+- Con `alfa_lisas` 0.25 o más, `verificar_pieza.py` encontraba un tramo de
+  31.7 mm con 7.4 % de solape lateral contra un 8 % exigido: una lisa apoyada
+  en la parte más gruesa de la de abajo, en la pendiente de la cúpula. Con 0.2
+  ya no aparece.
+
+Medido: 16 filas de 78 grumos, todas planas, separadas una púa exacta.
+Tresbolillo exacto: cada grumo a media púa de los de abajo, ninguno apilado.
+Todas las subidas entre 57.1° y 57.6°. Espesor del zócalo 0.80; en la zona
+con grumos, 0.6 a 0.96. El caudal sigue al espesor punto por punto, así que
+el cordón llena lo que hay. Se ve una sola costura recta y angosta en el
+valle, a 57°, con escalones de 0.64 mm en las lisas y 0.8 en las filas.
+
+Verificador: línea fina 0.00 %, peor puente 11.06 mm (el techo de la ventana
+del switch), contacto 11.8 %, lo mismo que la versión espiral. ~1.2 h. La
+media `media_D92` y el cupón de velocidades regenerados salen idénticos.
+
+`verificar_pieza.py` ahora mide el contacto entre CENTROS de cordón. Antes
+usaba la distancia entre trayectorias con el alto promedio de los dos cordones,
+que da bien sólo si los dos altos son iguales. Con caudal punto por punto
+daba por suelto un cordón de 1.2 apoyado en uno de 0.6. Sobre las piezas
+viejas cambia el contacto en 0.1 punto y los puentes no se mueven.

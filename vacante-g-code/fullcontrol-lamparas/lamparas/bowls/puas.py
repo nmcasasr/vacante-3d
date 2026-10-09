@@ -203,6 +203,7 @@ def construir(
     desde: float = 0.03,
     rapido_hasta: float = 0.0,
     rapido: float = 1.0,
+    alfa_lisas: float = 0.2,
     hasta: float = 0.99,
     suave_mm: float = 5.0,
     altura_capa: float = 0.4,
@@ -373,6 +374,10 @@ def construir(
             veces la velocidad de la pieza. Es para el zócalo de la mini
             lámpara (`--zocalo`), que guarda la lámpara y lleva los huecos del
             switch y del USB. 0 = apagado.
+        alfa_lisas: con `--escalon`, qué parte de su subida hacen en espiral
+            las lisas de la zona con grumos; el resto lo hacen en el valle,
+            junto con la fila. El espesor queda entre 0.8 x (1 - alfa) y
+            0.8 x (1 + alfa). 0.2: de 0.64 a 0.96 mm.
 
         altura_capa: solo para el aviso — cuánto sube una vuelta. No cambia la
             pieza, la altura real la fija `--altura-capa`.
@@ -940,43 +945,60 @@ def construir(
     # Y acá el tramo donde la vuelta sube a la siguiente (`--escalon`), o None.
     radio.zona_subida = zona_subida
 
-    # --- dónde sube cada vuelta, con `--escalon` ----------------------------
+    # --- cómo sube cada vuelta, con `--escalon` -----------------------------
     #
-    # Con capas parejas cada ángulo tiene que ver UNA subida cada 360°: si una
-    # vuelta mide 332°, en esos 28° caen dos subidas (1.6 mm sin apoyo) y en
-    # otro lado ninguna. Así que la subida no puede saltar de lugar: sólo puede
-    # CORRERSE de a poco, y el espesor baja a 0.8·(1 - corrimiento/rampa) en la
-    # zona donde las dos rampas no coinciden.
+    # La vuelta con grumos va PLANA: todos a la misma altura, y sube en el valle
+    # entre el último y el primero. Las lisas de la zona hacen `alfa_lisas` de
+    # su subida en espiral y el resto en ese mismo valle; el zócalo, en espiral
+    # pura, y entre los dos `alfa` baja de a 0.25 por vuelta.
     #
-    # Se corre media púa por ciclo (1/8 de púa por vuelta con 3 + 1): es justo
-    # lo que se corre la fila al tresbolillo, así que si la subida cae en el
-    # valle de una fila cae en el valle de todas, y ningún grumo se saltea.
-    # Con una rampa de media púa el espesor nunca baja de 0.6 mm.
-    # Las primeras `_AJUSTE` vueltas se reparten además lo que haga falta para
-    # que la primera fila quede en fase (cada una corre ≤ 1/32 de púa más).
+    # Cada vuelta se apoya en la anterior, y el espesor es 0.8 x (1 + alfa de
+    # arriba - alfa de abajo) en el peor punto: por eso `alfa` no puede saltar.
+    # Y por eso las subidas tienen que caer TODAS en el mismo ángulo: si dos
+    # vueltas seguidas subieran en lugares distintos, en el medio una ya subió
+    # y la otra todavía no, y el espesor se va a 0.16 o a 1.4.
+    #
+    # Las filas están corridas media púa (tresbolillo), así que sus valles no
+    # coinciden: los pares son [0.3, 1.0) de la celda y los impares [0.8, 1.5).
+    # Se pisan en [0.3, 0.5): ahí va la rampa, de 0.32 a 0.48, la misma en todas
+    # las vueltas. `--escalon` tiene que ser ≤ 0.16 púa.
     _paso_ang = TAU / int(puas_de(0.0))
-    _deriva = 0.5 * _paso_ang / ciclo
-    _AJUSTE = 16
-    _fase_subida: dict = {}
 
-    def fin_de_vuelta(capa: int, a_ini: float) -> float:
-        """Dónde termina (ángulo acumulado) la vuelta `capa`, que arranca en `a_ini`."""
-        if "extra" not in _fase_subida:
-            # La subida de la vuelta con grumos `g` tiene que terminar en
-            # `arranque de celda + 0.9 púa`: la rampa (media púa) queda en el
-            # valle, a 0.1 de cada grumo.
-            g = next(k for k in range(_AJUSTE, _AJUSTE + 2 * ciclo) if pulsa(k))
-            fila = _fila(g // ciclo, bool(banda_por_vuelta and capa_actual[0] is not None))
-            sin_ajuste = a_ini + (g + 1 - capa) * (TAU + _deriva)
-            meta = fila[0] + 0.9 * _paso_ang
-            extra = (meta - sin_ajuste) % _paso_ang
-            if extra > _paso_ang / 2:
-                extra -= _paso_ang
-            _fase_subida["extra"] = extra
-        extra = _fase_subida["extra"] / _AJUSTE if capa < _AJUSTE else 0.0
-        return a_ini + TAU + _deriva + extra
+    def _es_fila(capa: int) -> bool:
+        """True si la vuelta `capa` lleva grumos (o el pulso de fondo)."""
+        ts = getattr(radio, "ts_vueltas", None)
+        if capa < 0 or ts is None or capa >= len(ts) - 1 or not pulsa(capa):
+            return False
+        return ts[capa] >= rapido_hasta
 
-    radio.fin_de_vuelta = fin_de_vuelta
+    _costura: dict = {}
+
+    def perfil_vuelta(capa: int, a_ini: float):
+        """(dónde termina la vuelta, qué parte de la subida hace en espiral)."""
+        if "fase" not in _costura:
+            # Todas las vueltas miden 360°, así que la costura es una sola: la
+            # primera vuelta se estira lo justo para que caiga en 0.48 púa de
+            # las filas pares.
+            pares = _fila(0, bool(banda_por_vuelta and capa_actual[0] is not None))
+            meta = (pares[0] + 0.48 * _paso_ang) % _paso_ang
+            delta = (meta - (a_ini + TAU)) % _paso_ang
+            _costura["fase"] = delta
+            return a_ini + TAU + delta, 1.0
+        if _es_fila(capa):
+            return a_ini + TAU, 0.0
+        # cuántas vueltas faltan para la próxima fila (o pasaron desde la última)
+        cerca = next((k for k in range(1, ciclo + 1)
+                      if _es_fila(capa + k) or _es_fila(capa - k)), None)
+        if cerca is None:
+            return a_ini + TAU, 1.0
+        hubo = any(_es_fila(capa - k) for k in range(1, capa + 1))
+        if hubo:
+            return a_ini + TAU, alfa_lisas
+        # antes de la primera fila: de la espiral pura a `alfa_lisas` de a 0.25
+        faltan = next(k for k in range(1, ciclo + 1) if _es_fila(capa + k))
+        return a_ini + TAU, min(1.0, alfa_lisas + 0.25 * (faltan - 1))
+
+    radio.perfil_vuelta = perfil_vuelta
 
     _avisar(silueta, altura, radio_medio, radio, pulsa, lisas, con_patron,
             lista_puas, amplitud, deriva, altura_capa, ocupacion, filo,
