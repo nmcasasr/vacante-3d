@@ -286,7 +286,11 @@ def construir(
             `puente_lento` en toda la pieza.
         lento_alcance: `"punta"` (por defecto) frena sólo en la meseta, el
             vértice donde la boquilla se para y vuelve — que es lo que hace la
-            referencia. `"todo"` frena el vuelo entero, ida y vuelta. Ver
+            referencia. `"todo"` frena el vuelo entero, ida y vuelta.
+            `"subida"` frena la ida y la meseta, y vuelve rápido: con
+            `"punta"` lo que se frena depende de dónde caen las muestras (en la
+            mini lámpara iba de 0.5 a 8 mm por grumo según el tamaño); así es
+            siempre la subida entera. Ver
             `_en_punta`: las dos lecturas son defendibles y la referencia no
             zanja el caso de un grumo de 7 mm, que es mucho más largo que sus
             nodos.
@@ -723,6 +727,11 @@ def construir(
             # todo el pulso: desde que despega de la pared hasta que vuelve
             return _pulso(fase, ocupacion, filo) > 0.0, capa
         ini = (ocupacion - ocupacion * filo) / 2
+        if lento_alcance == "subida":
+            # La F va antes del punto, o sea que vale para el tramo que LLEGA a
+            # él: frenar toda muestra de la ida y de la meseta frena la subida
+            # entera, caiga donde caiga la rejilla.
+            return 0.0 < fase <= ini + ocupacion * filo, capa
         return ini <= fase <= ini + ocupacion * filo, capa
 
     # Velocidades por GAJO alrededor de la pieza, para el cupón de velocidades

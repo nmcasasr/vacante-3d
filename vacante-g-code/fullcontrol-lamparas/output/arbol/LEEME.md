@@ -175,3 +175,43 @@ iguales: matriz, largos_3a9mm, velocidad, matera60_romo_piso_kadzi, hongo):
   de `barrido_puas`/`barrido` se leen en el `t` real donde arranca el ciclo.
   En la bola hace falta: con paso adaptativo las vueltas no suben lo mismo, y
   `vuelta x dt_capa` no es la altura.
+
+## `3-mini-lampara/` — la copa con hueco de Ø83.5
+
+La técnica del cupón intercalado con **grumos de 9 mm en toda la pieza** y un
+**hueco libre de Ø83.5** en el piso, para que asiente sobre la base. Lo liso a
+16 mm/s, el grumo a 8, la punta a 3 (`grumo_lento=0.5`, `puente_lento=0.1875`).
+La cantidad de púas sigue al tamaño (72 x escala / 0.45), así que el paso es
+2.79 mm en todas.
+
+El hueco no cabe en la bola del cupón (Ø80, piso Ø24): hay que agrandarla y
+cortarla más arriba, cerca de la panza. Dos familias:
+
+- **`mini_`**: bola cortada abajo de la panza, todavía se cierra un poco hacia el piso.
+- **`media_`**: media esfera, cortada un poco por debajo de la panza. Pared casi
+  recta abajo y cúpula arriba. Menos altura, menos tiempo.
+
+| pieza | escala · corte | alto | piso (vueltas alrededor del hueco) | tiempo |
+|---|---|---|---|---|
+| `media_D92` | 0.52 · 163 | 41 mm | Ø90.6 (2.7) | ~2.0 h |
+| `media_D97` | 0.55 · 160 | 45 mm | Ø95.0 (4.9) | ~2.5 h |
+| `media_D106` | 0.60 · 160 | 49 mm | Ø103.6 (9.1) | ~2.9 h |
+| `mini_D97` | 0.55 · 150 | 50 mm | Ø90.7 (2.8) | ~2.9 h |
+| `mini_D106` | 0.60 · 140 | 61 mm | Ø91.5 (3.2) | ~3.5 h |
+| `mini_D124` | 0.70 · 128 | 79 mm | Ø92.2 (3.5) | ~5.2 h |
+
+Tiempos por recorrido x1.4; el de Orca es el bueno. Verificador, las seis:
+línea fina 0.00 %, peor puente 11.2–11.8 mm, contacto 18–21 % (el grumo
+colgando, como en el cupón de velocidades). Intercalado 100 %.
+
+**`lento_alcance=subida`, nuevo.** Con `"punta"` lo que se frena dependía de
+dónde caía la rejilla de muestras contra el grumo: en esta misma receta iba de
+0.5 mm por grumo (la bola Ø97) a 8 mm (la Ø124), y los tiempos no se podían
+comparar. `"subida"` frena la ida entera y la meseta, y la vuelta va a 8:
+~9 mm a 3 mm/s por grumo en todas. Es lo más parecido a "media subida
+lenta", que es como salían los floreros. El cupón de velocidades regenerado
+sale idéntico.
+
+`--capas-transicion 0`: la mezcla de las primeras capas dejaba un puente de
+67 mm a z 2.1 en la media esfera más chica, igual que en la matera de
+corazones.
