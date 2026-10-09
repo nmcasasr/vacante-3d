@@ -1365,6 +1365,7 @@ def generar_pieza(
         z0m, z1m = ULTIMO_MAPEO["z0"], ULTIMO_MAPEO["z1"]
         limite_espera["z"] = z0m + (z1m - z0m) * modulacion["espera_desde"]
 
+    vuelta_desde = [None]   # ángulo acumulado donde arranca la vuelta (ver `escalon`)
     for capa in range(n_capas):
         # La primera capa va a z = altura_capa, no a z = 0: a z = 0 la boquilla
         # estaría apoyada contra la cama.
@@ -1633,13 +1634,26 @@ def generar_pieza(
         # fila de grumos terminaba una capa más arriba de donde empezaba y los
         # últimos quedaban corridos contra los primeros. El patrón se entera
         # del tramo por `zona_subida` para no poner un grumo ahí.
+        #
+        # Y la vuelta no tiene por qué medir 360°: si el patrón sabe dónde le
+        # conviene subir (`fin_de_vuelta`), la vuelta termina ahí. `puas` lo usa
+        # para que la vuelta con grumos dé 360° justos y suba en un VALLE entre
+        # dos grumos —sin saltear ninguno—, y las vueltas lisas de antes se
+        # estiran o se acortan lo que haga falta para llegar a ese ángulo.
+        a_ini = angulo_inicio if vuelta_desde[0] is None else vuelta_desde[0]
+        a_fin = a_ini + 2 * math.pi
+        largo_variable = escalon > 0.0 and hasattr(funcion_radio, "fin_de_vuelta")
+        if largo_variable and rampa:
+            a_fin = funcion_radio.fin_de_vuelta(capa, a_ini)
+        vuelta_desde[0] = a_fin
+        tramo = min(1.0, escalon * 2 * math.pi / max(a_fin - a_ini, 1e-9))
+
         def _avance(fr: float) -> float:
             if escalon <= 0.0 or not rampa:
                 return fr
-            return max(0.0, (fr - (1.0 - escalon)) / escalon)
+            return max(0.0, (fr - (1.0 - tramo)) / tramo)
 
         if hasattr(funcion_radio, "zona_subida"):
-            a_fin = angulo_inicio + (capa + 1) * 2 * math.pi
             funcion_radio.zona_subida[0] = ((a_fin - escalon * 2 * math.pi, a_fin)
                                             if escalon > 0.0 and rampa else None)
 
@@ -1658,7 +1672,10 @@ def generar_pieza(
             # el giro. En `recorrido.py` funciona porque ahí las pasadas son
             # planas y concéntricas; una espiral que además rota el arranque
             # deja la punta sin cerrar.
-            angulo = angulo_inicio + (capa + fraccion) * 2 * math.pi
+            # Sin vueltas de largo variable, la cuenta de siempre: acumular
+            # a_ini vuelta a vuelta corre la sexta cifra decimal.
+            angulo = (a_ini + fraccion * (a_fin - a_ini) if largo_variable
+                      else angulo_inicio + (capa + fraccion) * 2 * math.pi)
             # `t` avanza dentro de la capa y sale de la marcha, no de una regla de
             # tres: las vueltas ya no suben todas lo mismo.
             t = ts[capa] + (ts[capa + 1] - ts[capa]) * _avance(fraccion)

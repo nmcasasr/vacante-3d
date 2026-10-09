@@ -242,16 +242,28 @@ y no con el x1.4.
   Las alturas son al centro, medidas desde la mesa: switch 11 ± 3.5 (el botón
   mide 5) y USB 9 ± 4 (el conector mide 6), con margen porque la capa es de 0.8.
 
-**Capas planas (`--escalon 4.6154`, una púa).** La primera versión iba en
-espiral: cada vuelta subía 0.8 mm repartidos en los 360°, así que cada fila de
-grumos terminaba una capa más arriba de donde empezaba (y en la cúpula, hasta
-0.7 mm más adentro). Los últimos grumos de cada fila quedaban corridos contra
-los primeros, en toda la pieza, y se veía en Orca. Ahora cada vuelta va
-plana y sube a la siguiente sólo en sus últimos 4.6°, donde se saltea un grumo.
-Medido: en las 16 filas los 77 grumos tienen el pie a la misma z y al mismo
-radio, y la subida cae entre 50.7° y 54.9°.
+**Capas planas que suben en un valle (`--escalon 2.3077`, media púa).** La
+primera versión iba en espiral: cada vuelta subía 0.8 mm repartidos en los
+360°, así que cada fila de grumos terminaba una capa más arriba de donde
+empezaba, y los últimos grumos quedaban corridos contra los primeros, en toda
+la pieza. Ahora cada vuelta va plana y sube a la siguiente en una rampa de
+media púa, que en las vueltas con grumos cae en el VALLE entre dos grumos:
+ninguno se saltea. Saltear uno (la segunda versión) dejaba una columna de
+huecos.
 
-Verificador: línea fina 0.00 %, peor puente 10.4 mm (el techo de la ventana del
-switch), contacto 12 %. Intercalado 98.6 %: el 1.4 % es el grumo de al lado del
-que se saltea, que cae una fila sí y otra no. ~1.2 h. La media `media_D92` y el
-cupón de velocidades regenerados salen idénticos.
+La subida no puede saltar de lugar: con capas parejas cada ángulo tiene que
+ver una subida cada 360°, y si una vuelta mide menos, en ese tramo caen dos
+(1.6 mm sin apoyo) y en otro ninguna. Así que se CORRE de a poco: 1/8 de púa
+por vuelta, que en un ciclo de 3 + 1 es la media púa que se corre la fila al
+tresbolillo. Si la subida cae en el valle de una fila, cae en el de todas. Donde
+las rampas de dos vueltas no coinciden el espesor baja a 0.8 x (1 - 1/4) = 0.6
+mm. Va avanzando: de 67° en la primera fila a 104° en la última.
+
+Medido: 16 filas, 78 grumos cada una, todos con el pie a la misma z y del mismo
+largo dentro de la fila. Cada grumo queda entre 0.40 y 0.50 púas de los de la
+fila de abajo, y ninguno apilado. El 0.40 es la resolución: una muestra mide
+una décima de púa. `verificar_intercalado.py` da menos porque corta las filas
+en un ángulo fijo.
+
+Verificador: línea fina 0.00 %, peor puente 11.6 mm, contacto 13 %. ~1.2 h.
+La media `media_D92` y el cupón de velocidades regenerados salen idénticos.

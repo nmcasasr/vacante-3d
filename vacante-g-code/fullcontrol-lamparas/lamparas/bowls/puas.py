@@ -373,6 +373,7 @@ def construir(
             veces la velocidad de la pieza. Es para el zócalo de la mini
             lámpara (`--zocalo`), que guarda la lámpara y lleva los huecos del
             switch y del USB. 0 = apagado.
+
         altura_capa: solo para el aviso — cuánto sube una vuelta. No cambia la
             pieza, la altura real la fija `--altura-capa`.
         ancho_cordon: el ancho del cordón, para predecir cuánto del turupe
@@ -938,6 +939,44 @@ def construir(
     radio.capa_actual = capa_actual
     # Y acá el tramo donde la vuelta sube a la siguiente (`--escalon`), o None.
     radio.zona_subida = zona_subida
+
+    # --- dónde sube cada vuelta, con `--escalon` ----------------------------
+    #
+    # Con capas parejas cada ángulo tiene que ver UNA subida cada 360°: si una
+    # vuelta mide 332°, en esos 28° caen dos subidas (1.6 mm sin apoyo) y en
+    # otro lado ninguna. Así que la subida no puede saltar de lugar: sólo puede
+    # CORRERSE de a poco, y el espesor baja a 0.8·(1 - corrimiento/rampa) en la
+    # zona donde las dos rampas no coinciden.
+    #
+    # Se corre media púa por ciclo (1/8 de púa por vuelta con 3 + 1): es justo
+    # lo que se corre la fila al tresbolillo, así que si la subida cae en el
+    # valle de una fila cae en el valle de todas, y ningún grumo se saltea.
+    # Con una rampa de media púa el espesor nunca baja de 0.6 mm.
+    # Las primeras `_AJUSTE` vueltas se reparten además lo que haga falta para
+    # que la primera fila quede en fase (cada una corre ≤ 1/32 de púa más).
+    _paso_ang = TAU / int(puas_de(0.0))
+    _deriva = 0.5 * _paso_ang / ciclo
+    _AJUSTE = 16
+    _fase_subida: dict = {}
+
+    def fin_de_vuelta(capa: int, a_ini: float) -> float:
+        """Dónde termina (ángulo acumulado) la vuelta `capa`, que arranca en `a_ini`."""
+        if "extra" not in _fase_subida:
+            # La subida de la vuelta con grumos `g` tiene que terminar en
+            # `arranque de celda + 0.9 púa`: la rampa (media púa) queda en el
+            # valle, a 0.1 de cada grumo.
+            g = next(k for k in range(_AJUSTE, _AJUSTE + 2 * ciclo) if pulsa(k))
+            fila = _fila(g // ciclo, bool(banda_por_vuelta and capa_actual[0] is not None))
+            sin_ajuste = a_ini + (g + 1 - capa) * (TAU + _deriva)
+            meta = fila[0] + 0.9 * _paso_ang
+            extra = (meta - sin_ajuste) % _paso_ang
+            if extra > _paso_ang / 2:
+                extra -= _paso_ang
+            _fase_subida["extra"] = extra
+        extra = _fase_subida["extra"] / _AJUSTE if capa < _AJUSTE else 0.0
+        return a_ini + TAU + _deriva + extra
+
+    radio.fin_de_vuelta = fin_de_vuelta
 
     _avisar(silueta, altura, radio_medio, radio, pulsa, lisas, con_patron,
             lista_puas, amplitud, deriva, altura_capa, ocupacion, filo,
