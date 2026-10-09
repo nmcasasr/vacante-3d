@@ -215,3 +215,33 @@ sale idéntico.
 `--capas-transicion 0`: la mezcla de las primeras capas dejaba un puente de
 67 mm a z 2.1 en la media esfera más chica, igual que en la matera de
 corazones.
+
+## `4-lampara-puck/` — la media esfera que tapa una lámpara puck
+
+**`puck_D86_grumo9mm`** tapa una lámpara puck de Ø83.2 x 18 mm, que queda
+adentro, apoyada en la mesa con la luz para arriba. ~1.3 h: el tiempo "por F"
+coincide con el de Orca en los tres `.gcode.3mf` laminados (1.28 h, 1.10 h,
+0.82 h contra 1.3, 1.1, 0.8), así que la meta de 1.5 h se mide con ese número
+y no con el x1.4.
+
+- **Zócalo** (`--zocalo 19`): 19 mm de cilindro recto, liso, a **20 mm/s**
+  (`rapido_hasta`, `rapido=1.25`). Por dentro Ø84.6, 0.7 mm de holgura por lado.
+- **Piso**: hueco libre Ø84.3, para meter la lámpara por abajo. Por fuera un
+  pie de 2.4 mm (`--base-borde`) para que agarre a la cama.
+- **Cúpula**: el hongo espejado, cortado en la panza (corte 174, escala
+  0.4855) para que arranque vertical justo donde termina el cilindro. 32.5 mm.
+  En total 51.5 mm de alto. 78 púas (paso 2.87 mm), grumos de 9 mm, 3 + 1,
+  punta frenada en toda la subida (`lento_alcance=subida`).
+  Los grumos arrancan en z 19.6, entre dos filas, para que la primera salga
+  entera. Esa primera fila mide 5.8 mm, porque nace en la rampa de
+  `suave_mm=5`; de ahí para arriba, 9.
+- **Ventanas** (`--ventana ANG:Z0:Z1:ANCHO`, puntas redondas):
+  - switch en **0°** (+X de la cama): z 7.5–14.5, 16 mm de ancho.
+  - micro USB en **180°**, del lado opuesto: z 5–13, 13 mm de ancho.
+
+  Las alturas son al centro, medidas desde la mesa: switch 11 ± 3.5 (el botón
+  mide 5) y USB 9 ± 4 (el conector mide 6), con margen porque la capa es de 0.8.
+
+Verificador: línea fina 0.00 %, peor puente 11.1 mm (el techo de la ventana del
+switch), contacto 12 %. Intercalado 100 %. La media `media_D92` y el cupón de
+velocidades regenerados salen idénticos.

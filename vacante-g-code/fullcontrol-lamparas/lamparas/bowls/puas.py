@@ -201,6 +201,8 @@ def construir(
     tomas: int = 5,
     deriva: float = 0.0,
     desde: float = 0.03,
+    rapido_hasta: float = 0.0,
+    rapido: float = 1.0,
     hasta: float = 0.99,
     suave_mm: float = 5.0,
     altura_capa: float = 0.4,
@@ -366,6 +368,11 @@ def construir(
             de abajo no es decorativo: es donde la pieza se agarra a la cama.
         suave_mm: en cuántos MILÍMETROS de altura encienden y apagan esas dos
             rampas. En mm y no en fracción a propósito: ver `_ventana`.
+        rapido_hasta, rapido: por debajo de `rapido_hasta` (0..1 de la altura)
+            la pared va LISA —sin grumos y sin el pulso de fondo— y a `rapido`
+            veces la velocidad de la pieza. Es para el zócalo de la mini
+            lámpara (`--zocalo`), que guarda la lámpara y lleva los huecos del
+            switch y del USB. 0 = apagado.
         altura_capa: solo para el aviso — cuánto sube una vuelta. No cambia la
             pieza, la altura real la fija `--altura-capa`.
         ancho_cordon: el ancho del cordón, para predecir cuánto del turupe
@@ -748,6 +755,8 @@ def construir(
 
     def funcion_velocidad(angulo: float, t: float) -> float:
         """Velocidad en ese punto: plena salvo en el grumo, y más lenta en su punta."""
+        if t < rapido_hasta:
+            return rapido
         punta, capa = _en_punta(angulo, t)
         if punta:
             if lista_punta:
@@ -832,7 +841,7 @@ def construir(
         # SEGUNDO escalón helicoidal en vez de esconder el cambio en el que ya
         # existe. Con `floor` los dos coinciden.
         capa = _vuelta(t)
-        if not pulsa(capa):
+        if not pulsa(capa) or t < rapido_hasta:
             return base
         # El pulso está en TODA la vuelta; lo que cambia es cuánto sale. En el
         # fondo sale `amplitud_fondo` y en la figura `amplitud`, y la máscara

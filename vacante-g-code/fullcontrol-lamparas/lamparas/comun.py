@@ -563,6 +563,8 @@ def generar_pieza(
     base_agujero: Optional[Callable[[float, float], bool]] = None,
     base_agujero_retraccion: float = 0.0,
     base_agujero_flujo: float = 0.0,
+    pared_agujero: Optional[Callable[[float, float], bool]] = None,
+    pared_agujero_retraccion: float = 0.8,
     base_solida: bool = False,
     hueco: float = 0.0,   # diámetro FINAL del agujero del piso, en mm
     refuerzo_hueco: int = 0,
@@ -964,6 +966,9 @@ def generar_pieza(
     radio_previo = [None]
     flujo_previo = [None]      # el último factor de `funcion_flujo` que se emitió
     velocidad_previa = [None]  # la última velocidad de `funcion_velocidad`
+    # `pared_agujero(angulo, z)`: lo mismo que `base_agujero` en el piso, en la
+    # pared. La espiral no cambia; sobre la ventana se apaga el extrusor.
+    pared_estado = {"on": True, "prev": False}
     ventilador_previo = [None]  # el último % de `funcion_ventilador`
 
     def _mezcla(capa: int) -> float:
@@ -1739,6 +1744,24 @@ def generar_pieza(
                                                    width=perfil.ancho,
                                                    height=seps[i_seg]))
                 ultimo_alto[0] = seps[i_seg]
+
+            if pared_agujero is not None:
+                # Se apaga si CUALQUIERA de los dos extremos del tramo cae en la
+                # ventana, como en el piso: si no, el hueco sale mordido de un
+                # lado. Y se retrae en cada cruce, si no en PETG queda un hilo.
+                dentro = pared_agujero(angulo_pos % (2 * math.pi), z)
+                quiere = not (dentro or pared_estado["prev"])
+                if quiere != pared_estado["on"]:
+                    r_ = pared_agujero_retraccion
+                    if not quiere and r_ > 0:
+                        puntos.append(fc.ManualGcode(
+                            text=f"G1 E-{r_:.3f} F2100 ; retraer para cruzar la ventana"))
+                    puntos.append(fc.Extruder(on=quiere))
+                    if quiere and r_ > 0:
+                        puntos.append(fc.ManualGcode(
+                            text=f"G1 E{r_:.3f} F2100 ; devolver al volver a la pared"))
+                    pared_estado["on"] = quiere
+                pared_estado["prev"] = dentro
 
             salto = abs(radio - radio_previo[0]) if radio_previo[0] is not None else 0.0
             puentea = salto > SALTO_PUENTE
