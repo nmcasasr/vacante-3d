@@ -204,6 +204,7 @@ def construir(
     rapido_hasta: float = 0.0,
     rapido: float = 1.0,
     alfa_lisas: float = 0.2,
+    giro_fila: int = 0,
     hasta: float = 0.99,
     suave_mm: float = 5.0,
     altura_capa: float = 0.4,
@@ -378,6 +379,15 @@ def construir(
             las lisas de la zona con grumos; el resto lo hacen en el valle,
             junto con la fila. El espesor queda entre 0.8 x (1 - alfa) y
             0.8 x (1 + alfa). 0.2: de 0.64 a 0.96 mm.
+        giro_fila: en púas, cuánto gira el arranque de cada fila respecto de
+            la anterior. Distinto de 0, TODO va en espiral pura —ninguna vuelta
+            tiene escalón— y cada fila de grumos es exactamente una vuelta, que
+            arranca en un valle: una capa en Orca, con todos sus grumos. Lo
+            único que queda es que el último grumo de la fila está una capa más
+            arriba que el primero, y ese punto gira `giro_fila` púas por fila
+            para no formar una línea. Las lisas absorben el giro estirándose
+            (3 lisas de 1.1 vueltas con 25 púas de 78): el espesor baja a 0.72
+            en ellas, sin escalón, y las filas siguen a 3.2 mm. 0 = apagado.
 
         altura_capa: solo para el aviso — cuánto sube una vuelta. No cambia la
             pieza, la altura real la fija `--altura-capa`.
@@ -973,8 +983,26 @@ def construir(
 
     _costura: dict = {}
 
+    def _arranque_fila(k: int) -> float:
+        """Ángulo (mod TAU) donde arranca la fila `k` con `giro_fila`: en el valle
+        común de pares e impares, girado `giro_fila` púas por fila."""
+        pares = _fila(0, bool(banda_por_vuelta and capa_actual[0] is not None))
+        return (pares[0] + (0.40 + k * int(giro_fila)) * _paso_ang) % TAU
+
     def perfil_vuelta(capa: int, a_ini: float):
         """(dónde termina la vuelta, qué parte de la subida hace en espiral)."""
+        if giro_fila:
+            # Espiral pura siempre. La fila mide 360° justos desde su arranque;
+            # las vueltas de antes se estiran lo necesario, repartido entre todas
+            # las que faltan, para que la fila caiga en su ángulo.
+            if _es_fila(capa):
+                return a_ini + TAU, 1.0
+            faltan = next((k for k in range(1, ciclo + 1) if _es_fila(capa + k)), None)
+            if faltan is None:
+                return a_ini + TAU, 1.0
+            meta = _arranque_fila((capa + faltan) // ciclo)
+            resto = faltan * TAU + (meta - (a_ini + faltan * TAU)) % TAU
+            return a_ini + resto / faltan, 1.0
         if "fase" not in _costura:
             # Todas las vueltas miden 360°, así que la costura es una sola: la
             # primera vuelta se estira lo justo para que caiga en 0.48 púa de
@@ -999,6 +1027,8 @@ def construir(
         return a_ini + TAU, min(1.0, alfa_lisas + 0.25 * (faltan - 1))
 
     radio.perfil_vuelta = perfil_vuelta
+    # con `giro_fila`, `comun.py` usa el largo de cada vuelta aunque no haya `--escalon`
+    radio.perfil_espiral = bool(giro_fila)
 
     _avisar(silueta, altura, radio_medio, radio, pulsa, lisas, con_patron,
             lista_puas, amplitud, deriva, altura_capa, ocupacion, filo,

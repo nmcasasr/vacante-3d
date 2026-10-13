@@ -218,70 +218,49 @@ corazones.
 
 ## `4-lampara-puck/` — la media esfera que tapa una lámpara puck
 
-**`puck_D86_grumo9mm`** tapa una lámpara puck de Ø83.2 x 18 mm, que queda
-adentro, apoyada en la mesa con la luz para arriba. ~1.2 h: el tiempo "por F"
-coincide con el de Orca en los tres `.gcode.3mf` laminados (1.28 h, 1.10 h,
-0.82 h contra 1.3, 1.1, 0.8), así que la meta de 1.5 h se mide con ese número
-y no con el x1.4.
+**`puck_D86_grumo9mm`** encierra una lámpara puck de Ø83.2 x 18 mm: piso
+macizo y una **pausa de 20 s al terminar la capa 16** (z 12.0, como la muestra
+Orca) para meterla. ~1.4 h "por F" (el tiempo "por F" coincide con el de Orca
+en los `.gcode.3mf` laminados).
 
-- **Zócalo** (`--zocalo 19`): 19 mm de cilindro recto, liso, a **20 mm/s**
-  (`rapido_hasta`, `rapido=1.25`). Por dentro Ø84.6, 0.7 mm de holgura por lado.
-- **Piso**: hueco libre Ø84.3, para meter la lámpara por abajo. Por fuera un
-  pie de 2.4 mm (`--base-borde`) para que agarre a la cama.
-- **Cúpula**: el hongo espejado, cortado en la panza (corte 174, escala
-  0.4855) para que arranque vertical justo donde termina el cilindro. 32.5 mm.
-  En total 51.5 mm de alto. 78 púas (paso 2.87 mm), grumos de 9 mm, 3 + 1,
-  punta frenada en toda la subida (`lento_alcance=subida`).
-  Los grumos arrancan en z 19.6, entre dos filas, para que la primera salga
-  entera. Esa primera fila mide 5.8 mm, porque nace en la rampa de
-  `suave_mm=5`; de ahí para arriba, 9.
-- **Ventanas** (`--ventana ANG:Z0:Z1:ANCHO`, puntas redondas):
-  - switch en **0°** (+X de la cama): z 7.5–14.5, 16 mm de ancho.
-  - micro USB en **180°**, del lado opuesto: z 5–13, 13 mm de ancho.
+- **Piso**: disco macizo de 0.8 mm (sin `--piso`), con pie de 2.4 mm
+  (`--base-borde`). La lámpara apoya en z 0.8.
+- **Pausa** (`--pausa 12.0:20`): retrae, sube 10 mm, corre el cabezal a X10 y
+  adelanta la cama, espera 20 s y vuelve sola. OJO: en ese momento la lámpara
+  (hasta z 18.8) asoma ~7 mm por encima de la boquilla, que pasa a ~1 mm de su
+  borde. Pedida así.
+- **Zócalo** (`--zocalo 20`): cilindro recto, liso, a **20 mm/s**. Por dentro
+  Ø84.6.
+- **Cúpula**: el hongo espejado (corte 174, escala 0.4855), 32.5 mm. En total
+  52.5 mm. 78 púas, grumos de 9 mm, 3 + 1, punta frenada en la subida.
+- **Ventanas**, alturas desde la mesa con el piso sumado:
+  - switch en **0°**: z 8.3–14.9, 16 mm de ancho (el techo a 15.3 dejaba un
+    puente de 12.8 mm; a 14.9, 11.75).
+  - micro USB en **180°**: z 5.8–13.8, 13 mm de ancho.
+  Al meter la lámpara, el switch va hacia +X de la cama.
 
-  Las alturas son al centro, medidas desde la mesa: switch 11 ± 3.5 (el botón
-  mide 5) y USB 9 ± 4 (el conector mide 6), con margen porque la capa es de 0.8.
+**Cómo sube (`--p giro_fila=25`): espiral pura en TODA la pieza.** Ninguna
+vuelta tiene escalón: el mayor salto de z entre dos puntos seguidos es 0.05 mm.
+Cada fila de grumos es exactamente UNA vuelta (una capa en Orca), arranca en un
+valle y tiene sus 78 grumos. Lo único que deja la espiral es que el último
+grumo de la fila queda una capa más arriba que el primero; ese punto gira 25
+púas (115°) por fila, así que no forma una línea. Las 3 lisas absorben el giro
+estirándose a 1.1 vueltas: su espesor baja a ~0.72, sin escalón, y las filas
+siguen a 3.2 mm.
 
-**Cómo sube cada vuelta (`--escalon 0.7`, `alfa_lisas=0.2`).**
+Por qué no capas planas (era `--escalon 0.7`, commit bf65c9e): con una sola
+línea continua, cada tramo de 360° tiene que subir lo que mide la capa —el
+espesor en un punto es lo que subió la boquilla en la vuelta anterior—. Una
+fila 100 % plana sube todo en un solo lugar, y las vueltas de arriba y de abajo
+tienen que subir en ese mismo lugar o el espesor se va a 0.16 / 1.4 mm. Por eso
+salía la costura alineada con escalones. Plana y sin costura no existe; sin
+escalón, la fila sube de a poco.
 
-- **Zócalo:** espiral pura, como todas las piezas: la subida no se ve.
-- **Vuelta con grumos:** PLANA. Los 78 grumos tienen el pie a la misma z y al
-  mismo radio, y la vuelta sube en el valle entre el último y el primero, sin
-  saltear ninguno.
-- **Lisas de la zona con grumos:** hacen el 20 % de su subida en espiral y el
-  resto en ese mismo valle. Entre el zócalo y la primera fila, `alfa` baja de
-  a 0.25 por vuelta.
-
-Por qué así y no de otra forma (cada intento anterior dejaba algo roto):
-
-- En espiral pura, cada fila terminaba una capa más arriba de donde empezaba,
-  y los últimos grumos quedaban corridos contra los primeros.
-- Saltear el último grumo para subir dejaba una columna de huecos.
-- Con las vueltas lisas planas, el escalón se veía en el zócalo, y corriéndolo
-  vuelta a vuelta se armaba una escalera en diagonal.
-- Una espiral pura no entra al lado de una vuelta plana: el espesor iría de
-  0.8 a 0. Cada vuelta se apoya en la anterior, y el espesor es
-  0.8 x (1 + alfa de arriba - alfa de abajo), así que `alfa` cambia de a poco.
-- Las subidas tienen que caer TODAS en el mismo ángulo. Si una vuelta subiera
-  corrida respecto de la de abajo, en el medio una ya subió y la otra no: el
-  espesor llegaba a 0.16 o a 1.4 mm. Las filas pares e impares tienen los
-  valles corridos media púa, y se pisan en [0.3, 0.5) de la celda: la rampa va
-  ahí, de 0.32 a 0.48 púa (0.7°), la misma en todas las vueltas.
-- Con `alfa_lisas` 0.25 o más, `verificar_pieza.py` encontraba un tramo de
-  31.7 mm con 7.4 % de solape lateral contra un 8 % exigido: una lisa apoyada
-  en la parte más gruesa de la de abajo, en la pendiente de la cúpula. Con 0.2
-  ya no aparece.
-
-Medido: 16 filas de 78 grumos, todas planas, separadas una púa exacta.
-Tresbolillo exacto: cada grumo a media púa de los de abajo, ninguno apilado.
-Todas las subidas entre 57.1° y 57.6°. Espesor del zócalo 0.80; en la zona
-con grumos, 0.6 a 0.96. El caudal sigue al espesor punto por punto, así que
-el cordón llena lo que hay. Se ve una sola costura recta y angosta en el
-valle, a 57°, con escalones de 0.64 mm en las lisas y 0.8 en las filas.
-
-Verificador: línea fina 0.00 %, peor puente 11.06 mm (el techo de la ventana
-del switch), contacto 11.8 %, lo mismo que la versión espiral. ~1.2 h. La
-media `media_D92` y el cupón de velocidades regenerados salen idénticos.
+Medido: filas de 78 grumos, cada una en una vuelta, arranques a 115° uno del
+otro. Espesor 0.8 en el zócalo, 0.7–0.8 en las filas y lisas de abajo, y baja
+en la cúpula como siempre (paso adaptativo). Verificador: línea fina 0 %, peor
+puente 11.75 mm, contacto 11.4 % (igual que antes). La versión plana, la media
+`media_D92` y el cupón de velocidades regenerados salen idénticos.
 
 `verificar_pieza.py` ahora mide el contacto entre CENTROS de cordón. Antes
 usaba la distancia entre trayectorias con el alto promedio de los dos cordones,

@@ -1655,7 +1655,8 @@ def generar_pieza(
         a_ini = angulo_inicio if vuelta_desde[0] is None else vuelta_desde[0]
         a_fin = a_ini + 2 * math.pi
         alfa = 1.0
-        perfilado = escalon > 0.0 and hasattr(funcion_radio, "perfil_vuelta")
+        perfilado = hasattr(funcion_radio, "perfil_vuelta") and (
+            escalon > 0.0 or getattr(funcion_radio, "perfil_espiral", False))
         largo_variable = perfilado
         if perfilado and rampa:
             a_fin, alfa = funcion_radio.perfil_vuelta(capa, a_ini)
@@ -1663,7 +1664,7 @@ def generar_pieza(
         tramo = min(1.0, escalon * 2 * math.pi / max(a_fin - a_ini, 1e-9))
 
         def _avance(fr: float) -> float:
-            if not perfilado or not rampa:
+            if not perfilado or not rampa or alfa >= 1.0:
                 return fr
             win = min(1.0, max(0.0, (fr - (1.0 - tramo)) / tramo))
             return alfa * fr + (1.0 - alfa) * win

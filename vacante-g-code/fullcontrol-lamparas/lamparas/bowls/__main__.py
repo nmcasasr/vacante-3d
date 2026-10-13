@@ -24,6 +24,7 @@ from ..colores import (
     manchas,
     cambios_desde_specs,
     parsear_filamento,
+    pausa_con_espera,
     pausa_manual,
     verificar_slots,
 )
@@ -339,6 +340,10 @@ def _cli() -> None:
                         "y una pieza en modo vaso, que es todo pared, se abre.")
     p.add_argument("--cambio", type=float, action="append", default=[], metavar="ALTURA",
                    help="pausa para cambiar el filamento a mano a esa altura en mm (repetible)")
+    p.add_argument("--pausa", action="append", default=[], metavar="ALTURA:SEG",
+                   help="pausa de SEG segundos al llegar a ALTURA mm, repetible: retrae, aparta "
+                        "el cabezal, adelanta la cama, espera y vuelve sola (no es M400 U1). "
+                        "Para meter la lampara puck antes de cerrar. Ej: --pausa 20:20")
     p.add_argument("--cambio-ams", action="append", default=[], metavar="ALTURA:SLOT[:MATERIAL]",
                    help="cambio de slot del AMS a esa altura, repetible. El SLOT va 1..4, como lo "
                         "rotula el AMS (en el gcode sale como T0..T3). El MATERIAL sale de la tabla "
@@ -480,6 +485,9 @@ def _cli() -> None:
         print(f"AVISO: la silueta '{args.silueta}' no usa {', '.join(ignorados)}; se ignora.")
 
     cambios = {h: pausa_manual(f"a {h:.1f} mm") for h in args.cambio}
+    for spec in args.pausa:
+        h, seg = (float(v) for v in spec.split(":"))
+        cambios[h] = pausa_con_espera(seg, perfil, f"a {h:.1f} mm")
     if args.cambio_ams:
         # Un slot inválido es un error de uso, no un bug: sale por argparse en
         # vez de por un traceback.
