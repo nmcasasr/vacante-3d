@@ -219,23 +219,27 @@ corazones.
 ## `4-lampara-puck/` — la media esfera que tapa una lámpara puck
 
 **`puck_D86_grumo9mm`** encierra una lámpara puck de Ø83.2 x 18 mm: piso
-macizo y una **pausa de 20 s al terminar la capa 16** (z 12.0, como la muestra
-Orca) para meterla. ~1.4 h "por F" (el tiempo "por F" coincide con el de Orca
+macizo y una **pausa de 20 s al terminar la capa 26** (z 20.0, como la muestra
+Orca) para meterla desde arriba. ~1.4 h "por F" (el tiempo "por F" coincide con el de Orca
 en los `.gcode.3mf` laminados).
 
 - **Piso**: disco macizo de 0.8 mm (sin `--piso`), con pie de 2.4 mm
   (`--base-borde`). La lámpara apoya en z 0.8.
-- **Pausa** (`--pausa 12.0:20`): retrae, sube 10 mm, corre el cabezal a X10 y
-  adelanta la cama, espera 20 s y vuelve sola. OJO: en ese momento la lámpara
-  (hasta z 18.8) asoma ~7 mm por encima de la boquilla, que pasa a ~1 mm de su
-  borde. Pedida así.
+- **Pausa** (`--pausa 20.0:20`): retrae, sube 10 mm, corre el cabezal a X10 y
+  adelanta la cama, espera 20 s y vuelve sola. Va en la capa 26 porque la
+  lámpara llega a z 18.8: en la 16 (z 12) la boquilla, que pasa a ~1 mm de su
+  borde, la chocaba. En la 26 queda 1.2 mm por encima y la boca sigue recta.
 - **Zócalo** (`--zocalo 20`): cilindro recto, liso, a **20 mm/s**. Por dentro
   Ø84.6.
 - **Cúpula**: el hongo espejado (corte 174, escala 0.4855), 32.5 mm. En total
   52.5 mm. 78 púas, grumos de 9 mm, 3 + 1, punta frenada en la subida.
 - **Ventanas**, alturas desde la mesa con el piso sumado:
   - switch en **0°**: z 8.3–14.9, 16 mm de ancho (el techo a 15.3 dejaba un
-    puente de 12.8 mm; a 14.9, 11.75).
+    puente de 12.8 mm; a 14.9, 11.75). Encima, un **canal** recto de 11 mm
+    hasta z 20 (`--ventana 0:8.3:20.0:11`; una ventana más alta que ancha es
+    canal de techo plano): la perilla del switch sobresale 2 mm y mide ~8, y
+    tiene que bajar por ahí al meter la lámpara. Meterla con el switch en el
+    medio (auto). Libre medido: 10.0–10.4 mm en el canal.
   - micro USB en **180°**: z 5.8–13.8, 13 mm de ancho.
   Al meter la lámpara, el switch va hacia +X de la cama.
 
@@ -259,7 +263,7 @@ escalón, la fila sube de a poco.
 Medido: filas de 78 grumos, cada una en una vuelta, arranques a 115° uno del
 otro. Espesor 0.8 en el zócalo, 0.7–0.8 en las filas y lisas de abajo, y baja
 en la cúpula como siempre (paso adaptativo). Verificador: línea fina 0 %, peor
-puente 11.75 mm, contacto 11.4 % (igual que antes). La versión plana, la media
+puente 10.9 mm, contacto 11.4 % (igual que antes). La versión plana, la media
 `media_D92` y el cupón de velocidades regenerados salen idénticos.
 
 `verificar_pieza.py` ahora mide el contacto entre CENTROS de cordón. Antes

@@ -70,6 +70,12 @@ def _ventanas(args, silueta):
             r = silueta(0.0)
             d = (angulo - a + math.pi) % (2 * math.pi) - math.pi
             x = abs(d) * r                         # mm sobre la pared
+            if z1 - z0 > ancho:
+                # más alto que ancho: un CANAL recto, de techo plano —por donde
+                # baja la perilla del switch al meter la lámpara en la pausa—
+                if x <= ancho / 2:
+                    return True
+                continue
             radio = min(z1 - z0, ancho) / 2
             medio = ancho / 2 - radio             # el tramo recto
             if x <= medio:
