@@ -43,9 +43,11 @@
   "--ventilador",
   "100",
   "--p",
-  "puas=78",
+  "puas=80",
   "--p",
-  "hasta=0.95",
+  "hasta=1.03",
+  "--p",
+  "suave_mm=0.8",
   "--p",
   "desde=0.3733",
   "--p",
@@ -78,6 +80,8 @@
   "lento_alcance=subida",
   "--p",
   "giro_fila=25",
+  "--p",
+  "paso_min=2.4",
   "--pendiente-silueta",
   "--capas-transicion",
   "0",
@@ -133,20 +137,29 @@
   {
    "flag": "--p",
    "clave": "puas",
-   "valor": 78.0,
+   "valor": 80.0,
    "min": 0.0,
-   "max": 312.0,
+   "max": 320.0,
    "paso": 1.0,
    "que": "cu\u00e1ntas p\u00faas entran en una vuelta. Lo que importa de verdad es el PASO que resulta, `2\u00b7pi\u00b7radio / puas`: por debajo de un cord\u00f3n las p\u00faas vecinas se funden y vuelve a ser una pared ondulada. El m\u00f3dulo imprime el paso en mm para que no haya que hacer la cuenta."
   },
   {
    "flag": "--p",
    "clave": "hasta",
-   "valor": 0.95,
+   "valor": 1.03,
    "min": 0.0,
    "max": 1.0,
    "paso": 0.01,
    "que": "en qu\u00e9 tramo de la altura (0..1) hay p\u00faas. El z\u00f3calo liso de abajo no es decorativo: es donde la pieza se agarra a la cama."
+  },
+  {
+   "flag": "--p",
+   "clave": "suave_mm",
+   "valor": 0.8,
+   "min": 0.0,
+   "max": 2.4000000000000004,
+   "paso": 0.012000000000000002,
+   "que": "en cu\u00e1ntos MIL\u00cdMETROS de altura encienden y apagan esas dos rampas. En mm y no en fracci\u00f3n a prop\u00f3sito: ver `_ventana`."
   },
   {
    "flag": "--p",
@@ -273,6 +286,15 @@
    "max": 75.0,
    "paso": 0.375,
    "que": "en p\u00faas, cu\u00e1nto gira el arranque de cada fila respecto de la anterior. Distinto de 0, TODO va en espiral pura \u2014ninguna vuelta tiene escal\u00f3n\u2014 y cada fila de grumos es exactamente una vuelta, que arranca en un valle: una capa en Orca, con todos sus grumos.\u2026"
+  },
+  {
+   "flag": "--p",
+   "clave": "paso_min",
+   "valor": 2.4,
+   "min": 0.0,
+   "max": 7.199999999999999,
+   "paso": 0.036,
+   "que": "en mm, con `intercalar`. Si en una fila el paso entre grumos (al radio de SU vuelta) baja de `paso_min`, la fila se queda con uno de cada q puntos medios de la de abajo, con q el menor divisor de la cantidad que lo devuelve por encima: cada grumo sigue\u2026"
   }
  ],
  "mapeo": {

@@ -220,7 +220,7 @@ corazones.
 
 **`puck_D86_grumo9mm`** encierra una lámpara puck de Ø83.2 x 18 mm: piso
 macizo y una **pausa de 20 s al terminar la capa 26** (z 20.0, como la muestra
-Orca) para meterla desde arriba. ~1.4 h "por F" (el tiempo "por F" coincide con el de Orca
+Orca) para meterla desde arriba. ~1.5 h "por F" (el tiempo "por F" coincide con el de Orca
 en los `.gcode.3mf` laminados).
 
 - **Piso**: disco macizo de 0.8 mm (sin `--piso`), con pie de 2.4 mm
@@ -232,23 +232,25 @@ en los `.gcode.3mf` laminados).
 - **Zócalo** (`--zocalo 20`): cilindro recto, liso, a **20 mm/s**. Por dentro
   Ø84.6.
 - **Cúpula**: el hongo espejado (corte 174, escala 0.4855), 32.5 mm. En total
-  52.5 mm. 78 púas, grumos de 9 mm, 3 + 1, punta frenada en la subida.
+  52.5 mm. Grumos de 9 mm en TODAS las filas, de la primera a la última, 3 + 1,
+  punta frenada en la subida. 80 púas abajo, 40 y 20 en la cúpula y 10 arriba
+  (ver abajo).
 - **Ventanas**, alturas desde la mesa con el piso sumado:
   - switch en **0°**: z 8.3–14.9, 16 mm de ancho (el techo a 15.3 dejaba un
     puente de 12.8 mm; a 14.9, 11.75). Encima, un **canal** recto de 11 mm
     hasta z 20 (`--ventana 0:8.3:20.0:11`; una ventana más alta que ancha es
     canal de techo plano): la perilla del switch sobresale 2 mm y mide ~8, y
     tiene que bajar por ahí al meter la lámpara. Meterla con el switch en el
-    medio (auto). Libre medido: 10.0–10.4 mm en el canal.
+    medio (auto). Libre medido: ~10.3–10.7 mm en el canal.
   - micro USB en **180°**: z 5.8–13.8, 13 mm de ancho.
   Al meter la lámpara, el switch va hacia +X de la cama.
 
 **Cómo sube (`--p giro_fila=25`): espiral pura en TODA la pieza.** Ninguna
 vuelta tiene escalón: el mayor salto de z entre dos puntos seguidos es 0.05 mm.
-Cada fila de grumos es exactamente UNA vuelta (una capa en Orca), arranca en un
-valle y tiene sus 78 grumos. Lo único que deja la espiral es que el último
+Cada fila de grumos es exactamente UNA vuelta (una capa en Orca), arranca en el
+medio del valle de una de sus celdas y tiene todos sus grumos. Lo único que deja la espiral es que el último
 grumo de la fila queda una capa más arriba que el primero; ese punto gira 25
-púas (115°) por fila, así que no forma una línea. Las 3 lisas absorben el giro
+celdas de la fila por fila, así que no forma una línea. Las 3 lisas absorben el giro
 estirándose a 1.1 vueltas: su espesor baja a ~0.72, sin escalón, y las filas
 siguen a 3.2 mm.
 
@@ -260,10 +262,38 @@ tienen que subir en ese mismo lugar o el espesor se va a 0.16 / 1.4 mm. Por eso
 salía la costura alineada con escalones. Plana y sin costura no existe; sin
 escalón, la fila sube de a poco.
 
-Medido: filas de 78 grumos, cada una en una vuelta, arranques a 115° uno del
-otro. Espesor 0.8 en el zócalo, 0.7–0.8 en las filas y lisas de abajo, y baja
+**Largos hasta arriba y la cantidad que entra (`--p paso_min=2.4`).** Antes las
+últimas filas salían cortas (8, 5–6 y 3 mm) y las de más arriba no existían:
+era la rampa de la ventana de altura de `puas.py` (`suave_mm`, 5 mm por
+defecto) con `hasta=0.95`, no ninguna razón física. Ahora `hasta=1.03` y
+`suave_mm=0.8`: la primera fila, que también salía corta (4–6 mm), y las de la
+cúpula salen todas de 9 mm.
+
+Con la cantidad fija, la cúpula amontonaba los grumos: con 78 el paso bajaba de
+3.46 mm a 2.2 en z 46, 1.5 en z 50 y 0.5 en la última vuelta, contra un cordón
+de 1.2. Impreso, las últimas vueltas salían hechas un solo grumo. `paso_min`
+mira el paso de cada fila al radio de SU vuelta y, si baja de 2.4 mm, la fila
+se queda con uno de cada q puntos medios de la de abajo (q, el menor divisor
+que lo devuelve por encima). Así cada grumo sigue cayendo en el medio de dos de
+abajo. `paso_mm`, que ajusta la cantidad al radio de a una púa, se probó y
+rompía el tresbolillo arriba: 41–65 % en el medio y hasta 15 % apilados. Por
+eso son 80 púas y no 78: 80 → 40 → 20 → 10 siempre parte a la mitad, mientras
+que 78 → 39 tiene que saltar a 13 y deja 6.2 mm arriba.
+
+| filas (vuelta) | radio | grumos | paso |
+|---|---|---|---|
+| 29–61 | 42.8 → 30.2 | 80 | 3.36 → 2.37 mm |
+| 65–81 | 27.6 → 16.1 | 40 | 4.34 → 2.52 mm |
+| 85–89 | 12.9 → 9.7 | 20 | 4.05 → 3.06 mm |
+| 93 | 6.5 | 10 | 4.09 mm |
+
+Tresbolillo medido por capa de Orca: 100 % en el medio, 0 % apilados. Choque
+del verificador (cordón pisando material) 16.5 %, contra 22.4 % con todas las
+filas largas y 78 fijas.
+
+Medido: cada fila en una vuelta, arranques girando. Espesor 0.8 en el zócalo, 0.7–0.8 en las filas y lisas de abajo, y baja
 en la cúpula como siempre (paso adaptativo). Verificador: línea fina 0 %, peor
-puente 10.9 mm, contacto 11.4 % (igual que antes). La versión plana, la media
+puente 10.8 mm, contacto 13.2 % (11.4 con las filas cortas: son 5 filas más). La versión plana, la media
 `media_D92` y el cupón de velocidades regenerados salen idénticos.
 
 `verificar_pieza.py` ahora mide el contacto entre CENTROS de cordón. Antes

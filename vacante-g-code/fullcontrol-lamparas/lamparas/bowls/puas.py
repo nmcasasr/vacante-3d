@@ -205,6 +205,7 @@ def construir(
     rapido: float = 1.0,
     alfa_lisas: float = 0.2,
     giro_fila: int = 0,
+    paso_min: float = 0.0,
     hasta: float = 0.99,
     suave_mm: float = 5.0,
     altura_capa: float = 0.4,
@@ -388,6 +389,13 @@ def construir(
             para no formar una línea. Las lisas absorben el giro estirándose
             (3 lisas de 1.1 vueltas con 25 púas de 78): el espesor baja a 0.72
             en ellas, sin escalón, y las filas siguen a 3.2 mm. 0 = apagado.
+        paso_min: en mm, con `intercalar`. Si en una fila el paso entre grumos
+            (al radio de SU vuelta) baja de `paso_min`, la fila se queda con
+            uno de cada q puntos medios de la de abajo, con q el menor divisor
+            de la cantidad que lo devuelve por encima: cada grumo sigue cayendo
+            en el medio de dos de abajo, sin los defectos de `paso_mm`. Es para
+            cúpulas que se cierran, donde con la cantidad fija los grumos se
+            amontonan en uno solo. 0 = apagado.
 
         altura_capa: solo para el aviso — cuánto sube una vuelta. No cambia la
             pieza, la altura real la fija `--altura-capa`.
@@ -594,11 +602,27 @@ def construir(
         if k in cache:
             return cache[k]
         t_k = (t_de_vuelta.get(k * ciclo) if real else None)
+        ts = getattr(radio, "ts_vueltas", None)
+        if t_k is None and real and ts is not None and 0 <= k * ciclo < len(ts):
+            # una fila que todavía no empezó (`giro_fila` mira adelante): su `t`
+            # de verdad, no `k x ciclo x dt_capa`, que en la cúpula queda arriba
+            t_k = ts[k * ciclo]
         if t_k is None:
             t_k = k * ciclo * dt_capa
         n = int(puas_de(t_k))
-        fila = ([j * TAU / n for j in range(n)] if k <= 0
-                else _siguiente_fila(_fila(k - 1, real), n, k))
+        if k > 0 and paso_min > 0:
+            # la misma cantidad mientras entre; si no, una divisor de la de abajo
+            prev = _fila(k - 1, real)
+            m = len(prev)
+            v = k * ciclo + max(0, int(lisas))
+            t_v = ts[v] if real and ts is not None and v < len(ts) else t_k
+            r = silueta(min(1.0, max(0.0, t_v)))
+            q = next((d for d in range(1, m + 1) if m % d == 0
+                      and (TAU * r * d / m >= paso_min or m // d <= 4)), 1)
+            fila = _siguiente_fila(prev, m, k)[::q]
+        else:
+            fila = ([j * TAU / n for j in range(n)] if k <= 0
+                    else _siguiente_fila(_fila(k - 1, real), n, k))
         cache[k] = fila
         return fila
 
@@ -984,10 +1008,14 @@ def construir(
     _costura: dict = {}
 
     def _arranque_fila(k: int) -> float:
-        """Ángulo (mod TAU) donde arranca la fila `k` con `giro_fila`: en el valle
-        común de pares e impares, girado `giro_fila` púas por fila."""
-        pares = _fila(0, bool(banda_por_vuelta and capa_actual[0] is not None))
-        return (pares[0] + (0.40 + k * int(giro_fila)) * _paso_ang) % TAU
+        """Ángulo (mod TAU) donde arranca la fila `k` con `giro_fila`: en el medio
+        del valle de una celda de ESA fila, girado `giro_fila` celdas por fila.
+        Se lee de la fila misma y no de un paso fijo porque con `paso_mm` cada
+        fila tiene su cantidad, y la celda agregada o sacada descoloca el resto."""
+        fila = _fila(k, bool(banda_por_vuelta and capa_actual[0] is not None))
+        j = (k * int(giro_fila)) % len(fila)
+        fin = fila[j + 1] if j + 1 < len(fila) else fila[0] + TAU
+        return (fila[j] + (ocupacion + 1.0) / 2 * (fin - fila[j])) % TAU
 
     def perfil_vuelta(capa: int, a_ini: float):
         """(dónde termina la vuelta, qué parte de la subida hace en espiral)."""
