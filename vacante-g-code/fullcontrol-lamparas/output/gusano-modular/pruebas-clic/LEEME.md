@@ -12,6 +12,37 @@ Las dos van en +Y y −Y de la cama, así que dos módulos apilados como salen d
 la cama quedan alineados. Fuera de las cuñas y las muescas, cada pieza es
 **punto por punto el módulo original**, costuras incluidas.
 
+## Ronda 3: sólo bases nuevas (la boca de la ronda 2 sirve)
+
+La ronda 2 quedó **muy suelta con los tres huecos**: la base bailaba de lado y
+la cuña no trababa. La boca no cambia; se imprimen sólo bases, que tardan
+~6 min cada una:
+
+| pieza | base más angosta | juego de costado (simulado) |
+|---|---|---|
+| `prueba_boca_D95_clic1.05_cierra0.3` | 0.3 mm | ~0.4 mm |
+| `prueba_boca_D95_clic1.05_cierra0.45` | 0.45 mm | ~0.3 mm |
+| `prueba_boca_D95_clic1.05_cierra0.6` | 0.6 mm | ~0.1 mm |
+
+(La ronda 2, `prueba_boca_D95_clic1.05`, tenía ~0.7 mm.)
+
+Toda la boca de la base es **más angosta, pareja**, para que la pared no tenga
+lugar de irse de lado. Creo que por eso no trababa: con 0.7 mm libres, el
+labio se ovala bajo las dos cuñas y las deja pasar. La simulación no lo ve
+porque trata las piezas como rígidas.
+
+La cuña **mide lo mismo en total** (1.0 mm hacia adentro desde la boca
+original), así que entra en los huecos de la boca de la ronda 2 con el mismo
+juego de antes: 0.02, 0.07 y 0.12 mm. Al estar más angosta, la base apoya un
+poco más arriba en el hombro (~0.3-0.4 mm); con cuña pasaba lo mismo. Las
+tres pasan el verificador: 0 % sin apoyo.
+
+Si la de 0.6 no entra, o hay que forzarla, la buena está entre esa y la de
+0.45. Para el módulo entero, el mismo cierre va en su base y se apaga en las
+vueltas de arriba, ~0.1 mm por vuelta.
+
+    python gen_gusano_modular.py 95 --prueba --boca-adentro 1.05 --boca-cierra 0.3 0.45 0.6 --labio 7.6
+
 ## Qué imprimir (ronda 2)
 
 | pieza | qué es | tiempo* |

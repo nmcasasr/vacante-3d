@@ -1,0 +1,28 @@
+{
+ "toques": [
+  {
+   "tipo": "jalar",
+   "forma": "columna",
+   "caida": "meseta",
+   "angulo": 90,
+   "simetria": 2,
+   "t": 0.0,
+   "radio_t": 0.17708333333333331,
+   "radio_grados": 5.649774881112519,
+   "fuerza": -0.75,
+   "nota": "cuña hacia adentro en las dos primeras vueltas"
+  },
+  {
+   "tipo": "jalar",
+   "forma": "banda",
+   "caida": "meseta",
+   "angulo": 0.0,
+   "simetria": 1,
+   "t": 0.0,
+   "radio_t": 1.875,
+   "radio_grados": 180.0,
+   "fuerza": -0.3,
+   "nota": "boca más angosta: menos juego contra el labio"
+  }
+ ]
+}

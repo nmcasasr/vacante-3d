@@ -102,6 +102,12 @@ PRUEBA_LABIO_BAJO = 3.38      # mm de hombro debajo del labio: medido en Ø95, a
 BOCA_ALTO = 0.85             # mm de silueta donde corta la cuña: medido, 0.80 y 0.90 dejan las dos vueltas
 BOCA_ANGULO = 90
 BOCA_ANCHO = 6.0              # mm, alrededor; plana en los 3.4 del medio
+# La base cerrada (`--boca-cierra`): toda la boca más angosta, pareja, para
+# que quede menos juego contra el labio sin tocar la pieza de arriba. Con los
+# 0.6 de holgura la base bailaba de lado y el labio se ovalaba bajo las dos
+# cuñas, que pasaban sin trabar (ronda 2, impresa). Plana hasta el 60 % de
+# `CIERRE_ALTO` y se apaga hasta el 100 %: en el módulo, ~0.1 mm por vuelta.
+CIERRE_ALTO = 6.0             # mm
 
 
 def con_toques(cmd: list, toques: list, sufijo: str) -> list:
@@ -141,6 +147,14 @@ def cuna(s, r: float, adentro: float) -> dict:
             "radio_t": BOCA_ALTO / 1.5 / s.altura,
             "radio_grados": math.degrees(BOCA_ANCHO / 2 / (r * 0.6405)),
             "fuerza": -adentro, "nota": "cuña hacia adentro en las dos primeras vueltas"}
+
+
+def cierre(s, cierra: float) -> dict:
+    """Toda la boca de la base más angosta, pareja."""
+    return {"tipo": "jalar", "forma": "banda", "caida": "meseta",
+            "angulo": 0.0, "simetria": 1, "t": 0.0,
+            "radio_t": CIERRE_ALTO / s.altura, "radio_grados": 180.0,
+            "fuerza": -cierra, "nota": "boca más angosta: menos juego contra el labio"}
 
 
 def clic(cmd: list, s, r: float, hondo: float, adentro: float) -> list:
@@ -189,14 +203,15 @@ def pruebas(d: float, a) -> None:
     cmd = comando(s, r, f"{carpeta}/prueba_boca_D{d:g}", RECETA, hasta=PRUEBA_BOCA_ALTO, **base)
     if not a.boca_adentro:
         subprocess.run(cmd, check=True)
-    for f in a.boca_adentro:
-        t = cuna(s, r, f)
+    for f, c in [(f, c) for f in a.boca_adentro for c in (a.boca_cierra or [0.0])]:
+        # La cuña cuenta desde la boca cerrada: `f` es el total hacia adentro.
+        t = [cuna(s, r, f - c)] + ([cierre(s, c)] if c else [])
         # Sin la mezcla de las primeras capas (`--capas-transicion`): apaga la
         # deformación justo en las vueltas donde va esta protuberancia. Y la
         # subida medida sobre la silueta lisa (`--pendiente-silueta`): si no, el
         # salto de radio donde termina la protuberancia se lee como pared
         # acostada y la vuelta siguiente casi no sube (0.05 mm en vez de 0.44).
-        sin_mezcla = con_toques(list(cmd), [t], f"_clic{f:g}")
+        sin_mezcla = con_toques(list(cmd), t, f"_clic{f:g}" + (f"_cierra{c:g}" if c else ""))
         i = sin_mezcla.index("--nombre")
         subprocess.run(sin_mezcla[:i] + ["--capas-transicion", "0", "--pendiente-silueta"]
                        + sin_mezcla[i:], check=True)
@@ -227,6 +242,9 @@ def main() -> None:
                    help="la base clic, con dos cuñas hacia adentro en las primeras vueltas, de "
                         "estos mm. Con --prueba, una base por valor; en los módulos con --clic, "
                         "un solo valor")
+    p.add_argument("--boca-cierra", type=float, nargs="+", default=[], metavar="MM",
+                   help="con --prueba y --boca-adentro: la base además más angosta, pareja, "
+                        "estos mm (una base por valor)")
     a = p.parse_args()
     if not a.prueba and len(a.boca_adentro) > 1:
         p.error("en los módulos --boca-adentro lleva un solo valor")
