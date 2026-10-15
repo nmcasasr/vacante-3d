@@ -1,0 +1,16 @@
+{
+ "toques": [
+  {
+   "tipo": "jalar",
+   "forma": "columna",
+   "caida": "meseta",
+   "angulo": 90,
+   "simetria": 2,
+   "t": 0.0,
+   "radio_t": 0.17708333333333331,
+   "radio_grados": 5.649774881112519,
+   "fuerza": -1.05,
+   "nota": "cuña hacia adentro en las dos primeras vueltas"
+  }
+ ]
+}

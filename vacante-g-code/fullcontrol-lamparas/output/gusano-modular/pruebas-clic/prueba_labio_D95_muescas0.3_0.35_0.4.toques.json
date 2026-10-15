@@ -1,0 +1,46 @@
+{
+ "toques": [
+  {
+   "tipo": "jalar",
+   "forma": "ranura",
+   "caida": "pico",
+   "rampa_u": 0.4,
+   "rampa_v": 0.5217391304347826,
+   "angulo": 30.0,
+   "simetria": 2,
+   "t": 0.3776563448694597,
+   "radio_t": 0.07617155158138762,
+   "radio_grados": 7.005903429696953,
+   "fuerza": -0.3,
+   "nota": "muesca de 0.3 mm para la cuña de la base"
+  },
+  {
+   "tipo": "jalar",
+   "forma": "ranura",
+   "caida": "pico",
+   "rampa_u": 0.4,
+   "rampa_v": 0.5599999999999999,
+   "angulo": 90.0,
+   "simetria": 2,
+   "t": 0.3897996357012752,
+   "radio_t": 0.08279516476237785,
+   "radio_grados": 7.005903429696953,
+   "fuerza": -0.35,
+   "nota": "muesca de 0.35 mm para la cuña de la base"
+  },
+  {
+   "tipo": "jalar",
+   "forma": "ranura",
+   "caida": "pico",
+   "rampa_u": 0.4,
+   "rampa_v": 0.5925925925925926,
+   "angulo": 150.0,
+   "simetria": 2,
+   "t": 0.4019429265330906,
+   "radio_t": 0.08941877794336808,
+   "radio_grados": 7.005903429696953,
+   "fuerza": -0.4,
+   "nota": "muesca de 0.4 mm para la cuña de la base"
+  }
+ ]
+}

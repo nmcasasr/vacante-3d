@@ -12,66 +12,77 @@ Las dos van en +Y y −Y de la cama, así que dos módulos apilados como salen d
 la cama quedan alineados. Fuera de las cuñas y las muescas, cada pieza es
 **punto por punto el módulo original**, costuras incluidas.
 
+## Qué imprimir (ronda 2)
+
 | pieza | qué es | tiempo* |
 |---|---|---|
-| `prueba_boca_D95_clic1` | **la base**: las primeras vueltas del módulo, con las dos cuñas de ~0.85 mm | ~6 min |
-| `prueba_labio_D95_muescas1.2_1.4_1.6` | **la boca**: el hombro y el labio del módulo con base chica, con las tres profundidades de muesca | ~18 min |
+| `prueba_boca_D95_clic1.05` | **la base**: las primeras vueltas del módulo, con las dos cuñas | ~6 min |
+| `prueba_labio_D95_muescas0.3_0.35_0.4` | **la boca**: el hombro y el labio del módulo, con tres pares de muescas | ~19 min |
 
 \* Calculado sobre el recorrido; el que da Orca es el bueno.
 
-**La boca trae las tres profundidades**, en mm hacia adentro. Como la base
-tiene dos cuñas enfrentadas, cada profundidad es un par enfrentado, uno cada
-60°. Mirando la pieza en la cama, desde adelante:
+**La boca trae tres muescas**, en mm hacia adentro. Como la base tiene dos
+cuñas enfrentadas, cada una es un par enfrentado, uno cada 60°. Mirando la
+pieza en la cama, desde adelante:
 
-    adelante y atrás                     1.4 mm
-    adelante-derecha y atrás-izquierda   1.6 mm
-    adelante-izquierda y atrás-derecha   1.2 mm
+    adelante y atrás                     0.35 mm
+    adelante-derecha y atrás-izquierda   0.40 mm   (la más floja)
+    adelante-izquierda y atrás-derecha   0.30 mm   (la más justa)
 
-(en ángulos: 90°/270° → 1.4, 150°/330° → 1.6, 30°/210° → 1.2)
+(en ángulos: 90°/270° → 0.35, 150°/330° → 0.40, 30°/210° → 0.30)
 
 **Marcar la de adelante con un punto de marcador antes de sacarla de la
-cama:** después no hay cómo distinguirlas a ojo, son 0.2 mm de diferencia.
-Para probar, se gira la base hasta que sus cuñas caigan en un par, y se pasa
-al siguiente.
+cama.** Para probar, se gira la base hasta que sus cuñas caigan en un par, y se
+pasa al siguiente.
 
-Las muescas van **sólo en el labio**, desde donde arranca para arriba. El
-hombro, la parte de la esfera, queda liso.
+## Qué cambió desde la ronda 1
 
-**Entran y salen en rampa.** La primera versión entraba de un salto: la vuelta
-donde arranca el labio se metía 1.2-1.6 mm respecto de la de abajo, más que el
-cordón (1.2), quedaba en el aire y se imprimía derretida hacia adentro. Arriba
-volvía igual de golpe. Ahora la pared se corre como mucho 0.55-0.60 mm por
-vuelta (lo mismo que el hombro, que sale bien): dos vueltas de bajada, una o
-dos a fondo y tres de subida. El labio de la prueba mide **7.6 mm** (dos
-vueltas más que los 6 de antes) para que arriba de la muesca queden 2-3 vueltas
-lisas y el borde no quede pegado a ella. Medido en el g-code:
+La ronda 1 (en `ronda1/`) imprimió bien, pero no trababa: la cuña quedaba
+chica para cualquiera de las muescas. Simulado con los cordones de los dos
+g-code, la base se podía **levantar 3 mm y girar hasta 4 mm sin que la cuña
+tocara nada**. Las muescas eran mucho más grandes que la cuña: de 4 vueltas
+de alto y 8 mm de ancho, contra una cuña en punta que sólo llegaba a fondo en
+1 mm de sus 6.
 
-| vuelta del labio | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
-|---|---|---|---|---|---|---|---|---|---|---|
-| muesca de 1.2 | 0.36 | 0.91 | 1.20 | 1.20 | 0.95 | 0.40 | 0 | 0 | 0 | 0 |
-| muesca de 1.4 | 0.45 | 1.00 | 1.40 | 1.40 | 1.26 | 0.71 | 0.16 | 0 | 0 | 0 |
-| muesca de 1.6 | 0.54 | 1.09 | 1.60 | 1.60 | 1.56 | 1.01 | 0.46 | 0 | 0 | 0 |
+Ahora:
 
-Verificador: muestras sin apoyo de 0.83 % a 0.07 %, tramos al aire de 20 a 1.
+- **La cuña es más grande:** plana, 1.0 mm hacia adentro en 3.4 mm de ancho.
+  Antes era una punta de 0.95.
+- **Las muescas son más chicas:** de 0.30 a 0.40 de hondo (antes 1.2 a 1.6),
+  de 7 mm de ancho (antes 8) y del alto de la cuña. Con la base apoyada, la
+  cuña ocupa **una sola vuelta del labio**, la primera entera. La segunda
+  vuelta de la base ya se abrió y no llega, así que la muesca es esa vuelta a
+  fondo y la de arriba, que vuelve en rampa.
+- **Menos juego.** Simulado:
 
-La rampa de abajo no cambia dónde asienta la base: la cuña entra sólo
-~0.25 mm más que el juego, y ya en la primera vuelta del labio la muesca
-tiene 0.36 o más. La de arriba sí cambia el tope: ya no es un escalón sino una
-rampa de ~35°, que es la que tiene que subir la cuña para salir.
+  | muesca | juego entre cuña y muesca | se levanta sin tocar | gira sin tocar |
+  |---|---|---|---|
+  | ronda 1 (las tres) | 0.13-0.31 mm | más de 3 mm | hasta 4 mm |
+  | 0.30 | 0.02 mm | 0.7 mm | ~1.5 mm |
+  | 0.35 | 0.07 mm | 0.7 mm | ~1.5 mm |
+  | 0.40 | 0.12 mm | 0.8 mm | ~1.5 mm |
 
-## Cómo funciona, según la simulación
+Las muescas dan menos que la cuña porque entre las dos piezas ya hay 0.72 mm
+de juego. La cuña se mete 0.3 mm en la pared del labio, contra 0.2 antes, y
+eso es lo que cede para que pase al bajar: **ese es el clic**.
 
-Apoyé la base sobre la boca con los cordones reales de los dos g-code:
+**Por qué no más hondas:** donde el hombro se vuelve labio, esa vuelta ya
+se corre 0.77 mm, y la cuña cae justo en la siguiente. Una muesca de 0.40 ahí
+corre esa vuelta hasta 0.71, lo mismo que el hombro, que sale bien. Más honda,
+volvería a quedar en el aire y a salir derretida hacia adentro.
 
-- **Al bajar, la cuña roza el labio ~0.23 mm.** El juego entre base y labio es
-  0.6 y la cuña entra 0.85. Para pasar, el plástico tiene que ceder esas
-  décimas, y al llegar abajo la cuña cae en la muesca: **ese es el clic**.
-- **Ya abajo, la base queda 0.4 mm más alta que sin clic.** La cuña está en
-  las dos primeras vueltas de la base, y la de más abajo apoya en el borde del
-  hombro, justo debajo de donde arranca el labio y la muesca.
+**La base queda ~0.4 mm más alta que sin clic.** Pasaba igual en la ronda 1:
+la cuña apoya en esa última vuelta del hombro. Es así con cualquier cuña que
+llegue a trabar, porque la muesca no puede bajar al hombro.
 
-La simulación es rígida y en un corte, así que no sabe cuánto cede el PETG:
-eso lo dice la prueba.
+**La prueba de la boca es el módulo.** Antes la pieza corta arrancaba media
+vuelta corrida respecto del módulo entero, justo donde va la muesca. Ahora
+arranca 3.38 mm debajo del labio, y sus vueltas caen donde las del módulo con
+una diferencia de 0.01 mm. La muesca de 0.35 del módulo da lo mismo que la de
+la prueba.
+
+Verificador: las dos piezas son imprimibles. La boca tiene 0.04 % de muestras
+sin apoyo y un tramo al aire de 3.7 mm; la base, 0 %.
 
 **Qué mirar:**
 
@@ -80,15 +91,14 @@ eso lo dice la prueba.
 - si se sostiene al levantar la boca;
 - si sale con un tirón razonable.
 
-Verificador: las dos dan 0 % de línea fina y puentes de 4.6 mm como máximo.
-
 ## Generar de nuevo
 
-    python gen_gusano_modular.py 95 --prueba --clic 1.2 1.4 1.6 --boca-adentro 1.0 --labio 7.6
+    python gen_gusano_modular.py 95 --prueba --clic 0.3 0.35 0.4 --boca-adentro 1.05 --labio 7.6
 
-Y el módulo entero con la profundidad que gane:
+Y el módulo entero con la que gane, ahora **con las cuñas abajo y las muescas
+arriba** (antes `--clic` sólo ponía las muescas):
 
-    python gen_gusano_modular.py 95 --solo-modulos --clic 1.4 --labio 7.6
+    python gen_gusano_modular.py 95 --solo-modulos --clic 0.35 --boca-adentro 1.05 --labio 7.6
 
-(`--labio 7.6`: el módulo con el mismo labio que la prueba; la base no depende
-del labio y sale igual con 6 o 7.6.)
+`ronda1/` salió del commit `e5882dd`; con el código de ahora no se regenera
+igual.

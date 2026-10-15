@@ -62,16 +62,23 @@ TAPAS = {
 # ángulo, donde entran esas cuñas. La muesca va SÓLO en el labio, desde donde
 # arranca para arriba: en el hombro se vería y no hace falta. Simulado con los
 # cordones de los dos g-code, la base queda 0.4 mm más alta que sin clic (la
-# cuña apoya en el borde del hombro, justo debajo del labio).
-CLIC_ANCHO = 8.0     # mm, alrededor: un poco más que la cuña (6) para que entre
+# cuña apoya en la última vuelta del hombro, justo debajo del labio).
+#
+# Apoyada, la cuña ocupa UNA vuelta del labio: la segunda vuelta de la base ya
+# se abrió y no llega. La muesca es esa vuelta a fondo y poco más, del ancho
+# de la cuña: la primera prueba (muescas de 1.2-1.6 mm, cuatro vueltas de alto
+# y 8 mm de ancho, contra una cuña en punta) dejaba levantar la base 3 mm y
+# girarla 4 mm sin tocar nada, y no trababa. Así se levanta ~0.8 y gira ~1 mm.
+CLIC_ANCHO = 7.0     # mm, alrededor: la cuña plana (6) con ~0.5 de juego a cada lado
 # En altura la muesca entra y sale en RAMPA RECTA, como mucho `CLIC_CORRE` mm
 # por vuelta: impresa de un salto (1.2-1.6 mm en una vuelta) la vuelta quedaba
 # en el aire por dentro de la de abajo y salía derretida hacia adentro. El
 # hombro ya se corre 0.67 por vuelta y sale bien. En el medio, `CLIC_PLANO` a
-# fondo: las dos vueltas de la cuña.
+# fondo, arrancando `CLIC_FONDO` sobre el labio: la vuelta donde queda la cuña.
 CLIC_CORRE = 0.55    # mm por vuelta
-CLIC_PLANO = 1.6     # mm
+CLIC_PLANO = 0.8     # mm
 CLIC_VUELTA = 0.8    # mm que sube una vuelta en el labio
+CLIC_FONDO = 0.5     # mm sobre el arranque del labio: la primera vuelta entera del labio, la de la cuña
 
 
 # Las pruebas de encastre (`--prueba`): la boca sola y el hombro con el labio,
@@ -84,15 +91,17 @@ CLIC_VUELTA = 0.8    # mm que sube una vuelta en el labio
 #     se pare solo. Incluye el hombro donde se apoya la boca, así que la prueba
 #     asienta igual que dos módulos.
 PRUEBA_BOCA_ALTO = 3.2        # mm: 4 vueltas
-PRUEBA_LABIO_BAJO = 3.0       # mm de hombro debajo del labio (el asiento queda ~2 mm arriba del piso)
+PRUEBA_LABIO_BAJO = 3.38      # mm de hombro debajo del labio: medido en Ø95, así las vueltas caen donde las del módulo
 # La cuña de la boca clic: hacia adentro SÓLO en las dos primeras vueltas, las
 # que se apoyan en la cama (la plana y la primera de la espiral). El resto es
 # la boca del módulo tal cual. La cuña corta seco (`columna`: el peso depende
 # sólo del ángulo y en altura se apaga de golpe a 1.5 radios); el corte cae
 # entre el final de la 2.ª vuelta (270°) y el principio de la 3.ª (90°).
+# Alrededor es plana (`meseta`): con `suave` era una punta que llegaba a fondo
+# en 1 mm de los 6 y bailaba en la muesca.
 BOCA_ALTO = 0.85             # mm de silueta donde corta la cuña: medido, 0.80 y 0.90 dejan las dos vueltas
 BOCA_ANGULO = 90
-BOCA_ANCHO = 6.0              # mm, alrededor (la muesca de arriba es más ancha)
+BOCA_ANCHO = 6.0              # mm, alrededor; plana en los 3.4 del medio
 
 
 def con_toques(cmd: list, toques: list, sufijo: str) -> list:
@@ -109,20 +118,35 @@ def con_toques(cmd: list, toques: list, sufijo: str) -> list:
 def muesca(s, hondo: float, angulo: float) -> dict:
     """Dos muescas enfrentadas (`angulo` y `angulo`+180) donde entran las cuñas."""
     rampa = hondo / CLIC_CORRE * CLIC_VUELTA
-    # que cierre antes de que termine el labio: con 1.6 de fondo el plano se achica
-    plano = max(CLIC_VUELTA, min(CLIC_PLANO, (s.altura - s.labio_desde) - 2 * rampa))
-    medio = plano / 2 + rampa
+    # El fondo arranca a la misma altura sea cual sea la profundidad, en la
+    # vuelta donde queda la cuña; la rampa de entrada va por debajo. Las dos
+    # piezas son espirales: girar la base `giro` grados para que su cuña caiga
+    # acá corre las vueltas del labio esa fracción de vuelta respecto de la
+    # cuña, y el fondo se corre con ellas.
+    giro = (angulo - BOCA_ANGULO + 90) % 180 - 90
+    fondo = s.labio_desde + CLIC_FONDO + giro / 360 * CLIC_VUELTA
+    medio = CLIC_PLANO / 2 + rampa
     return {"tipo": "jalar", "forma": "ranura", "caida": "pico",
             "rampa_u": 0.4, "rampa_v": rampa / medio,
             "angulo": angulo, "simetria": 2,
-            "t": (s.labio_desde + medio) / s.altura, "radio_t": medio / s.altura,
+            "t": (fondo + CLIC_PLANO / 2) / s.altura, "radio_t": medio / s.altura,
             "radio_grados": math.degrees(CLIC_ANCHO / 2 / s.radio_labio),
             "fuerza": -hondo, "nota": f"muesca de {hondo:g} mm para la cuña de la base"}
 
 
-def clic(cmd: list, s, hondo: float) -> list:
-    """El módulo: las dos muescas donde entran las cuñas del de arriba."""
-    return sin_mezcla(con_toques(cmd, [muesca(s, hondo, BOCA_ANGULO)], f"_clic{hondo:g}"))
+def cuna(s, r: float, adentro: float) -> dict:
+    """Las dos cuñas de la base, hacia adentro en sus dos primeras vueltas."""
+    return {"tipo": "jalar", "forma": "columna", "caida": "meseta",
+            "angulo": BOCA_ANGULO, "simetria": 2, "t": 0.0,
+            "radio_t": BOCA_ALTO / 1.5 / s.altura,
+            "radio_grados": math.degrees(BOCA_ANCHO / 2 / (r * 0.6405)),
+            "fuerza": -adentro, "nota": "cuña hacia adentro en las dos primeras vueltas"}
+
+
+def clic(cmd: list, s, r: float, hondo: float, adentro: float) -> list:
+    """El módulo: las dos muescas arriba y, con `adentro`, las dos cuñas abajo."""
+    toques = [muesca(s, hondo, BOCA_ANGULO)] + ([cuna(s, r, adentro)] if adentro else [])
+    return sin_mezcla(con_toques(cmd, toques, f"_clic{hondo:g}" + (f"_cuna{adentro:g}" if adentro else "")))
 
 
 def muestrario(cmd: list, s, hondos: list) -> list:
@@ -166,11 +190,7 @@ def pruebas(d: float, a) -> None:
     if not a.boca_adentro:
         subprocess.run(cmd, check=True)
     for f in a.boca_adentro:
-        t = {"tipo": "jalar", "forma": "columna", "caida": "suave",
-             "angulo": BOCA_ANGULO, "simetria": 2, "t": 0.0,
-             "radio_t": BOCA_ALTO / 1.5 / s.altura,
-             "radio_grados": math.degrees(BOCA_ANCHO / 2 / (r * 0.6405)),
-             "fuerza": -f, "nota": "cuña hacia adentro en las dos primeras vueltas"}
+        t = cuna(s, r, f)
         # Sin la mezcla de las primeras capas (`--capas-transicion`): apaga la
         # deformación justo en las vueltas donde va esta protuberancia. Y la
         # subida medida sobre la silueta lisa (`--pendiente-silueta`): si no, el
@@ -198,16 +218,19 @@ def main() -> None:
     p.add_argument("--solo-modulos", action="store_true",
                    help="no rehacer las tapas: no llevan labio ni holgura")
     p.add_argument("--clic", type=float, nargs="+", default=[], metavar="MM",
-                   help="qué tan honda es cada muesca de arriba, en mm de radio (la cuña de la "
-                        "base entra ~0.85). Varios valores = una pieza por valor. Las tapas "
-                        "nunca lo llevan")
+                   help="qué tan honda es cada muesca de arriba, en mm de radio. Varios "
+                        "valores = una pieza por valor. Las tapas nunca lo llevan")
     p.add_argument("--prueba", action="store_true",
                    help="en vez de módulos y tapas, las piezas cortas de prueba de encastre: "
                         "una boca por cada --boca-adentro (o la lisa) y un labio por cada --clic")
     p.add_argument("--boca-adentro", type=float, nargs="+", default=[], metavar="MM",
-                   help="con --prueba: la boca clic, con dos protuberancias hacia adentro en "
-                        "las primeras vueltas, de estos mm")
+                   help="la base clic, con dos cuñas hacia adentro en las primeras vueltas, de "
+                        "estos mm. Con --prueba, una base por valor; en los módulos con --clic, "
+                        "un solo valor")
     a = p.parse_args()
+    if not a.prueba and len(a.boca_adentro) > 1:
+        p.error("en los módulos --boca-adentro lleva un solo valor")
+    adentro = a.boca_adentro[0] if a.boca_adentro else 0.0
 
     for d in a.diametros:
         if a.prueba:
@@ -232,7 +255,7 @@ def main() -> None:
                                + (f"_boca{d * boca:.0f}" if boca else "")
                                + ("" if tapa else f"_labio{a.labio:g}")]
             for c in ([None] if tapa or not a.clic else a.clic):
-                subprocess.run(clic(list(cmd), s, c) if c else cmd, check=True)
+                subprocess.run(clic(list(cmd), s, r, c, adentro) if c else cmd, check=True)
 
 
 if __name__ == "__main__":
