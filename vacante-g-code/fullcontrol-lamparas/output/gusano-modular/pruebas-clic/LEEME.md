@@ -42,14 +42,15 @@ donde arranca el labio se metía 1.2-1.6 mm respecto de la de abajo, más que el
 cordón (1.2), quedaba en el aire y se imprimía derretida hacia adentro. Arriba
 volvía igual de golpe. Ahora la pared se corre como mucho 0.55-0.60 mm por
 vuelta (lo mismo que el hombro, que sale bien): dos vueltas de bajada, una o
-dos a fondo y tres de subida, dentro de los 6 mm del labio. Medido en el
-g-code:
+dos a fondo y tres de subida. El labio de la prueba mide **7.6 mm** (dos
+vueltas más que los 6 de antes) para que arriba de la muesca queden 2-3 vueltas
+lisas y el borde no quede pegado a ella. Medido en el g-code:
 
-| vuelta del labio | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
-|---|---|---|---|---|---|---|---|---|
-| muesca de 1.2 | 0.36 | 0.91 | 1.20 | 1.20 | 0.95 | 0.40 | 0 | 0 |
-| muesca de 1.4 | 0.45 | 1.00 | 1.40 | 1.40 | 1.26 | 0.71 | 0.16 | 0 |
-| muesca de 1.6 | 0.54 | 1.09 | 1.60 | 1.60 | 1.39 | 0.84 | 0.29 | 0.01 |
+| vuelta del labio | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| muesca de 1.2 | 0.36 | 0.91 | 1.20 | 1.20 | 0.95 | 0.40 | 0 | 0 | 0 | 0 |
+| muesca de 1.4 | 0.45 | 1.00 | 1.40 | 1.40 | 1.26 | 0.71 | 0.16 | 0 | 0 | 0 |
+| muesca de 1.6 | 0.54 | 1.09 | 1.60 | 1.60 | 1.56 | 1.01 | 0.46 | 0 | 0 | 0 |
 
 Verificador: muestras sin apoyo de 0.83 % a 0.07 %, tramos al aire de 20 a 1.
 
@@ -83,8 +84,11 @@ Verificador: las dos dan 0 % de línea fina y puentes de 4.6 mm como máximo.
 
 ## Generar de nuevo
 
-    python gen_gusano_modular.py 95 --prueba --clic 1.2 1.4 1.6 --boca-adentro 1.0
+    python gen_gusano_modular.py 95 --prueba --clic 1.2 1.4 1.6 --boca-adentro 1.0 --labio 7.6
 
 Y el módulo entero con la profundidad que gane:
 
-    python gen_gusano_modular.py 95 --solo-modulos --clic 1.4
+    python gen_gusano_modular.py 95 --solo-modulos --clic 1.4 --labio 7.6
+
+(`--labio 7.6`: el módulo con el mismo labio que la prueba; la base no depende
+del labio y sale igual con 6 o 7.6.)

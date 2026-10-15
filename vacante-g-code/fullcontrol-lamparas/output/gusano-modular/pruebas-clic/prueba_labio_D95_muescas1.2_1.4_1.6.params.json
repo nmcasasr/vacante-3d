@@ -10,7 +10,7 @@
   "--ps",
   "desde=51.7101",
   "--ps",
-  "labio=6",
+  "labio=7.6",
   "--ps",
   "holgura=0.6",
   "--ps",
@@ -50,7 +50,7 @@
   "--radio-max",
   "47.5",
   "--altura",
-  "9.00",
+  "10.60",
   "--toques",
   "output/gusano-modular/pruebas-clic/prueba_labio_D95_muescas1.2_1.4_1.6.toques.json",
   "--pendiente-silueta",
@@ -78,10 +78,10 @@
   {
    "flag": "--ps",
    "clave": "labio",
-   "valor": 6.0,
+   "valor": 7.6,
    "min": 0.0,
-   "max": 18.0,
-   "paso": 0.09,
+   "max": 22.799999999999997,
+   "paso": 0.11399999999999999,
    "que": "alto en mm del tramo vertical de arriba."
   },
   {
@@ -150,7 +150,7 @@
   {
    "flag": "--altura",
    "clave": "altura",
-   "valor": 9.0,
+   "valor": 10.6,
    "min": 20.0,
    "max": 300.0,
    "paso": 1.4,
@@ -159,8 +159,8 @@
  ],
  "mapeo": {
   "z0": 0.8,
-  "z1": 10.20283203125,
-  "capas": 15,
+  "z1": 11.802832031250002,
+  "capas": 17,
   "z_capa": [
    0.8,
    1.26363525390625,
@@ -177,7 +177,9 @@
    7.802832031249999,
    8.60283203125,
    9.40283203125,
-   10.20283203125
+   10.20283203125,
+   11.002832031250001,
+   11.802832031250002
   ]
  },
  "toques": "output/gusano-modular/pruebas-clic/prueba_labio_D95_muescas1.2_1.4_1.6.toques.json"
