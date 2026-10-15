@@ -34,8 +34,29 @@ cama:** después no hay cómo distinguirlas a ojo, son 0.2 mm de diferencia.
 Para probar, se gira la base hasta que sus cuñas caigan en un par, y se pasa
 al siguiente.
 
-Las muescas van **sólo en el labio**, desde donde arranca para arriba (4
-vueltas). El hombro, la parte de la esfera, queda liso.
+Las muescas van **sólo en el labio**, desde donde arranca para arriba. El
+hombro, la parte de la esfera, queda liso.
+
+**Entran y salen en rampa.** La primera versión entraba de un salto: la vuelta
+donde arranca el labio se metía 1.2-1.6 mm respecto de la de abajo, más que el
+cordón (1.2), quedaba en el aire y se imprimía derretida hacia adentro. Arriba
+volvía igual de golpe. Ahora la pared se corre como mucho 0.55-0.60 mm por
+vuelta (lo mismo que el hombro, que sale bien): dos vueltas de bajada, una o
+dos a fondo y tres de subida, dentro de los 6 mm del labio. Medido en el
+g-code:
+
+| vuelta del labio | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| muesca de 1.2 | 0.36 | 0.91 | 1.20 | 1.20 | 0.95 | 0.40 | 0 | 0 |
+| muesca de 1.4 | 0.45 | 1.00 | 1.40 | 1.40 | 1.26 | 0.71 | 0.16 | 0 |
+| muesca de 1.6 | 0.54 | 1.09 | 1.60 | 1.60 | 1.39 | 0.84 | 0.29 | 0.01 |
+
+Verificador: muestras sin apoyo de 0.83 % a 0.07 %, tramos al aire de 20 a 1.
+
+La rampa de abajo no cambia dónde asienta la base: la cuña entra sólo
+~0.25 mm más que el juego, y ya en la primera vuelta del labio la muesca
+tiene 0.36 o más. La de arriba sí cambia el tope: ya no es un escalón sino una
+rampa de ~35°, que es la que tiene que subir la cuña para salir.
 
 ## Cómo funciona, según la simulación
 

@@ -63,8 +63,15 @@ TAPAS = {
 # arranca para arriba: en el hombro se vería y no hace falta. Simulado con los
 # cordones de los dos g-code, la base queda 0.4 mm más alta que sin clic (la
 # cuña apoya en el borde del hombro, justo debajo del labio).
-CLIC_ALTO = 3.6      # mm, de borde a borde (plana en el 60 % del medio)
 CLIC_ANCHO = 8.0     # mm, alrededor: un poco más que la cuña (6) para que entre
+# En altura la muesca entra y sale en RAMPA RECTA, como mucho `CLIC_CORRE` mm
+# por vuelta: impresa de un salto (1.2-1.6 mm en una vuelta) la vuelta quedaba
+# en el aire por dentro de la de abajo y salía derretida hacia adentro. El
+# hombro ya se corre 0.67 por vuelta y sale bien. En el medio, `CLIC_PLANO` a
+# fondo: las dos vueltas de la cuña.
+CLIC_CORRE = 0.55    # mm por vuelta
+CLIC_PLANO = 1.6     # mm
+CLIC_VUELTA = 0.8    # mm que sube una vuelta en el labio
 
 
 # Las pruebas de encastre (`--prueba`): la boca sola y el hombro con el labio,
@@ -101,8 +108,12 @@ def con_toques(cmd: list, toques: list, sufijo: str) -> list:
 
 def muesca(s, hondo: float, angulo: float) -> dict:
     """Dos muescas enfrentadas (`angulo` y `angulo`+180) donde entran las cuñas."""
-    medio = CLIC_ALTO / 2
-    return {"tipo": "jalar", "forma": "circulo", "caida": "meseta",
+    rampa = hondo / CLIC_CORRE * CLIC_VUELTA
+    # que cierre antes de que termine el labio: con 1.6 de fondo el plano se achica
+    plano = max(CLIC_VUELTA, min(CLIC_PLANO, (s.altura - s.labio_desde) - 2 * rampa))
+    medio = plano / 2 + rampa
+    return {"tipo": "jalar", "forma": "ranura", "caida": "pico",
+            "rampa_u": 0.4, "rampa_v": rampa / medio,
             "angulo": angulo, "simetria": 2,
             "t": (s.labio_desde + medio) / s.altura, "radio_t": medio / s.altura,
             "radio_grados": math.degrees(CLIC_ANCHO / 2 / s.radio_labio),

@@ -120,6 +120,29 @@ def columna() -> Forma:
     return lambda u, v: abs(u)
 
 
+def ranura(rampa_u: float = 0.4, rampa_v: float = 0.5) -> Forma:
+    """
+    Rectángulo con rampas RECTAS e independientes en ancho y en altura. Va con
+    la caída `pico`, que la deja tal cual: plano adentro y rampa lineal al borde.
+
+    Es la forma de una muesca que se imprime: en altura la pared tiene que
+    correrse parejo, lo mismo en cada vuelta, porque una vuelta que se corre
+    más de ~0.6 mm respecto de la de abajo queda en el aire. Las otras formas
+    reparten la rampa igual en ancho y en altura, y una muesca angosta y baja
+    entra de un salto.
+
+    Args:
+        rampa_u, rampa_v: qué fracción del radio es rampa, en ancho y en altura.
+    """
+    ru, rv = max(rampa_u, 1e-6), max(rampa_v, 1e-6)
+
+    def d(u: float, v: float) -> float:
+        if abs(u) >= 1.0 or abs(v) >= 1.0:
+            return 1.0 + max(abs(u), abs(v))
+        return 1.0 - min(1.0, (1.0 - abs(u)) / ru, (1.0 - abs(v)) / rv)
+    return d
+
+
 def anillo(grosor: float = 0.4) -> Forma:
     """
     Aro: el peso máximo está sobre la circunferencia, no en el centro.
@@ -151,6 +174,7 @@ FORMAS: Dict[str, Callable[..., Forma]] = {
     "estrella": estrella,
     "banda": banda,
     "columna": columna,
+    "ranura": ranura,
     "anillo": anillo,
     "cruz": cruz,
 }
