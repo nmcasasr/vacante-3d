@@ -212,6 +212,37 @@ def pausa_manual(nota: str = "") -> str:
     )
 
 
+def pausa_con_espera(segundos: float, perfil: "Perfil", nota: str = "") -> Callable:
+    """
+    Pausa de `segundos` para meter algo adentro de la pieza (la lámpara puck).
+
+    No es `M400 U1`: esa espera a que se reanude desde la pantalla. Ésta se
+    reanuda sola. Retrae, sube 10 mm, corre el cabezal a un costado y adelanta
+    la cama —lo mismo que el end gcode— para que la boca quede libre, espera,
+    y vuelve al último punto impreso con la velocidad de antes.
+    """
+    def bloque(punto, velocidad=None) -> str:
+        z_alto = punto.z + 10.0
+        f = f"G1 F{velocidad:g} ; reponer la velocidad de impresión\n" if velocidad else ""
+        comentario = f"; {nota}\n" if nota else ""
+        return (
+            f";----- PAUSA DE {segundos:g} s -----\n"
+            f"{comentario}"
+            "M400\n"
+            "G1 E-0.8 F2100 ; retraer\n"
+            f"G1 Z{z_alto:.3f} F1200 ; subir\n"
+            f"G1 X10 Y{perfil.tamano_cama[1] - 6} F6000 ; cabezal a un costado, cama adelante\n"
+            "M400\n"
+            f"G4 S{segundos:g} ; esperar\n"
+            f"G1 X{punto.x:.3f} Y{punto.y:.3f} F6000 ; volver arriba del último punto\n"
+            f"G1 Z{punto.z:.3f} F1200 ; bajar\n"
+            "G1 E0.8 F2100 ; cebar\n"
+            f"{f}"
+            ";----- FIN DE LA PAUSA -----"
+        )
+    return bloque
+
+
 def _bloque_purga(purga: float, nuevo: Filamento, anterior: Filamento) -> List[str]:
     """
     Purga pulsada, tal como la emite la plantilla cuando `flush_length_1 > 1`.

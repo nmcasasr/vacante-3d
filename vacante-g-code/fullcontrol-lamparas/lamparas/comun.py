@@ -563,6 +563,9 @@ def generar_pieza(
     base_agujero: Optional[Callable[[float, float], bool]] = None,
     base_agujero_retraccion: float = 0.0,
     base_agujero_flujo: float = 0.0,
+    pared_agujero: Optional[Callable[[float, float], bool]] = None,
+    pared_agujero_retraccion: float = 0.8,
+    escalon: float = 0.0,
     base_solida: bool = False,
     hueco: float = 0.0,   # diámetro FINAL del agujero del piso, en mm
     refuerzo_hueco: int = 0,
@@ -866,6 +869,26 @@ def generar_pieza(
         n = max(1, round(altura / paso))
         ts = [j / n for j in range(n + 1)]
         zs = [j * altura / n for j in range(n + 1)]
+    elif pendiente_silueta and silueta_referencia is not None:
+        # La marcha, igual que la extrusión con `pendiente_silueta`, mide la
+        # inclinación sobre la SILUETA LISA. Es el caso de una cúpula CON
+        # relieve —el árbol: la bola del hongo cubierta de grumos—, que necesita
+        # la marcha adaptativa por la cúpula y no puede dejar que el relieve la
+        # gobierne: cada grumo entrando y saliendo se lee como una pared
+        # acostada, y el paso se achica hasta el piso. Medido en el primer cupón
+        # del árbol: cordón declarado de 1.2 x 0.223 en vez de 0.8, 19 % del
+        # recorrido por debajo de 0.10 mm y puentes de 130 mm en el ecuador.
+        #
+        # Con paso fijo no pasa por acá, y todas las recetas que ya usaban
+        # `--pendiente-silueta` son de paso fijo: ninguna se mueve.
+        sr = silueta_referencia
+
+        def _pendiente_lisa(t: float, h: float = 5e-3) -> float:
+            a, b = min(1.0, t + h), max(0.0, t - h)
+            return abs(sr(a) - sr(b)) / ((a - b) or 1e-9)
+
+        ts, zs = marcha_vertical(None, altura, paso, pendiente=_pendiente_lisa,
+                                 delta_radio=lambda t, t2: abs(sr(t2) - sr(t)))
     else:
         ts, zs = marcha_vertical(None, altura, paso, pendiente=_pendiente,
                                  delta_radio=_delta_radio)
@@ -944,6 +967,9 @@ def generar_pieza(
     radio_previo = [None]
     flujo_previo = [None]      # el último factor de `funcion_flujo` que se emitió
     velocidad_previa = [None]  # la última velocidad de `funcion_velocidad`
+    # `pared_agujero(angulo, z)`: lo mismo que `base_agujero` en el piso, en la
+    # pared. La espiral no cambia; sobre la ventana se apaga el extrusor.
+    pared_estado = {"on": True, "prev": False}
     ventilador_previo = [None]  # el último % de `funcion_ventilador`
 
     def _mezcla(capa: int) -> float:
@@ -1339,6 +1365,22 @@ def generar_pieza(
         z0m, z1m = ULTIMO_MAPEO["z0"], ULTIMO_MAPEO["z1"]
         limite_espera["z"] = z0m + (z1m - z0m) * modulacion["espera_desde"]
 
+    vuelta_desde = [None]   # ángulo acumulado donde arranca la vuelta (ver `escalon`)
+    historia = []           # (a_ini, a_fin, alfa, tramo, z_capa, subida, rampa) por vuelta
+    if hasattr(funcion_radio, "perfil_vuelta"):
+        funcion_radio.ts_vueltas = ts
+
+    def _z_en(phi: float, vueltas: list):
+        """La z de la boquilla en el ángulo acumulado `phi`, si alguna de esas vueltas pasó por ahí."""
+        for a0, a1, al, tr, zc, sb, rp in reversed(vueltas):
+            if a0 - 1e-9 <= phi <= a1 + 1e-9:
+                if not rp:
+                    return zc
+                fr = (phi - a0) / max(a1 - a0, 1e-9)
+                win = min(1.0, max(0.0, (fr - (1.0 - tr)) / tr)) if tr > 0 else 0.0
+                return zc + (al * fr + (1.0 - al) * win) * sb
+        return None
+
     for capa in range(n_capas):
         # La primera capa va a z = altura_capa, no a z = 0: a z = 0 la boquilla
         # estaría apoyada contra la cama.
@@ -1601,6 +1643,38 @@ def generar_pieza(
 
         # se calcula la vuelta entera primero para poder mezclarla con su propio
         # radio medio durante la transición
+        # `escalon` (fracción de vuelta, 0 = espiral pura de siempre) y un patrón
+        # con `perfil_vuelta`: cada vuelta dice dónde termina y qué parte de su
+        # subida hace de a poco (`alfa`, 1 = espiral) y qué parte de golpe en
+        # sus últimos `escalon` (la RAMPA). Para `puas`, la vuelta con grumos
+        # va plana (alfa 0) y sube en el valle entre dos grumos; las lisas de
+        # al lado van mitad y mitad, y el resto en espiral, que es donde la
+        # subida no se ve. Cada vuelta se apoya en la anterior, así que de una
+        # vuelta a la siguiente `alfa` no puede cambiar de más: el espesor es
+        # 0.8 x (1 + alfa_arriba - alfa_abajo) en el peor punto.
+        a_ini = angulo_inicio if vuelta_desde[0] is None else vuelta_desde[0]
+        a_fin = a_ini + 2 * math.pi
+        alfa = 1.0
+        perfilado = hasattr(funcion_radio, "perfil_vuelta") and (
+            escalon > 0.0 or getattr(funcion_radio, "perfil_espiral", False))
+        largo_variable = perfilado
+        if perfilado and rampa:
+            a_fin, alfa = funcion_radio.perfil_vuelta(capa, a_ini)
+        vuelta_desde[0] = a_fin
+        tramo = min(1.0, escalon * 2 * math.pi / max(a_fin - a_ini, 1e-9))
+
+        def _avance(fr: float) -> float:
+            if not perfilado or not rampa or alfa >= 1.0:
+                return fr
+            win = min(1.0, max(0.0, (fr - (1.0 - tramo)) / tramo))
+            return alfa * fr + (1.0 - alfa) * win
+
+        historia.append((a_ini, a_fin, alfa, tramo, z_capa, subida, rampa))
+
+        if hasattr(funcion_radio, "zona_subida"):
+            funcion_radio.zona_subida[0] = ((a_fin - escalon * 2 * math.pi, a_fin)
+                                            if perfilado and rampa and alfa < 1.0 else None)
+
         crudos = []
         for seg in range(segmentos_por_capa + 1):  # +1 para cerrar la vuelta
             fraccion = seg / segmentos_por_capa
@@ -1616,10 +1690,13 @@ def generar_pieza(
             # el giro. En `recorrido.py` funciona porque ahí las pasadas son
             # planas y concéntricas; una espiral que además rota el arranque
             # deja la punta sin cerrar.
-            angulo = angulo_inicio + (capa + fraccion) * 2 * math.pi
+            # Sin vueltas de largo variable, la cuenta de siempre: acumular
+            # a_ini vuelta a vuelta corre la sexta cifra decimal.
+            angulo = (a_ini + fraccion * (a_fin - a_ini) if largo_variable
+                      else angulo_inicio + (capa + fraccion) * 2 * math.pi)
             # `t` avanza dentro de la capa y sale de la marcha, no de una regla de
             # tres: las vueltas ya no suben todas lo mismo.
-            t = ts[capa] + (ts[capa + 1] - ts[capa]) * fraccion
+            t = ts[capa] + (ts[capa + 1] - ts[capa]) * _avance(fraccion)
             crudos.append((fraccion, angulo, t, funcion_radio(angulo, t)))
 
         medio = sum(r for _, _, _, r in crudos[:-1]) / segmentos_por_capa
@@ -1637,7 +1714,17 @@ def generar_pieza(
         # afecta a las primeras `capas_transicion` vueltas, donde la mezcla
         # atenúa el relieve y la separación real es algo menor que ésta.
         seps = None
-        if separacion_por_angulo:
+        if perfilado and rampa and subida > 1e-6:
+            # El espesor REAL en cada punto, contra la pasada de abajo en el
+            # mismo ángulo: con las vueltas perfiladas va de 0.5 a 1.5 veces la
+            # subida, y el cordón tiene que llenarlo, ni más ni menos.
+            seps = []
+            for fraccion, angulo, t, radio_crudo in crudos:
+                abajo = _z_en(angulo - 2 * math.pi, historia[:-1])
+                h = (z_capa + _avance(fraccion) * subida - abajo) if abajo is not None else subida
+                seps.append(max(0.25 * separacion,
+                                min(separacion * h / subida, 1.5 * perfil.altura_capa)))
+        elif separacion_por_angulo:
             sig = capa + 1
             t_a, t_b = ts[sig], ts[min(sig + 1, n_capas)]
             subida_sig = pasos_capa[min(sig + 1, len(pasos_capa) - 1)]
@@ -1654,7 +1741,7 @@ def generar_pieza(
         for i_seg, (fraccion, angulo, t, radio_crudo) in enumerate(crudos):
             radio = medio + (radio_crudo - medio) * mezcla
             radio_max = max(radio_max, radio)
-            z = z_capa + fraccion * subida if rampa else z_capa
+            z = z_capa + _avance(fraccion) * subida if rampa else z_capa
             dz_crudo = funcion_dz(angulo, t) if funcion_dz is not None else 0.0
             z += dz_crudo * onda_capa
             if modular:
@@ -1719,6 +1806,24 @@ def generar_pieza(
                                                    width=perfil.ancho,
                                                    height=seps[i_seg]))
                 ultimo_alto[0] = seps[i_seg]
+
+            if pared_agujero is not None:
+                # Se apaga si CUALQUIERA de los dos extremos del tramo cae en la
+                # ventana, como en el piso: si no, el hueco sale mordido de un
+                # lado. Y se retrae en cada cruce, si no en PETG queda un hilo.
+                dentro = pared_agujero(angulo_pos % (2 * math.pi), z)
+                quiere = not (dentro or pared_estado["prev"])
+                if quiere != pared_estado["on"]:
+                    r_ = pared_agujero_retraccion
+                    if not quiere and r_ > 0:
+                        puntos.append(fc.ManualGcode(
+                            text=f"G1 E-{r_:.3f} F2100 ; retraer para cruzar la ventana"))
+                    puntos.append(fc.Extruder(on=quiere))
+                    if quiere and r_ > 0:
+                        puntos.append(fc.ManualGcode(
+                            text=f"G1 E{r_:.3f} F2100 ; devolver al volver a la pared"))
+                    pared_estado["on"] = quiere
+                pared_estado["prev"] = dentro
 
             salto = abs(radio - radio_previo[0]) if radio_previo[0] is not None else 0.0
             puentea = salto > SALTO_PUENTE

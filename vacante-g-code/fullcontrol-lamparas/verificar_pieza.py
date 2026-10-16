@@ -389,9 +389,15 @@ def medir(segs, ancho, alto_nominal, franja=None):
                                 continue
                             dh = math.sqrt(dh2)
                             w = _fusion(ancho, hh)
-                            if dh < FRACCION_PISADO * w and abs(dv) < 0.5 * hh:
+                            # Entre CENTROS de cordón, no entre trayectorias: la
+                            # boquilla va arriba del cordón, que baja su propio
+                            # alto. Con dos altos iguales es lo mismo que `dv`;
+                            # con distintos (caudal punto por punto) `dv` decía
+                            # suelto un cordón de 1.2 apoyado en uno de 0.6.
+                            dvc = dv - alto / 2 + o[6] / ancho / 2
+                            if dh < FRACCION_PISADO * w and abs(dvc) < 0.5 * hh:
                                 choque = True      # el mismo lugar dos veces
-                            if tocan(dh, dv, ancho, hh):
+                            if tocan(dh, dvc, ancho, hh):
                                 apoyado = True
                             if apoyado and choque:
                                 break

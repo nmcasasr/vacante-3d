@@ -70,6 +70,9 @@ def pasos_bowl(
     base_agujero=None,
     base_agujero_retraccion: float = 0.0,
     base_agujero_flujo: float = 0.0,
+    pared_agujero=None,
+    pared_agujero_retraccion: float = 0.8,
+    escalon: float = 0.0,
 ) -> list:
     """
     Arma los pasos de FullControl de un bowl.
@@ -228,6 +231,9 @@ def pasos_bowl(
         base_agujero=base_agujero,
         base_agujero_retraccion=base_agujero_retraccion,
         base_agujero_flujo=base_agujero_flujo,
+        pared_agujero=pared_agujero,
+        pared_agujero_retraccion=pared_agujero_retraccion,
+        escalon=escalon,
         base_solida=base_solida,
         hueco=hueco,
         refuerzo_hueco=refuerzo_hueco,

@@ -76,6 +76,7 @@ amplitud en cada vuelta, en todos los ángulos a la vez. El módulo lo mide y lo
 dice.
 """
 
+import bisect
 import math
 from typing import Optional, Tuple
 
@@ -191,10 +192,20 @@ def construir(
     peso_por_pua: bool = False,
     peso_por_banda: bool = False,
     banda_por_vuelta: bool = False,
+    intercalar: int = 0,
+    paso_mm: float = 0.0,
+    grumo_lento: float = 1.0,
+    gajos_grumo: str = "",
+    gajos_punta: str = "",
     suave_borde: float = 5.0,
     tomas: int = 5,
     deriva: float = 0.0,
     desde: float = 0.03,
+    rapido_hasta: float = 0.0,
+    rapido: float = 1.0,
+    alfa_lisas: float = 0.2,
+    giro_fila: int = 0,
+    paso_min: float = 0.0,
     hasta: float = 0.99,
     suave_mm: float = 5.0,
     altura_capa: float = 0.4,
@@ -252,6 +263,17 @@ def construir(
             pieza de referencia se descuelga, y es parte de cómo se ve.
 
             Con 0, `puente_lento` es lo que hace que ese puente salga bien.
+        grumo_lento: qué fracción de la velocidad se usa en TODO el grumo, ida y
+            vuelta, fuera de la punta. 1.0 (por defecto) = la de la pieza. Sirve
+            para subir la velocidad de la pieza sin subir la del grumo: con
+            `--velocidad 960`, `grumo_lento=0.5` deja el grumo a 8 mm/s y
+            `puente_lento=0.175` la punta donde estaba (los dos redondean a 180
+            mm/min). `puente_lento` sigue siendo fracción de la velocidad de
+            la PIEZA, no del grumo.
+        gajos_grumo, gajos_punta: `grumo_lento` y `puente_lento` por GAJO
+            alrededor de la pieza: `"0.5,0.5,0.75,0.75,1.0"` parte la vuelta en
+            cinco gajos iguales desde 0°. Vacío = el valor de siempre en toda la
+            pieza. Para el cupón de velocidades.
         puente_lento: qué fracción de la velocidad se usa donde el grumo está
             al aire. **No adelgaza la línea**: la sección la fija la geometría y
             no el `F`, así que bajar la velocidad deposita lo mismo en más
@@ -269,7 +291,11 @@ def construir(
             `puente_lento` en toda la pieza.
         lento_alcance: `"punta"` (por defecto) frena sólo en la meseta, el
             vértice donde la boquilla se para y vuelve — que es lo que hace la
-            referencia. `"todo"` frena el vuelo entero, ida y vuelta. Ver
+            referencia. `"todo"` frena el vuelo entero, ida y vuelta.
+            `"subida"` frena la ida y la meseta, y vuelve rápido: con
+            `"punta"` lo que se frena depende de dónde caen las muestras (en la
+            mini lámpara iba de 0.5 a 8 mm por grumo según el tamaño); así es
+            siempre la subida entera. Ver
             `_en_punta`: las dos lecturas son defendibles y la referencia no
             zanja el caso de un grumo de 7 mm, que es mucho más largo que sus
             nodos.
@@ -330,12 +356,47 @@ def construir(
         suave_borde: en cuántos mm de ALTURA se desvanece el borde de la figura,
             y `tomas` con cuántas muestras. No es un parámetro estético: es lo
             que acota el salto de radio por vuelta. Ver abajo.
+        intercalar: 1 corre los grumos MEDIA PÚA en una fila con patrón sí y en
+            la otra no, así que cada grumo cae entre los dos de la fila de
+            abajo: tresbolillo, como las hojas de una copa. 0 (por defecto) los
+            apila en columnas, que es lo que llevan los floreros. Cada fila se
+            arma desde la de abajo, así que intercala aunque cambie la cantidad
+            de púas (`barrido_puas`, `paso_mm`): ver el bloque del tresbolillo.
+        paso_mm: si es > 0, la cantidad de púas de cada fila sale de su radio
+            para que entre grumo y grumo haya siempre estos mm. Reemplaza a
+            `puas` y `barrido_puas`. Va con `intercalar=1`.
         deriva: vueltas que rota la textura a lo largo de la altura. **Dejalo en
             0**; ver el docstring del módulo.
         desde, hasta: en qué tramo de la altura (0..1) hay púas. El zócalo liso
             de abajo no es decorativo: es donde la pieza se agarra a la cama.
         suave_mm: en cuántos MILÍMETROS de altura encienden y apagan esas dos
             rampas. En mm y no en fracción a propósito: ver `_ventana`.
+        rapido_hasta, rapido: por debajo de `rapido_hasta` (0..1 de la altura)
+            la pared va LISA —sin grumos y sin el pulso de fondo— y a `rapido`
+            veces la velocidad de la pieza. Es para el zócalo de la mini
+            lámpara (`--zocalo`), que guarda la lámpara y lleva los huecos del
+            switch y del USB. 0 = apagado.
+        alfa_lisas: con `--escalon`, qué parte de su subida hacen en espiral
+            las lisas de la zona con grumos; el resto lo hacen en el valle,
+            junto con la fila. El espesor queda entre 0.8 x (1 - alfa) y
+            0.8 x (1 + alfa). 0.2: de 0.64 a 0.96 mm.
+        giro_fila: en púas, cuánto gira el arranque de cada fila respecto de
+            la anterior. Distinto de 0, TODO va en espiral pura —ninguna vuelta
+            tiene escalón— y cada fila de grumos es exactamente una vuelta, que
+            arranca en un valle: una capa en Orca, con todos sus grumos. Lo
+            único que queda es que el último grumo de la fila está una capa más
+            arriba que el primero, y ese punto gira `giro_fila` púas por fila
+            para no formar una línea. Las lisas absorben el giro estirándose
+            (3 lisas de 1.1 vueltas con 25 púas de 78): el espesor baja a 0.72
+            en ellas, sin escalón, y las filas siguen a 3.2 mm. 0 = apagado.
+        paso_min: en mm, con `intercalar`. Si en una fila el paso entre grumos
+            (al radio de SU vuelta) baja de `paso_min`, la fila se queda con
+            uno de cada q puntos medios de la de abajo, con q el menor divisor
+            de la cantidad que lo devuelve por encima: cada grumo sigue cayendo
+            en el medio de dos de abajo, sin los defectos de `paso_mm`. Es para
+            cúpulas que se cierran, donde con la cantidad fija los grumos se
+            amontonan en uno solo. 0 = apagado.
+
         altura_capa: solo para el aviso — cuánto sube una vuelta. No cambia la
             pieza, la altura real la fija `--altura-capa`.
         ancho_cordon: el ancho del cordón, para predecir cuánto del turupe
@@ -446,6 +507,172 @@ def construir(
     # vieja, que es la que usan los sondeos de diagnóstico.
     capa_actual: list = [None]
 
+    # El `t` con que ARRANCÓ cada vuelta, anotado la primera vez que se la ve.
+    # Con paso adaptativo —la bola del árbol— las vueltas no suben lo mismo y
+    # `vuelta x dt_capa` deja de ser la altura: hay más vueltas que
+    # `altura / altura_capa`, así que las bandas de `barrido_puas` y `barrido`
+    # se corrían hacia arriba y las últimas caían todas en la última banda.
+    t_de_vuelta: dict = {}
+
+    def _vuelta(t: float) -> int:
+        """El número de vuelta: el de verdad si `comun.py` lo dejó, si no `t`."""
+        if banda_por_vuelta and capa_actual[0] is not None:
+            t_de_vuelta.setdefault(capa_actual[0], t)
+            return capa_actual[0]
+        return math.floor(t / dt_capa)
+
+    def _t_banda(capa: int) -> float:
+        """El `t` donde arranca el ciclo de esa vuelta: ahí se leen las bandas."""
+        inicio = (capa // ciclo) * ciclo
+        if banda_por_vuelta and inicio in t_de_vuelta:
+            return t_de_vuelta[inicio]
+        return inicio * dt_capa
+
+    # --- el TRESBOLILLO, fila por fila ------------------------------------
+    #
+    # La primera versión corría media púa una fila sí y otra no, con cada fila
+    # armada pareja desde el ángulo 0. Eso sólo intercala si las dos filas
+    # tienen la MISMA cantidad de púas: con n abajo y n+Δ arriba la diferencia
+    # de fase crece con el ángulo, y la fila queda intercalada cerca de 0°,
+    # apilada a 360/(2Δ) grados de ahí, y así alrededor. Medido en el primer
+    # cupón del árbol: 97-100 % de grumos en el medio dentro de una banda de
+    # `barrido_puas`, 25-40 % en cada cambio de banda —o sea, al azar—, y con
+    # filas cada 3 mm y bandas cada 5 casi una fila de cada dos era un cambio.
+    #
+    # Ahora cada fila se arma A PARTIR DE LA ANTERIOR: sus púas empiezan en
+    # los puntos medios de las de abajo, que es intercalar por definición, sin
+    # importar cuántas haya. Si la fila nueva necesita más o menos púas —en la
+    # bola el radio cambia—, se agregan o se sacan DE A UNA, repartidas
+    # alrededor y rotando de fila en fila (ángulo de oro) para que los
+    # defectos no se apilen en una costura vertical. Cada defecto descoloca
+    # ~2 grumos, contra media vuelta de antes.
+    #
+    # Una fila es la lista de ángulos donde ARRANCA cada celda; la fase de un
+    # punto es `j + (cuánto avanzó dentro de la celda j)`, así que `_pulso`
+    # sigue recibiendo lo mismo. Con la misma cantidad en todas las filas
+    # reproduce el corrimiento de media púa de antes.
+    _filas_reales: dict = {}
+    _filas_sonda: dict = {}
+
+    def _siguiente_fila(prev: list, n: int, k: int) -> list:
+        m = len(prev)
+        medios = sorted(((prev[j] + (prev[j + 1] if j + 1 < m else prev[0] + TAU)) / 2) % TAU
+                        for j in range(m))
+        # Más de un defecto cada 5 celdas y las ventanas de reacomodo se
+        # pisan: la fila se queda corta y alcanza a la cuenta en las siguientes.
+        d = max(-(m // 5), min(m // 5, n - m))
+        if d == 0:
+            return medios
+        giro = (k * 0.6180339887498949) % 1.0
+        donde_set = {int((i + giro) * m / abs(d)) % m for i in range(abs(d))}
+        # Se trabaja DESENROLLADO, crecientes desde medios[0], para no pelear
+        # con el cruce por 0 en el reacomodo.
+        base = [medios[0] + ((a - medios[0]) % TAU) for a in medios]
+        nueva, defectos = [], []
+        for j, a in enumerate(base):
+            sig = base[j + 1] if j + 1 < m else base[0] + TAU
+            if d > 0:
+                nueva.append(a)
+                if j in donde_set:
+                    defectos.append(len(nueva))
+                    nueva.append((a + sig) / 2)
+            else:
+                if j in donde_set:
+                    defectos.append(len(nueva))   # el hueco cae ANTES de éste
+                    continue
+                nueva.append(a)
+        L = len(nueva)
+
+        def en(i: int) -> float:
+            return nueva[i % L] + TAU * (i // L)
+
+        # Reacomodo local: alrededor de cada defecto los vecinos se reparten
+        # parejos entre dos púas fijas, así el agregado no queda a media celda
+        # de sus vecinos ni el hueco con el doble de ancho.
+        for p in defectos:
+            ini, fin = (p - 2, p + 2) if d > 0 else (p - 2, p + 1)
+            a0, a1 = en(ini), en(fin)
+            pasos = fin - ini
+            for i in range(ini + 1, fin):
+                nueva[i % L] = (a0 + (a1 - a0) * (i - ini) / pasos) - TAU * (i // L)
+        return sorted(a % TAU for a in nueva)
+
+    def _fila(k: int, real: bool) -> list:
+        cache = _filas_reales if real else _filas_sonda
+        if k in cache:
+            return cache[k]
+        t_k = (t_de_vuelta.get(k * ciclo) if real else None)
+        ts = getattr(radio, "ts_vueltas", None)
+        if t_k is None and real and ts is not None and 0 <= k * ciclo < len(ts):
+            # una fila que todavía no empezó (`giro_fila` mira adelante): su `t`
+            # de verdad, no `k x ciclo x dt_capa`, que en la cúpula queda arriba
+            t_k = ts[k * ciclo]
+        if t_k is None:
+            t_k = k * ciclo * dt_capa
+        n = int(puas_de(t_k))
+        if k > 0 and paso_min > 0:
+            # la misma cantidad mientras entre; si no, una divisor de la de abajo
+            prev = _fila(k - 1, real)
+            m = len(prev)
+            v = k * ciclo + max(0, int(lisas))
+            t_v = ts[v] if real and ts is not None and v < len(ts) else t_k
+            r = silueta(min(1.0, max(0.0, t_v)))
+            q = next((d for d in range(1, m + 1) if m % d == 0
+                      and (TAU * r * d / m >= paso_min or m // d <= 4)), 1)
+            fila = _siguiente_fila(prev, m, k)[::q]
+        else:
+            fila = ([j * TAU / n for j in range(n)] if k <= 0
+                    else _siguiente_fila(_fila(k - 1, real), n, k))
+        cache[k] = fila
+        return fila
+
+    def _celda(angulo: float, capa: int):
+        """(índice, arranque, fin) de la celda de ese ángulo en la fila de esa vuelta."""
+        fila = _fila(capa // ciclo, bool(banda_por_vuelta and capa_actual[0] is not None))
+        a = angulo % TAU
+        j = bisect.bisect_right(fila, a) - 1
+        if j < 0:
+            return len(fila) - 1, fila[-1] - TAU, fila[0]
+        fin = fila[j + 1] if j + 1 < len(fila) else fila[0] + TAU
+        return j, fila[j], fin
+
+    def _fase(angulo: float, t: float, capa: int, n: int) -> float:
+        if intercalar:
+            j, ini, fin = _celda(angulo, capa)
+            return j + ((angulo % TAU) - ini) / ((fin - ini) or 1e-9)
+        return angulo * n / TAU + deriva * t * n
+
+    def _centro_pua(angulo: float, t: float, capa: int, n: int, fase: float) -> float:
+        """El ángulo del centro de la púa de ese punto: ahí se lee la máscara."""
+        if intercalar:
+            _, ini, fin = _celda(angulo, capa)
+            return (ini + fin) / 2
+        return (math.floor(fase) + 0.5 - deriva * t * n) * TAU / n
+
+    zona_subida: list = [None]
+
+    def _en_subida(angulo: float, capa: int) -> bool:
+        """
+        True si el grumo de ese punto toca el tramo donde la vuelta sube a la
+        siguiente (`--escalon`): ese grumo no se hace, es el "último grumo" que
+        se saltea para preparar la subida. Se mira el pulso ENTERO y no el
+        punto, para no dejar medio grumo.
+        """
+        zona = zona_subida[0]
+        if zona is None:
+            return False
+        a0, a1 = zona
+        if intercalar:
+            _, ini, fin = _celda(angulo, capa)
+            arranque = angulo - ((angulo % TAU) - ini)
+            largo = (fin - ini) * ocupacion
+        else:
+            n = int(puas_de(_t_banda(capa)))
+            fase = angulo * n / TAU
+            arranque = (math.floor(fase)) * TAU / n
+            largo = TAU / n * ocupacion
+        return arranque < a1 and arranque + largo > a0
+
     def pulsa(capa: int) -> bool:
         """True si a esa vuelta le toca patrón."""
         if lisas <= 0:
@@ -506,6 +733,18 @@ def construir(
 
     lista_puas = [max(4, int(round(v))) for v in _lista(barrido_puas)] or [puas]
     puas_de = _bandas(",".join(str(v) for v in lista_puas), puas)
+    if paso_mm and paso_mm > 0:
+        # La cantidad sale del RADIO de cada fila: el mismo paso en mm de la
+        # base a la boca, sin bandas calculadas a mano. Pensado para ir con
+        # `intercalar`, que arma cada fila desde la de abajo y absorbe el
+        # cambio de cantidad de a una púa; sin intercalar, cada cambio corre
+        # las columnas.
+        def puas_de(t: float) -> int:
+            return max(4, int(round(TAU * silueta(min(1.0, max(0.0, t))) / paso_mm)))
+        muestra = [puas_de(k / 200) for k in range(201)]
+        lista_puas = [min(muestra), max(muestra)]
+        print(f"  paso_mm={paso_mm:g}: de {min(muestra)} a {max(muestra)} púas por vuelta, "
+              f"según el radio")
     amp_de = _bandas(barrido, amplitud)
     flujo_de = _bandas(flujo_barrido, flujo)
 
@@ -514,15 +753,14 @@ def construir(
         f = flujo_de(t)
         if f == 1.0:
             return 1.0
-        capa = (capa_actual[0] if (banda_por_vuelta and capa_actual[0] is not None)
-                else math.floor(t / dt_capa))
+        capa = _vuelta(t)
         if not pulsa(capa):
             return 1.0
         # Sigue la forma del pulso, no un escalón: el turupe se engorda donde
         # está y el valle queda con la sección nominal. Con un escalón, el
         # cambio de sección cae en mitad del flanco y se lee como un anillo.
-        n = int(puas_de((capa // ciclo) * ciclo * dt_capa))
-        fase = angulo * n / TAU + deriva * t * n
+        n = int(puas_de(_t_banda(capa)))
+        fase = _fase(angulo, t, capa, n)
         return 1.0 + (f - 1.0) * _pulso(fase % 1.0, ocupacion, filo)
 
     lento_de = _bandas(barrido_lento, puente_lento)
@@ -549,26 +787,58 @@ def construir(
         que sale 7 mm, que es mucho más que sus nodos. Por eso es una perilla y
         no una decisión tomada acá.
         """
-        capa = (capa_actual[0] if (banda_por_vuelta and capa_actual[0] is not None)
-                else math.floor(t / dt_capa))
+        capa = _vuelta(t)
         if crecer or lisas <= 0:
             return False, capa
-        if not pulsa(capa) or (capa % ciclo) != int(lisas):
+        if not pulsa(capa) or (capa % ciclo) != int(lisas) or _en_subida(angulo, capa):
             return False, capa
-        n = int(puas_de((capa // ciclo) * ciclo * dt_capa))
-        fase = (angulo * n / TAU + deriva * t * n) % 1.0
+        n = int(puas_de(_t_banda(capa)))
+        fase = _fase(angulo, t, capa, n) % 1.0
         if lento_alcance == "todo":
             # todo el pulso: desde que despega de la pared hasta que vuelve
             return _pulso(fase, ocupacion, filo) > 0.0, capa
         ini = (ocupacion - ocupacion * filo) / 2
+        if lento_alcance == "subida":
+            # La F va antes del punto, o sea que vale para el tramo que LLEGA a
+            # él: frenar toda muestra de la ida y de la meseta frena la subida
+            # entera, caiga donde caiga la rejilla.
+            return 0.0 < fase <= ini + ocupacion * filo, capa
         return ini <= fase <= ini + ocupacion * filo, capa
 
+    # Velocidades por GAJO alrededor de la pieza, para el cupón de velocidades
+    # del árbol. Van por ángulo y no en bandas a lo alto como `barrido_lento`
+    # por lo mismo que los largos: en una bola cada altura es otra situación
+    # (voladizo, pared parada, cierre), y en gajos cada velocidad pasa por las
+    # tres. Mismo corte duro que `superficie.sectores`, y el gajo 1 arranca en
+    # 0°, así que si van juntos cada gajo de velocidad cae en uno de largo.
+    lista_grumo = list(_lista(gajos_grumo))
+    lista_punta = list(_lista(gajos_punta))
+
+    def _del_gajo(valores: list, angulo: float) -> float:
+        return valores[min(len(valores) - 1, int((angulo % TAU) / TAU * len(valores)))]
+
     def funcion_velocidad(angulo: float, t: float) -> float:
-        """Velocidad en ese punto: plena salvo en la punta de un grumo al aire."""
+        """Velocidad en ese punto: plena salvo en el grumo, y más lenta en su punta."""
+        if t < rapido_hasta:
+            return rapido
         punta, capa = _en_punta(angulo, t)
-        if not punta:
-            return 1.0
-        return max(0.05, lento_de((capa // ciclo) * ciclo * dt_capa))
+        if punta:
+            if lista_punta:
+                return max(0.05, _del_gajo(lista_punta, angulo))
+            return max(0.05, lento_de(_t_banda(capa)))
+        if lista_grumo and pulsa(capa):
+            n = int(puas_de(_t_banda(capa)))
+            if _pulso(_fase(angulo, t, capa, n) % 1.0, ocupacion, filo) > 0.0:
+                return max(0.05, _del_gajo(lista_grumo, angulo))
+        # El CUERPO del grumo, ida y vuelta, a `grumo_lento`. Es para poder
+        # subir la velocidad de la pieza —las vueltas lisas y los valles— sin
+        # que el grumo vaya más rápido de lo que ya está probado: en el árbol
+        # la pieza va a 16 mm/s como el hongo y el grumo a 8 como Squeezy.
+        if grumo_lento < 1.0 and pulsa(capa) and not _en_subida(angulo, capa):
+            n = int(puas_de(_t_banda(capa)))
+            if _pulso(_fase(angulo, t, capa, n) % 1.0, ocupacion, filo) > 0.0:
+                return max(0.05, grumo_lento)
+        return 1.0
 
     espera_de = _bandas(barrido_espera, float(espera_ms))
     _contador = [0, False]   # [cuántas puntas van, si la anterior estaba dentro]
@@ -590,12 +860,11 @@ def construir(
         ms = espera_de(t)
         if ms <= 0:
             return 0.0
-        capa = (capa_actual[0] if (banda_por_vuelta and capa_actual[0] is not None)
-                else math.floor(t / dt_capa))
+        capa = _vuelta(t)
         if crecer or lisas <= 0 or not pulsa(capa) or (capa % ciclo) != int(lisas):
             return 0.0
-        n = int(puas_de((capa // ciclo) * ciclo * dt_capa))
-        fase = (angulo * n / TAU + deriva * t * n) % 1.0
+        n = int(puas_de(_t_banda(capa)))
+        fase = _fase(angulo, t, capa, n) % 1.0
         ini = (ocupacion - ocupacion * filo) / 2
         dentro = ini <= fase <= ini + ocupacion * filo
         # UNA pausa por púa, en el FLANCO de entrada a la meseta. Buscar "el
@@ -635,9 +904,8 @@ def construir(
         # del punto donde el recorrido ya tiene su costura, y eso agrega un
         # SEGUNDO escalón helicoidal en vez de esconder el cambio en el que ya
         # existe. Con `floor` los dos coinciden.
-        capa = (capa_actual[0] if (banda_por_vuelta and capa_actual[0] is not None)
-                else math.floor(t / dt_capa))
-        if not pulsa(capa):
+        capa = _vuelta(t)
+        if not pulsa(capa) or t < rapido_hasta or _en_subida(angulo, capa):
             return base
         # El pulso está en TODA la vuelta; lo que cambia es cuánto sale. En el
         # fondo sale `amplitud_fondo` y en la figura `amplitud`, y la máscara
@@ -651,8 +919,8 @@ def construir(
         # ningún cordón (medido: 2.28 mm contra 1.2 en un cupón de 4.8 a 12).
         # Leyéndola al arranque, cada grumo crece entero con una sola amplitud y
         # el cambio de banda cae donde ya hay vueltas lisas.
-        n = int(puas_de((capa // ciclo) * ciclo * dt_capa))
-        fase = angulo * n / TAU + deriva * t * n
+        n = int(puas_de(_t_banda(capa)))
+        fase = _fase(angulo, t, capa, n)
         # La máscara se lee en el CENTRO DE LA PÚA, no en el punto.
         #
         # Evaluándola punto a punto, una púa que cae sobre el borde del dibujo
@@ -680,8 +948,7 @@ def construir(
         # leyendo en `k+0.5` devuelve la columna `k+1`. Se compensa con
         # `patron_corrimiento=-1`, que existe justo para alinear el dibujo con
         # la rejilla de púas. Las dos cosas van juntas.
-        ang_pua = ((math.floor(fase) + 0.5 - deriva * t * n) * TAU / n
-                   if peso_por_pua else angulo)
+        ang_pua = (_centro_pua(angulo, t, capa, n, fase) if peso_por_pua else angulo)
         # La máscara se lee también una sola vez por BANDA, no por punto.
         #
         # Es el mismo problema que `ang_pua` pero en el otro eje. Una vuelta
@@ -700,7 +967,7 @@ def construir(
         # justo sobre la frontera de fila y el redondeo decide al azar.
         t_peso = ((((capa // ciclo) + 0.5) * ciclo * dt_capa)
                   if peso_por_banda else t)
-        amp = amplitud_fondo + (amp_de((capa // ciclo) * ciclo * dt_capa)
+        amp = amplitud_fondo + (amp_de(_t_banda(capa))
                                 - amplitud_fondo) * peso(ang_pua, t_peso)
         amp *= crecida(capa)
         if amp <= 0.0:
@@ -709,6 +976,87 @@ def construir(
 
     # `comun.py` escribe acá el número de vuelta antes de cada vuelta.
     radio.capa_actual = capa_actual
+    # Y acá el tramo donde la vuelta sube a la siguiente (`--escalon`), o None.
+    radio.zona_subida = zona_subida
+
+    # --- cómo sube cada vuelta, con `--escalon` -----------------------------
+    #
+    # La vuelta con grumos va PLANA: todos a la misma altura, y sube en el valle
+    # entre el último y el primero. Las lisas de la zona hacen `alfa_lisas` de
+    # su subida en espiral y el resto en ese mismo valle; el zócalo, en espiral
+    # pura, y entre los dos `alfa` baja de a 0.25 por vuelta.
+    #
+    # Cada vuelta se apoya en la anterior, y el espesor es 0.8 x (1 + alfa de
+    # arriba - alfa de abajo) en el peor punto: por eso `alfa` no puede saltar.
+    # Y por eso las subidas tienen que caer TODAS en el mismo ángulo: si dos
+    # vueltas seguidas subieran en lugares distintos, en el medio una ya subió
+    # y la otra todavía no, y el espesor se va a 0.16 o a 1.4.
+    #
+    # Las filas están corridas media púa (tresbolillo), así que sus valles no
+    # coinciden: los pares son [0.3, 1.0) de la celda y los impares [0.8, 1.5).
+    # Se pisan en [0.3, 0.5): ahí va la rampa, de 0.32 a 0.48, la misma en todas
+    # las vueltas. `--escalon` tiene que ser ≤ 0.16 púa.
+    _paso_ang = TAU / int(puas_de(0.0))
+
+    def _es_fila(capa: int) -> bool:
+        """True si la vuelta `capa` lleva grumos (o el pulso de fondo)."""
+        ts = getattr(radio, "ts_vueltas", None)
+        if capa < 0 or ts is None or capa >= len(ts) - 1 or not pulsa(capa):
+            return False
+        return ts[capa] >= rapido_hasta
+
+    _costura: dict = {}
+
+    def _arranque_fila(k: int) -> float:
+        """Ángulo (mod TAU) donde arranca la fila `k` con `giro_fila`: en el medio
+        del valle de una celda de ESA fila, girado `giro_fila` celdas por fila.
+        Se lee de la fila misma y no de un paso fijo porque con `paso_mm` cada
+        fila tiene su cantidad, y la celda agregada o sacada descoloca el resto."""
+        fila = _fila(k, bool(banda_por_vuelta and capa_actual[0] is not None))
+        j = (k * int(giro_fila)) % len(fila)
+        fin = fila[j + 1] if j + 1 < len(fila) else fila[0] + TAU
+        return (fila[j] + (ocupacion + 1.0) / 2 * (fin - fila[j])) % TAU
+
+    def perfil_vuelta(capa: int, a_ini: float):
+        """(dónde termina la vuelta, qué parte de la subida hace en espiral)."""
+        if giro_fila:
+            # Espiral pura siempre. La fila mide 360° justos desde su arranque;
+            # las vueltas de antes se estiran lo necesario, repartido entre todas
+            # las que faltan, para que la fila caiga en su ángulo.
+            if _es_fila(capa):
+                return a_ini + TAU, 1.0
+            faltan = next((k for k in range(1, ciclo + 1) if _es_fila(capa + k)), None)
+            if faltan is None:
+                return a_ini + TAU, 1.0
+            meta = _arranque_fila((capa + faltan) // ciclo)
+            resto = faltan * TAU + (meta - (a_ini + faltan * TAU)) % TAU
+            return a_ini + resto / faltan, 1.0
+        if "fase" not in _costura:
+            # Todas las vueltas miden 360°, así que la costura es una sola: la
+            # primera vuelta se estira lo justo para que caiga en 0.48 púa de
+            # las filas pares.
+            pares = _fila(0, bool(banda_por_vuelta and capa_actual[0] is not None))
+            meta = (pares[0] + 0.48 * _paso_ang) % _paso_ang
+            delta = (meta - (a_ini + TAU)) % _paso_ang
+            _costura["fase"] = delta
+            return a_ini + TAU + delta, 1.0
+        if _es_fila(capa):
+            return a_ini + TAU, 0.0
+        # cuántas vueltas faltan para la próxima fila (o pasaron desde la última)
+        cerca = next((k for k in range(1, ciclo + 1)
+                      if _es_fila(capa + k) or _es_fila(capa - k)), None)
+        if cerca is None:
+            return a_ini + TAU, 1.0
+        hubo = any(_es_fila(capa - k) for k in range(1, capa + 1))
+        if hubo:
+            return a_ini + TAU, alfa_lisas
+        # antes de la primera fila: de la espiral pura a `alfa_lisas` de a 0.25
+        faltan = next(k for k in range(1, ciclo + 1) if _es_fila(capa + k))
+        return a_ini + TAU, min(1.0, alfa_lisas + 0.25 * (faltan - 1))
+
+    radio.perfil_vuelta = perfil_vuelta
+    # con `giro_fila`, `comun.py` usa el largo de cada vuelta aunque no haya `--escalon`
+    radio.perfil_espiral = bool(giro_fila)
 
     _avisar(silueta, altura, radio_medio, radio, pulsa, lisas, con_patron,
             lista_puas, amplitud, deriva, altura_capa, ocupacion, filo,

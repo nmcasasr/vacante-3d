@@ -15,6 +15,7 @@ import argparse
 import sys as _sys
 import fullcontrol as fc
 import inspect
+import math
 
 from ..comun import Perfil, descripciones_de, encabezado_receta, guardar_receta
 from ..colores import (
@@ -23,6 +24,7 @@ from ..colores import (
     manchas,
     cambios_desde_specs,
     parsear_filamento,
+    pausa_con_espera,
     pausa_manual,
     verificar_slots,
 )
@@ -46,6 +48,43 @@ def _kv(texto: str):
         except ValueError:
             continue
     return clave.strip(), valor
+
+
+def _ventanas(args, silueta):
+    """
+    `(angulo, z) -> bool` con las `--ventana`, o None si no hay. El ANCHO se
+    pasa a ángulo con el radio de la silueta lisa a esa altura del hueco (en el
+    zócalo es el mismo en toda la ventana).
+    """
+    if not args.ventana:
+        return None
+    ventanas = []
+    for spec in args.ventana:
+        ang, z0, z1, ancho = (float(v) for v in spec.split(":"))
+        ventanas.append((math.radians(ang), z0, z1, ancho))
+
+    def dentro(angulo: float, z: float) -> bool:
+        for a, z0, z1, ancho in ventanas:
+            if not (z0 <= z <= z1):
+                continue
+            r = silueta(0.0)
+            d = (angulo - a + math.pi) % (2 * math.pi) - math.pi
+            x = abs(d) * r                         # mm sobre la pared
+            if z1 - z0 > ancho:
+                # más alto que ancho: un CANAL recto, de techo plano —por donde
+                # baja la perilla del switch al meter la lámpara en la pausa—
+                if x <= ancho / 2:
+                    return True
+                continue
+            radio = min(z1 - z0, ancho) / 2
+            medio = ancho / 2 - radio             # el tramo recto
+            if x <= medio:
+                return True
+            zc = (z0 + z1) / 2
+            if (x - medio) ** 2 + (z - zc) ** 2 <= radio ** 2:
+                return True
+        return False
+    return dentro
 
 
 def _agujero_isotipo(args):
@@ -120,6 +159,23 @@ def _cli() -> None:
                    help="vueltas de COLLAR: una pared corta que sube desde el borde del hueco "
                         "(3 por defecto, o sea ~1.2 mm de alto con capa 0.4). Le da al encastre una "
                         "superficie de agarre en vez de un canto de un solo cordon. 0 lo apaga.")
+    p.add_argument("--zocalo", type=float, default=0.0, metavar="MM",
+                   help="un cilindro recto de MM de alto DEBAJO de la silueta, al radio de su "
+                        "base. Para guardar adentro algo de lados rectos —la lampara puck de la "
+                        "mini lampara del arbol— y despues si la forma.")
+    p.add_argument("--ventana", action="append", default=[], metavar="ANG:Z0:Z1:ANCHO",
+                   help="un hueco en la pared, repetible: centrado en ANG grados (0 = +X de la "
+                        "cama, antihorario visto desde arriba), de Z0 a Z1 mm sobre la cama y "
+                        "ANCHO mm medidos sobre la pared. Las puntas van redondas (radio = la "
+                        "mitad del alto) para que el puente de arriba sea mas corto. Sobre el "
+                        "hueco se apaga el extrusor y se retrae; la espiral no cambia.")
+    p.add_argument("--escalon", type=float, default=0.0, metavar="GRADOS",
+                   help="cada vuelta va PLANA y sube a la siguiente solo en sus ultimos GRADOS, "
+                        "en vez de subir de a poco toda la vuelta (0 = espiral, como siempre). "
+                        "Con la espiral una fila de grumos termina una capa mas arriba de donde "
+                        "empieza y los ultimos quedan corridos contra los primeros. En `puas` el "
+                        "grumo que cae en esa subida no se hace. Para una pua por vuelta: "
+                        "360 / puas.")
     p.add_argument("--altura", type=float, default=60.0, help="altura de la pared en mm")
     p.add_argument("--radio-base", type=float, help="radio del fondo en mm")
     p.add_argument("--radio-boca", type=float, help="radio de la boca en mm")
@@ -290,6 +346,10 @@ def _cli() -> None:
                         "y una pieza en modo vaso, que es todo pared, se abre.")
     p.add_argument("--cambio", type=float, action="append", default=[], metavar="ALTURA",
                    help="pausa para cambiar el filamento a mano a esa altura en mm (repetible)")
+    p.add_argument("--pausa", action="append", default=[], metavar="ALTURA:SEG",
+                   help="pausa de SEG segundos al llegar a ALTURA mm, repetible: retrae, aparta "
+                        "el cabezal, adelanta la cama, espera y vuelve sola (no es M400 U1). "
+                        "Para meter la lampara puck antes de cerrar. Ej: --pausa 20:20")
     p.add_argument("--cambio-ams", action="append", default=[], metavar="ALTURA:SLOT[:MATERIAL]",
                    help="cambio de slot del AMS a esa altura, repetible. El SLOT va 1..4, como lo "
                         "rotula el AMS (en el gcode sale como T0..T3). El MATERIAL sale de la tabla "
@@ -431,6 +491,9 @@ def _cli() -> None:
         print(f"AVISO: la silueta '{args.silueta}' no usa {', '.join(ignorados)}; se ignora.")
 
     cambios = {h: pausa_manual(f"a {h:.1f} mm") for h in args.cambio}
+    for spec in args.pausa:
+        h, seg = (float(v) for v in spec.split(":"))
+        cambios[h] = pausa_con_espera(seg, perfil, f"a {h:.1f} mm")
     if args.cambio_ams:
         # Un slot inválido es un error de uso, no un bug: sale por argparse en
         # vez de por un traceback.
@@ -677,6 +740,18 @@ def _cli() -> None:
     if not callable(silueta):
         silueta = _SILUETAS[silueta](**parametros_silueta)
 
+    # --- el zócalo: un cilindro recto debajo de la silueta ------------------
+    if args.zocalo > 0:
+        _sin_zocalo, _h, _a = silueta, args.zocalo, altura
+        _r0 = _sin_zocalo(0.0)
+        silueta = lambda t, _f=_sin_zocalo, _h=_h, _a=_a, _r=_r0: (  # noqa: E731
+            _r if t * (_h + _a) <= _h else _f((t * (_h + _a) - _h) / _a))
+        altura = _h + _a
+        if args.perfil:
+            info = {**info, "alto": altura}
+        print(f"  zócalo: {_h:g} mm rectos a Ø{2*_r0:.1f} (recorrido) -> {altura:.1f} mm "
+              f"de alto; la silueta arranca en t={_h/altura:.3f}")
+
     # --- velocidad calculada para mantener los segundos por vuelta ----------
     #
     # Va acá y no arriba con los otros `--velocidad-en` porque necesita la
@@ -791,6 +866,8 @@ def _cli() -> None:
             base_agujero=_agujero_isotipo(args),
             base_agujero_retraccion=args.hueco_retraccion,
             base_agujero_flujo=args.hueco_surco,
+            pared_agujero=_ventanas(args, silueta),
+            escalon=args.escalon / 360.0,
             paso_fijo={"auto": None, "medir": "auto",
                        "fijo": True, "adaptativo": False}[args.paso],
         )
