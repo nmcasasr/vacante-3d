@@ -7,7 +7,6 @@ STL, piso con hueco y capas que se adaptan a la inclinación.
 | pieza | medidas | tiempo* |
 |---|---|---|
 | `cuerpo_alien.gcode` | Ø251.7 × 125 mm, hueco abajo de Ø100 | ~2.7 h |
-
 | `chiqui_alien_40.gcode` | la misma pieza al 40 %: Ø100.7 × 50 mm, hueco de Ø40 | ~27 min |
 
 \* Calculado sobre el recorrido; el que da Orca es el bueno.
