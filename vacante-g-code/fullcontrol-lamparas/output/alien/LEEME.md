@@ -22,6 +22,24 @@ imprimible, 0.02 % sin apoyo, el peor tramo al aire 3.9 mm.
 En la cama va de X 2.1 a 253.9: entra con 2 mm de margen. La línea de purga
 del frente queda debajo del ala, que pasa 37 mm más arriba.
 
+## El chiqui falló (ronda 1) y el v2
+
+El primer chiqui salió bien cerca del hueco y falló desde la mitad del cono de
+abajo, por el ala y hasta la mitad del cono de arriba: cordones colgando y
+enredados. Medido vuelta por vuelta, la geometría es la misma en la parte buena
+y en la mala, así que el problema es cómo se imprimió:
+
+- **Sin ventilador y sin los 25 s por vuelta** hasta el 89 % de la altura. Es
+  la receta del hongo, que sólo se acuesta arriba; el alien se acuesta casi
+  desde abajo. Las vueltas del chiqui duraban 10-19 s.
+- **El apoyo al límite:** cada vuelta se corría 54 % del cordón en los conos y
+  63 % en lo plano, y la regla del repo es ≤55 %.
+
+`chiqui_alien_40_v2.gcode` (~57 min): capa 0.6 (los conos se corren ~43 %, lo
+plano 0.6 como máximo), ventilador al 60 % y 25 s por vuelta desde el 3 % de la
+altura. Verificador: imprimible, 0 % sin apoyo. El grande se rehace igual cuando
+el v2 salga bien.
+
 ## Cómo sale cada parte
 
 El perfil es un platillo simétrico arriba y abajo, con la cúpula encima:
