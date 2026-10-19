@@ -40,6 +40,20 @@ plano 0.6 como máximo), ventilador al 60 % y 25 s por vuelta desde el 3 % de la
 altura. Verificador: imprimible, 0 % sin apoyo. El grande se rehace igual cuando
 el v2 salga bien.
 
+## El v2 falló abajo, el v3
+
+El v2 imprimió bien desde que entró el ventilador, pero la parte inicial se
+despegó del resto. Es la inclinación: entre r50 y r78 (en el grande) la pared
+sube 7 mm mientras se abre 28, y el generador la hacía con vueltas casi
+planas, flotando a décimas de la cama y pegadas sólo de costado.
+
+`chiqui_alien_40_v3.gcode` corta el perfil a los 7 mm del STL
+(`--perfil-desde 267`), donde la pared ya va a ~65°: desde el hueco hasta ahí
+es un **piso plano sobre la cama** (en el chiqui de Ø40 a Ø63, 10 vueltas, con
+`--base-flujo-exacto`) y la pared arranca de su borde, corriéndose ~0.52 por
+vuelta como el resto del cono. La pieza queda 7 mm más baja (118 en el
+grande) y el asiento plano en vez de con la curvita. Lo demás, igual que el v2.
+
 ## Cómo sale cada parte
 
 El perfil es un platillo simétrico arriba y abajo, con la cúpula encima:
