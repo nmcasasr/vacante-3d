@@ -1,7 +1,7 @@
 # Gusano universal — tres tamaños que se apilan en cualquier orden
 
-Es el gusano modular, pero con módulos de **Ø60, Ø95 y Ø244** que encastran
-entre sí en cualquier orden: un Ø60 sobre un Ø244, un Ø244 sobre un Ø95, lo
+Es el gusano modular, pero con módulos de **Ø60, Ø150 y Ø244** que encastran
+entre sí en cualquier orden: un Ø60 sobre un Ø244, un Ø244 sobre un Ø150, lo
 que sea. Para eso los tres comparten el mismo adaptador: la misma **boca**
 abajo y el mismo **labio** arriba, sin importar el tamaño del lóbulo.
 Usa la misma receta que el gusano modular (PETG, cordón 1.2, capa 0.8,
@@ -45,11 +45,11 @@ Diámetros y alturas del **eje del cordón**, en mm:
 | Ø | cuello (boca de abajo) | labio | paso (lo que suma) | alto del módulo | alto de la tapa | boca de la tapa |
 |---|---|---|---|---|---|---|
 | 60  | 38.43 | 34.83 | 31.72  | 38.68  | 36.51  | cerrada |
-| 95  | 38.43 | 34.83 | 59.99  | 66.64  | 62.03  | Ø19.0 |
+| 150 | 38.43 | 34.83 | 102.82 | 109.47 | 102.00 | Ø30.0 |
 | 244 | 38.43 | 34.83 | 176.02 | 182.67 | 170.30 | Ø48.8 |
 
 Una pila mide la suma de los pasos de los módulos más el alto de la tapa. Por
-ejemplo, Ø244 + Ø95 + Ø60 + tapa Ø60 = 176.0 + 60.0 + 31.7 + 36.5 = 304 mm.
+ejemplo, Ø244 + Ø150 + Ø60 + tapa Ø60 = 176.0 + 102.8 + 31.7 + 36.5 = 347 mm.
 
 ## Las piezas
 
@@ -61,8 +61,8 @@ explicada más abajo.
 |---|---|---|---|---|---|
 | modulo_D60_39mm        | 0.4 h | 11 g  | 0.00 % | —      | 61.3° |
 | tapa_D60_37mm          | 0.4 h | 12 g  | 0.30 % | 1.1 mm | 87.4° (ápice) |
-| modulo_D95_67mm        | 1.0 h | 32 g  | 0.00 % | —      | 70.0° |
-| tapa_D95_62mm_boca19   | 1.0 h | 32 g  | 0.00 % | —      | 80.9° (boca) |
+| modulo_D150_109mm      | 2.5 h | 84 g  | 0.00 % | —      | 70.0° |
+| tapa_D150_102mm_boca30 | 2.4 h | 84 g  | 0.00 % | —      | 81.4° (boca) |
 | modulo_D244_183mm      | 6.5 h | 227 g | 0.00 % | —      | 70.0° |
 | tapa_D244_170mm_boca49 | 6.4 h | 224 g | 0.00 % | —      | 81.7° (boca) |
 
@@ -133,6 +133,15 @@ Las tapas grandes siguen siendo cúpulas que cierran hacia la boca. La del
 Ø244 llega a 81.7°, con 16.5 mm de radio por encima de 76°, adentro. Eso es
 menos que el hongo impreso (84.0°, 26.0 mm).
 
+## El mediano: de Ø95 a Ø150
+
+El mediano empezó siendo Ø95 y pasó a **Ø150**, el tamaño del gusano modular
+que ya se imprimió (`gusano-modular/modulo_D150_92mm_labio6`, boca de 96).
+Este no es aquel: es el mismo lóbulo cerrando hacia la boca común con el
+hombro de 70°, sin otro cambio, así que encastra con los otros dos. Su tapa va
+abierta al 20 % (Ø30), como la Ø150 del modular. Las piezas de Ø95 quedaron
+en `descartadas/`, y lo que sigue sobre la tapa Ø95 se deja como registro.
+
 ## Las tapas
 
 - **Ø60**: cerrada, 1.1 mm al aire en el ápice.
@@ -156,7 +165,7 @@ módulos de tamaños mezclados) para dibujar los perfiles exactos de cada pieza.
 Lo escribe `gen_gusano_universal.py` a partir de las mismas siluetas que
 generan el g-code. No se edita a mano: se regenera.
 
-Por tamaño (`"60"`, `"95"`, `"244"`):
+Por tamaño (`"60"`, `"150"`, `"244"`):
 
 | campo | qué es |
 |---|---|
@@ -190,8 +199,8 @@ encastre se prueba con lo más barato:
        python gen_gusano_universal.py --holgura 0.4
 
    (rehace los tres tamaños, que tienen que seguir iguales entre sí).
-2. **Un Ø95 sobre un Ø60** (1 h). Es el primer par mezclado, y la boca del
-   Ø95 ya arranca en el cono del hombro.
+2. **Un Ø150 sobre un Ø60** (2.5 h). Es el primer par mezclado, y la boca
+   del Ø150 arranca en el cono del hombro.
 3. Recién ahí, **el Ø244** (6.5 h, 227 g).
 
 ## Lo que el verificador no ve

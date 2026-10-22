@@ -1,6 +1,6 @@
 """
 Genera el gusano UNIVERSAL en `output/gusano-universal/`: módulos de tres
-tamaños —Ø60, Ø95 y Ø244— que se apilan en cualquier orden, porque todos
+tamaños —Ø60, Ø150 y Ø244— que se apilan en cualquier orden, porque todos
 comparten la MISMA boca abajo y el MISMO labio arriba. Por tamaño, un módulo y
 una tapa, con su verificación en `verif/`, y `perfiles.json`: los perfiles
 exactos que dibuja el visor 3D de Vacante.
@@ -38,7 +38,7 @@ sys.path.insert(0, '.')
 from lamparas.bowls.siluetas import gusano_modulo
 
 # Radio del ecuador de cada tamaño, por su nombre (el diámetro).
-TAMANOS = {60: 30.0, 95: 47.5, 244: 122.0}
+TAMANOS = {60: 30.0, 150: 75.0, 244: 122.0}
 
 # El gusanito de la Kadzi (`output/gusanito/gusanito.params.json`): Ø60,
 # 5 lóbulos en 150 mm, cintura 0.6405, apoyo 0.12. Se recalcula con la misma
@@ -70,7 +70,7 @@ HOMBRO = 70.0
 #     última vuelta contra el ápice—. Abierta al 20 % (Ø19) no tiene nada al
 #     aire y conserva la proporción del módulo.
 #   - Ø244: abierta al 20 % (Ø49), como las grandes del gusano modular.
-TAPAS = {60: 0.0, 95: 0.2, 244: 0.2}
+TAPAS = {60: 0.0, 150: 0.2, 244: 0.2}
 
 RECETA = [
     "--p", "mascara=ninguna", "--p", "amplitud=0", "--p", "dientes=0",
@@ -208,7 +208,7 @@ def dibujar_armado(perfiles: dict, ruta: str, pilas: list) -> None:
         fuente = ImageFont.truetype("/System/Library/Fonts/Supplemental/Arial.ttf", 22)
     except OSError:
         fuente = ImageFont.load_default(size=22)
-    COLORES = {"60": (40, 40, 40), "95": (205, 85, 30), "244": (40, 110, 200)}
+    COLORES = {"60": (40, 40, 40), "150": (205, 85, 30), "244": (40, 110, 200)}
 
     def trazo(pts, x0, y0, esc, color, grosor=2, solo_derecha=False):
         for lado in ((1,) if solo_derecha else (-1, 1)):
@@ -286,6 +286,9 @@ def main() -> None:
         perfiles = json.load(open(ruta_perfiles))
     except (OSError, ValueError):
         perfiles = {}
+    # Sólo los tamaños vigentes: si uno sale de TAMANOS (pasó con el Ø95,
+    # reemplazado por el Ø150) no tiene que quedar colgado en el contrato.
+    perfiles = {k: v for k, v in perfiles.items() if int(k) in TAMANOS}
 
     filas = []
     for d in a.tamanos:
@@ -348,7 +351,7 @@ def main() -> None:
 
     if set(perfiles) >= {str(d) for d in TAMANOS}:
         dibujar_armado(perfiles, os.path.join(carpeta, "armado.png"),
-                       [["244", "95", "60", "60"], ["60", "95", "244"]])
+                       [["244", "150", "60", "60"], ["60", "150", "244"]])
     for archivo, h, horas, gramos, v in filas:
         print(f"  {archivo:28s} {h:6.1f} mm  {horas:4.1f} h  {gramos:5.0f} g  {v}")
 
