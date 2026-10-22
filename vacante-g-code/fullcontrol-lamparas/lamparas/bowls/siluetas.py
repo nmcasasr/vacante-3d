@@ -385,6 +385,8 @@ def gusano_modulo(
     pared: float = 1.2,
     tapa: int = 0,
     boca: float = 0.0,
+    cuello: float = 0.0,
+    hombro: float = 0.0,
 ) -> Silueta:
     """
     UN lóbulo del gusanito, para imprimirlo suelto y apilarlo: el gusano
@@ -430,30 +432,91 @@ def gusano_modulo(
             las tapas grandes: desde Ø150 la cúpula no cierra ni siendo una
             esfera redonda (17 mm al aire con Ø150, 23 con Ø180; se descuelga
             a los 12).
+        cuello: radio del cuello EN MM, en vez de como fracción. 0 (por
+            defecto) = `cintura·radio_max`, o sea el cuello propio de cada
+            tamaño. Con un número fijo, módulos de tamaños distintos comparten
+            la misma boca y el mismo labio y se apilan en cualquier orden: es
+            el gusano universal (ver `output/gusano-universal/LEEME.md`). El
+            lóbulo sigue siendo el mismo elipsoide; lo único que cambia es en
+            qué punto de su hombro se lo corta.
+        hombro: ángulo máximo de la pared, en grados desde la vertical. 0 (por
+            defecto) = sin límite: el elipsoide llega solo hasta el cuello.
+            Con un número, donde el elipsoide se tumbaría más que eso sigue
+            una recta TANGENTE —un cono— hasta el cuello, abajo y arriba (en la
+            tapa sólo abajo: arriba cierra en cúpula). Es la salida para un
+            lóbulo grande que cierra a un cuello angosto, donde el elipsoide
+            llega casi horizontal.
     """
     if not 0.0 < cintura < 1.0:
         raise ValueError("gusano_modulo: 'cintura' va entre 0 y 1")
     R = radio_max
     b = achatado * R
-    rc = cintura * R
+    # `c` es el cuello como fracción. Sin `cuello` es literalmente `cintura`, y
+    # así las piezas de `gusano-modular/` salen con las MISMAS cuentas que
+    # antes, bit a bit (verificado regenerándolas y comparando el g-code).
+    c = cuello / R if cuello else cintura
+    if not 0.0 < c < 1.0:
+        raise ValueError("gusano_modulo: 'cuello' tiene que ser menor que 'radio_max'")
+    rc = c * R
     rl = rc - pared - holgura
     if rl <= 0:
         raise ValueError("gusano_modulo: el labio no entra; subí 'cintura' o 'radio_max'")
-    zc = math.sqrt(1.0 - cintura * cintura) * b          # centro del lóbulo
+
+    # El cono del hombro. En el elipsoide `tan(ángulo) = (R/b)·u/sqrt(1-u²)`,
+    # así que la pared llega a `hombro` en `u* = k/sqrt(1+k²)` con
+    # `k = (b/R)·tan(hombro)`, y ahí el radio vale `R/sqrt(1+k²)`. Por debajo
+    # de ese radio sigue la tangente. Si el cuello ya queda por encima, el
+    # elipsoide no llega a tumbarse tanto y no hay cono.
+    if hombro > 0:
+        tg = math.tan(math.radians(hombro))
+        k = b / R * tg
+        us = k / math.sqrt(1.0 + k * k)
+        rs = R / math.sqrt(1.0 + k * k)
+    else:
+        tg, us, rs = 1.0, 1.0, 0.0
+    cono_abajo = rs > rc
+    if cono_abajo:
+        zc = (rs - rc) / tg + us * b                      # centro del lóbulo
+    else:
+        zc = math.sqrt(1.0 - c * c) * b                   # centro del lóbulo
+    zt = zc + us * b                                      # arriba: donde empieza el cono
+
+    def z_arriba(r: float) -> float:
+        """Altura a la que el hombro de arriba pasa por el radio `r`."""
+        if r >= rs:
+            return zc + math.sqrt(1.0 - (r / R) ** 2) * b
+        return zt + (rs - r) / tg
+
     if tapa:
         altura = zc + math.sqrt(1.0 - boca * boca) * b
+        paso = None
     else:
-        zl = zc + math.sqrt(1.0 - (rl / R) ** 2) * b      # donde arranca el labio
+        zl = z_arriba(rl)                                 # donde arranca el labio
         altura = zl + labio
+        # donde se apoya la boca del de arriba: el hombro vuelve a pasar por el
+        # radio del cuello
+        paso = z_arriba(rc)
 
     def silueta(t: float) -> float:
         z = t * altura
         if not tapa and z >= zl:
             return rl
+        if cono_abajo and z < zc - us * b:
+            return rc + z * tg
+        if not tapa and z > zt:
+            return rs - (z - zt) * tg
         u = (z - zc) / b
         return R * math.sqrt(max(0.0, 1.0 - u * u))
 
     silueta.altura = altura
+    silueta.paso = paso
+    silueta.cuello = rc
+    silueta.labio = None if tapa else rl
+    silueta.boca = boca * R if tapa else 0.0
+    # Las alturas donde el perfil cambia de tramo (cono, elipsoide, labio): el
+    # que lo muestree para dibujarlo tiene que pasar exacto por ahí.
+    silueta.quiebres = ([zc - us * b] if cono_abajo else []) + (
+        [] if tapa else ([zt] if zt < zl else []) + [zl])
     return silueta
 
 

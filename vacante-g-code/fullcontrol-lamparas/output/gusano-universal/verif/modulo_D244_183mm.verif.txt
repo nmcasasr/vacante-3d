@@ -1,0 +1,46 @@
+cordón 1.2 x 0.459 mm (declarado en el archivo)
+89520 segmentos extruidos · cordón nominal 1.2 x 0.459 mm (área 0.551 mm²)
+
+1. FABRICABILIDAD  (ancho/alto del cordón que se le pide a la boquilla)
+   referencia validada, hongo.gcode: 10:1 en 13.3 % · 20:1 en 5.5 % · peor 23:1
+   sin etiqueta: fino (>10:1)  0.00 % · irrealizable (>20:1)       0 /   89520 ( 0.00 %) · más fino 0.800 mm (1.5:1)
+
+2. CONTACTO  (núcleos de cordón que se tocan, contra material ya impreso)
+   sin etiqueta:       0 /  269097 muestras sin apoyo ( 0.00 %)
+
+4. CHOQUE  (cordón depositado donde ya hay material: ejes a menos del 70% de la separación de fusión)
+   sin etiqueta:   16650 /  269097 muestras pisadas ( 6.19 %)
+
+3. PUENTES  (recorrido seguido al aire; > 12 mm se descuelga)
+   ninguno
+
+VEREDICTO  (contra Squeezy Fidget Toy.gcode, objeto impreso y viable)
+   la pieza es maciza: 0 de 89520 segmentos extruyen bajando -> se compara contra sus CÚPULAS (pared maciza)
+    línea fina (<0.10mm):     0.00 %  contra   0.26 %  de la referencia   ok
+                contacto:     0.00 %  contra   1.88 %  de la referencia   ok
+             peor puente:     0.00 mm contra  12.00 mm de la referencia   ok
+   -> IMPRIMIBLE
+
+output/gusano-universal/modulo_D244_183mm.gcode: 89531 movimientos · el cuerpo son 89520 seguidos, líneas 45..91054
+
+1. CONTINUIDAD DEL TRAZO
+   viajes sin extruir dentro del cuerpo: 0
+   retracciones en el archivo: 2 · dentro del cuerpo: 0
+
+2. LA Z SÓLO SUBE
+   bajadas de Z: 0
+   subida por movimiento: min 0.00000 · mediana 0.00191 · max 0.00333 mm
+
+3. PASO DE XY  (el patrón mueve la boquilla; un salto, no)
+   mediana 2.205 · p99.9 3.194 · max 3.194 mm
+   corte de salto: 4.791 mm  (p99.9 x 1.5, deducido)
+   por encima del corte: 0
+
+-> TRAZO CONTINUO: sin viajes ni retracciones en el cuerpo, la Z sólo sube y ningún paso de XY excede el patrón
+
+output/gusano-universal/modulo_D244_183mm.gcode: 372 vueltas
+   peor 70.0° desde la vertical (r 19.7, z 176.4)
+   > 76° afuera : nada
+   > 76° adentro: nada
+   > 80° afuera : nada
+   > 80° adentro: nada
