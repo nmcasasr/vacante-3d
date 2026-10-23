@@ -1,0 +1,30 @@
+{
+ "tamano": 244,
+ "patron": "arbol",
+ "tipo": "modulo",
+ "alto_mm": 183.5,
+ "horas": 15.639159257302456,
+ "mm_filamento": 153610.33992796575,
+ "gramos": 469.23473145943063,
+ "cuenta": 144,
+ "r_corte": 34.38,
+ "paso_ecuador": 5.32,
+ "largo": 9.0,
+ "encastre": {
+  "relieve_boca": 2.749265497925535e-06,
+  "adentro": -0.0027836494768855857,
+  "relieve_max": 9.000002642700515,
+  "relieve_hombro": 2.8901149455862196e-06,
+  "patron_z": [
+   6.019592,
+   169.392079
+  ],
+  "patron_r_min": 36.50530860373623,
+  "grumo_a_asiento": 6.622593097381895
+ },
+ "veredicto_verificador": "NO IMPRIMIBLE",
+ "linea_fina": 0.0,
+ "contacto": 16.47,
+ "puente": 11.64,
+ "pisados": 13.96
+}

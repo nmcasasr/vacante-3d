@@ -1,0 +1,30 @@
+{
+ "tamano": 60,
+ "patron": "zigzag",
+ "tipo": "modulo",
+ "alto_mm": 39.5,
+ "horas": 0.43122398494134756,
+ "mm_filamento": 4683.861301002587,
+ "gramos": 14.307828501647883,
+ "cuenta": 96,
+ "r_corte": 22.92,
+ "paso_ecuador": 1.96,
+ "largo": 1.2,
+ "encastre": {
+  "relieve_boca": 1.985484100686108e-06,
+  "adentro": -0.002181020573917891,
+  "relieve_max": 1.200001294489553,
+  "relieve_hombro": 2.2988074412921833e-06,
+  "patron_z": [
+   3.9535100000000005,
+   27.374246
+  ],
+  "patron_r_min": 24.496602735925855,
+  "grumo_a_asiento": 4.345498230290637
+ },
+ "veredicto_verificador": "IMPRIMIBLE",
+ "linea_fina": 0.0,
+ "contacto": 1.44,
+ "puente": 1.09,
+ "pisados": 6.23
+}

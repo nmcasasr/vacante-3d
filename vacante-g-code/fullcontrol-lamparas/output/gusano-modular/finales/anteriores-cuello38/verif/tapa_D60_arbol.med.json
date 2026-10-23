@@ -1,0 +1,28 @@
+{
+ "tamano": 60,
+ "patron": "arbol",
+ "tipo": "tapa",
+ "alto_mm": 37.3,
+ "horas": 0.43718222743206814,
+ "mm_filamento": 5336.527507000003,
+ "gramos": 16.301533170535784,
+ "cuenta": 54,
+ "r_corte": 19.5,
+ "paso_ecuador": 3.49,
+ "largo": 3.0,
+ "encastre": {
+  "relieve_boca": 3.0000015304015157,
+  "adentro": -0.0016149289258322597,
+  "relieve_max": 3.0000017990804118,
+  "patron_z": [
+   0.8719159999999999,
+   30.367216
+  ],
+  "patron_r_min": 20.75085745709972
+ },
+ "veredicto_verificador": "NO IMPRIMIBLE",
+ "linea_fina": 0.0,
+ "contacto": 11.11,
+ "puente": 5.67,
+ "pisados": 6.07
+}

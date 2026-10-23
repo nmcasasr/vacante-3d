@@ -1,0 +1,36 @@
+Menor distancia vertical entre un grumo/turupe y el eje del cordón de la
+otra pieza, en el radio del grumo, con las dos apiladas. Peor caso: sin
+ángulo (cada fila cuenta como anillo). Menos de 0.8 mm = se tocan.
+
+Ø150 arbol abajo             modulo Ø150 arriba               4.95 mm
+Ø150 arbol abajo             tapa Ø150 arriba                 4.94 mm
+Ø150 arbol abajo             modulo Ø244 arriba               3.29 mm
+Ø150 arbol abajo             tapa Ø244 arriba                 3.26 mm
+Ø150 zigzag abajo            modulo Ø150 arriba               1.69 mm
+Ø150 zigzag abajo            tapa Ø150 arriba                 1.70 mm
+Ø150 zigzag abajo            modulo Ø244 arriba               1.44 mm
+Ø150 zigzag abajo            tapa Ø244 arriba                 1.43 mm
+Ø244 arbol abajo             modulo Ø150 arriba               7.33 mm
+Ø244 arbol abajo             tapa Ø150 arriba                 7.32 mm
+Ø244 arbol abajo             modulo Ø244 arriba               4.36 mm
+Ø244 arbol abajo             tapa Ø244 arriba                 4.36 mm
+Ø244 zigzag abajo            modulo Ø150 arriba               4.18 mm
+Ø244 zigzag abajo            tapa Ø150 arriba                 4.19 mm
+Ø244 zigzag abajo            modulo Ø244 arriba               3.08 mm
+Ø244 zigzag abajo            tapa Ø244 arriba                 3.11 mm
+módulo Ø150 abajo            modulo Ø150 arbol arriba         7.01 mm
+módulo Ø244 abajo            modulo Ø150 arbol arriba         4.16 mm
+módulo Ø150 abajo            modulo Ø150 zigzag arriba        2.26 mm
+módulo Ø244 abajo            modulo Ø150 zigzag arriba        1.69 mm
+módulo Ø150 abajo            tapa Ø150 arbol arriba           7.01 mm
+módulo Ø244 abajo            tapa Ø150 arbol arriba           4.16 mm
+módulo Ø150 abajo            tapa Ø150 zigzag arriba          2.26 mm
+módulo Ø244 abajo            tapa Ø150 zigzag arriba          1.69 mm
+módulo Ø150 abajo            modulo Ø244 arbol arriba         8.39 mm
+módulo Ø244 abajo            modulo Ø244 arbol arriba         4.60 mm
+módulo Ø150 abajo            modulo Ø244 zigzag arriba        2.29 mm
+módulo Ø244 abajo            modulo Ø244 zigzag arriba        1.65 mm
+módulo Ø150 abajo            tapa Ø244 arbol arriba           8.39 mm
+módulo Ø244 abajo            tapa Ø244 arbol arriba           4.60 mm
+módulo Ø150 abajo            tapa Ø244 zigzag arriba          2.29 mm
+módulo Ø244 abajo            tapa Ø244 zigzag arriba          1.65 mm

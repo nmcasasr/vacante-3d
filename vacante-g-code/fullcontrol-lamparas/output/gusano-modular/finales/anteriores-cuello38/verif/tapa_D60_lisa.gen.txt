@@ -1,0 +1,5 @@
+  ventilador 100% desde z32.5 (89% de los 36.5 mm)
+  velocidad por perímetro desde 89% de la altura: 25 s por vuelta · piso 4.0 mm/s (3.8 mm³/s) · techo 8.0 mm/s · 2 escalones
+AVISO: el radio crece 0.69 mm por vuelta y el cordón mide 1.20 mm, o sea 43% de solape (41° desde la vertical). Por debajo del 50% conviene bajar la velocidad y subir el ventilador en esa zona; por debajo del 25% no esperes que salga.
+Generado: /Users/nicolas/Desktop/Proyectos/Vacante/vacante-3d/vacante-g-code/fullcontrol-lamparas/output/gusano-modular/finales/tapa_D60_lisa.gcode (18139 pasos, 18110 líneas)
+

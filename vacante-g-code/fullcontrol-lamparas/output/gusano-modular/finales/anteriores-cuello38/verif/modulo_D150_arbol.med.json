@@ -1,0 +1,30 @@
+{
+ "tamano": 150,
+ "patron": "arbol",
+ "tipo": "modulo",
+ "alto_mm": 110.3,
+ "horas": 6.08235380260906,
+ "mm_filamento": 58012.83712199977,
+ "gramos": 177.21227660134468,
+ "cuenta": 135,
+ "r_corte": 32.23,
+ "paso_ecuador": 3.49,
+ "largo": 7.0,
+ "encastre": {
+  "relieve_boca": 2.9914661503482876e-06,
+  "adentro": -0.0025748920476047488,
+  "relieve_max": 7.000002613879914,
+  "relieve_hombro": 3.029038794011285e-06,
+  "patron_z": [
+   4.924495,
+   97.18576900000001
+  ],
+  "patron_r_min": 33.496611595157745,
+  "grumo_a_asiento": 5.631392725161334
+ },
+ "veredicto_verificador": "NO IMPRIMIBLE",
+ "linea_fina": 0.0,
+ "contacto": 18.39,
+ "puente": 9.73,
+ "pisados": 12.46
+}

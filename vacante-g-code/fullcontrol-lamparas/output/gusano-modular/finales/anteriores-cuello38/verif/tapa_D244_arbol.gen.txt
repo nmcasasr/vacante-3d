@@ -1,0 +1,12 @@
+  ventilador 100% desde z151.6 (89% de los 170.3 mm)
+  velocidad por perímetro desde 89% de la altura: 25 s por vuelta · piso 4.0 mm/s (3.8 mm³/s) · techo 16.0 mm/s · 10 escalones
+  muestras 15 por púa (pediste 6): con ocupacion=0.2 y filo=0.34 la meseta mide 0.068 del paso y un muestreo más grueso la esquiva, así que el turupe no llegaría a los 9.00 mm.
+Púas: 144 por vuelta sobre radio ~85.5 mm -> paso 3.73 mm, 9.00 mm de vuelo.
+  del turupe sobrevive el 100 % al cordón de 1.2 mm: 9.01 mm de los 9.00 pedidos.
+  salto de radio HACIA AFUERA por vuelta de 0.80 mm: 11.198 mm contra un cordón de 1.2 (0 % de solape; la silueta aporta 5.062).
+  cadencia: 3 vueltas lisas + 1 con patrón, y el grumo crece 100% de la amplitud por vuelta hasta salir entero.
+  el dibujo se cuantiza a puntos de 3.73 x 3.20 mm -> la pieza son 144 x 53 puntos. Un rasgo más fino que eso no se dibuja.
+  AVISO: 11.20 mm hacia afuera contra un cordón de 1.2: la vuelta nueva NO solapa con la de abajo y esa punta queda al aire. Subí `con_patron` —el grumo crece en más vueltas y cada salto es menor—, bajá `amplitud`, o subí `suave_borde` si el que salta es el borde de la figura.
+AVISO: con radio máximo 131.0 mm y centro (128.0, 128.0) la pieza se sale de una cama de 256x256 mm.
+Generado: /Users/nicolas/Desktop/Proyectos/Vacante/vacante-3d/vacante-g-code/fullcontrol-lamparas/output/gusano-modular/finales/tapa_D244_arbol.gcode (892509 pasos, 770479 líneas)
+

@@ -1,0 +1,51 @@
+cordón 1.2 x 0.482 mm (declarado en el archivo)
+282150 segmentos extruidos · cordón nominal 1.2 x 0.482 mm (área 0.578 mm²)
+
+1. FABRICABILIDAD  (ancho/alto del cordón que se le pide a la boquilla)
+   referencia validada, hongo.gcode: 10:1 en 13.3 % · 20:1 en 5.5 % · peor 23:1
+   sin etiqueta: fino (>10:1)  0.00 % · irrealizable (>20:1)       0 /  282150 ( 0.00 %) · más fino 0.800 mm (1.5:1)
+
+2. CONTACTO  (núcleos de cordón que se tocan, contra material ya impreso)
+   sin etiqueta:   69706 /  372460 muestras sin apoyo (18.72 %)
+
+4. CHOQUE  (cordón depositado donde ya hay material: ejes a menos del 70% de la separación de fusión)
+   sin etiqueta:   47460 /  372460 muestras pisadas (12.74 %)
+
+3. PUENTES  (recorrido seguido al aire; > 12 mm se descuelga)
+   7155 tramos al aire · el peor 9.7 mm (sin etiqueta, z 50.5)
+   por encima de 12 mm: 0
+
+VEREDICTO  (contra Squeezy Fidget Toy.gcode, objeto impreso y viable)
+   la pieza es maciza: 0 de 282150 segmentos extruyen bajando -> se compara contra sus CÚPULAS (pared maciza)
+    línea fina (<0.10mm):     0.00 %  contra   0.26 %  de la referencia   ok
+                contacto:    18.72 %  contra   1.88 %  de la referencia   PEOR
+             peor puente:     9.73 mm contra  12.00 mm de la referencia   ok
+   -> NO IMPRIMIBLE
+
+/Users/nicolas/Desktop/Proyectos/Vacante/vacante-3d/vacante-g-code/fullcontrol-lamparas/output/gusano-modular/finales/tapa_D150_arbol.gcode: 282175 movimientos · el cuerpo son 282164 seguidos, líneas 51..283049
+
+1. CONTINUIDAD DEL TRAZO
+   viajes deliberados: 14 · sin extruir y sin retraer, líneas 70461, 92126, 112437, 113792, 134103, 135458. No cortan el trazo, pero son viajes.
+   viajes sin extruir dentro del cuerpo: 0
+   retracciones en el archivo: 0 · dentro del cuerpo: 0
+
+2. LA Z SÓLO SUBE
+   bajadas de Z: 0
+   subida por movimiento: min 0.00000 · mediana 0.00036 · max 0.00059 mm
+
+3. PASO DE XY  (el patrón mueve la boquilla; un salto, no)
+   mediana 0.262 · p99.9 7.010 · max 7.010 mm
+   corte de salto: 10.514 mm  (p99.9 x 1.5, deducido)
+   por encima del corte: 0
+
+-> TRAZO CONTINUO: sin viajes ni retracciones en el cuerpo, la Z sólo sube y ningún paso de XY excede el patrón
+
+/Users/nicolas/Desktop/Proyectos/Vacante/vacante-3d/vacante-g-code/fullcontrol-lamparas/output/gusano-modular/finales/tapa_D150_arbol.gcode: 51 vueltas
+   peor 82.4° desde la vertical (r 36.1, z 6.7)
+   > 76° afuera :  16.6 mm de radio en 8 vueltas · z 5.6..15.5 · r 33.1..53.1
+   > 76° adentro: nada
+   > 80° afuera :   8.3 mm de radio en 4 vueltas · z 5.6..9.2 · r 33.1..42.0
+   > 80° adentro: nada
+
+42 filas con grumos (corte de vuelta en 0°)
+TOTAL  en el medio 100.0 %   apilados 0.0 %

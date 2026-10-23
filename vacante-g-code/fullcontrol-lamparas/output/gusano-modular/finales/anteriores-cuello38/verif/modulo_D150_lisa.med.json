@@ -1,0 +1,14 @@
+{
+ "tamano": 150,
+ "patron": "lisa",
+ "tipo": "modulo",
+ "alto_mm": 110.3,
+ "horas": 2.4575842288965437,
+ "mm_filamento": 27582.462026002024,
+ "gramos": 84.25636690752944,
+ "veredicto_verificador": "IMPRIMIBLE",
+ "linea_fina": 0.0,
+ "contacto": 0.0,
+ "puente": 0.0,
+ "pisados": 6.07
+}

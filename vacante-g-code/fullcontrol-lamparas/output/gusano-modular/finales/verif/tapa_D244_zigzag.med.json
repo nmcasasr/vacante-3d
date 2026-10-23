@@ -1,0 +1,28 @@
+{
+ "tamano": 244,
+ "patron": "zigzag",
+ "tipo": "tapa",
+ "alto_mm": 160.6,
+ "horas": 6.829721887989805,
+ "mm_filamento": 78326.12666899837,
+ "gramos": 239.26344431644355,
+ "cuenta": 192,
+ "r_corte": 48.3,
+ "paso_ecuador": 3.99,
+ "largo": 0.9,
+ "encastre": {
+  "relieve_boca": 0.9000024752631504,
+  "adentro": -0.0027404621000712837,
+  "relieve_max": 0.900003674931348,
+  "patron_z": [
+   0.621378,
+   153.413296
+  ],
+  "patron_r_min": 50.495852854460864
+ },
+ "veredicto_verificador": "IMPRIMIBLE",
+ "linea_fina": 0.0,
+ "contacto": 1.27,
+ "puente": 1.37,
+ "pisados": 11.22
+}

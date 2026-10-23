@@ -1,0 +1,51 @@
+cordón 1.2 x 0.667 mm (declarado en el archivo)
+58560 segmentos extruidos · cordón nominal 1.2 x 0.667 mm (área 0.800 mm²)
+
+1. FABRICABILIDAD  (ancho/alto del cordón que se le pide a la boquilla)
+   referencia validada, hongo.gcode: 10:1 en 13.3 % · 20:1 en 5.5 % · peor 23:1
+   sin etiqueta: fino (>10:1)  0.00 % · irrealizable (>20:1)       0 /   58560 ( 0.00 %) · más fino 0.800 mm (1.5:1)
+
+2. CONTACTO  (núcleos de cordón que se tocan, contra material ya impreso)
+   sin etiqueta:     874 /   60864 muestras sin apoyo ( 1.44 %)
+
+4. CHOQUE  (cordón depositado donde ya hay material: ejes a menos del 70% de la separación de fusión)
+   sin etiqueta:    3789 /   60864 muestras pisadas ( 6.23 %)
+
+3. PUENTES  (recorrido seguido al aire; > 12 mm se descuelga)
+   864 tramos al aire · el peor 1.1 mm (sin etiqueta, z 13.0)
+   por encima de 12 mm: 0
+
+VEREDICTO  (contra Squeezy Fidget Toy.gcode, objeto impreso y viable)
+   la pieza es maciza: 0 de 58560 segmentos extruyen bajando -> se compara contra sus CÚPULAS (pared maciza)
+    línea fina (<0.10mm):     0.00 %  contra   0.26 %  de la referencia   ok
+                contacto:     1.44 %  contra   1.88 %  de la referencia   ok
+             peor puente:     1.09 mm contra  12.00 mm de la referencia   ok
+   -> IMPRIMIBLE
+
+/Users/nicolas/Desktop/Proyectos/Vacante/vacante-3d/vacante-g-code/fullcontrol-lamparas/output/gusano-modular/finales/modulo_D60_zigzag.gcode: 58574 movimientos · el cuerpo son 58563 seguidos, líneas 51..58856
+
+1. CONTINUIDAD DEL TRAZO
+   viajes deliberados: 3 · sin extruir y sin retraer, líneas 16441, 28010, 40543. No cortan el trazo, pero son viajes.
+   viajes sin extruir dentro del cuerpo: 0
+   retracciones en el archivo: 0 · dentro del cuerpo: 0
+
+2. LA Z SÓLO SUBE
+   bajadas de Z: 0
+   subida por movimiento: min 0.00000 · mediana 0.00070 · max 0.00083 mm
+
+3. PASO DE XY  (el patrón mueve la boquilla; un salto, no)
+   mediana 0.168 · p99.9 1.217 · max 1.217 mm
+   corte de salto: 1.825 mm  (p99.9 x 1.5, deducido)
+   por encima del corte: 0
+
+-> TRAZO CONTINUO: sin viajes ni retracciones en el cuerpo, la Z sólo sube y ningún paso de XY excede el patrón
+
+/Users/nicolas/Desktop/Proyectos/Vacante/vacante-3d/vacante-g-code/fullcontrol-lamparas/output/gusano-modular/finales/modulo_D60_zigzag.gcode: 18 vueltas
+   peor 61.3° desde la vertical (r 19.0, z 32.2)
+   > 76° afuera : nada
+   > 76° adentro: nada
+   > 80° afuera : nada
+   > 80° adentro: nada
+
+14 filas con grumos (corte de vuelta en 0°)
+TOTAL  en el medio 39.5 %   apilados 57.2 %

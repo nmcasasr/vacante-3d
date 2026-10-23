@@ -1,0 +1,14 @@
+{
+ "tamano": 60,
+ "patron": "lisa",
+ "tipo": "tapa",
+ "alto_mm": 37.3,
+ "horas": 0.3728877881293384,
+ "mm_filamento": 3899.903101000008,
+ "gramos": 11.913065130730706,
+ "veredicto_verificador": "IMPRIMIBLE",
+ "linea_fina": 0.0,
+ "contacto": 0.3,
+ "puente": 1.14,
+ "pisados": 5.16
+}

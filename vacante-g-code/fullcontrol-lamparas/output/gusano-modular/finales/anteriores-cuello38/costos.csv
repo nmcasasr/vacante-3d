@@ -1,0 +1,19 @@
+archivo,tamano,patron,tipo,alto_mm,tiempo_h,tiempo_h_mas35,gramos,metros_filamento,cuenta_por_vuelta,largo_mm,veredicto
+modulo_D60_lisa.gcode,60,lisa,modulo,39.5,0.35,0.48,11.5,3.76,,,IMPRIMIBLE
+tapa_D60_lisa.gcode,60,lisa,tapa,37.3,0.37,0.5,11.9,3.9,,,IMPRIMIBLE
+modulo_D60_arbol.gcode,60,arbol,modulo,39.5,0.42,0.57,15.9,5.19,54,3.0,"IMPRIMIBLE* (grumo colgando: contacto 12.9 %, puente 5.7 mm)"
+tapa_D60_arbol.gcode,60,arbol,tapa,37.3,0.44,0.59,16.3,5.34,54,3.0,"IMPRIMIBLE* (grumo colgando: contacto 11.1 %, puente 5.7 mm)"
+modulo_D60_zigzag.gcode,60,zigzag,modulo,39.5,0.43,0.58,14.3,4.68,96,1.2,IMPRIMIBLE
+tapa_D60_zigzag.gcode,60,zigzag,tapa,37.3,0.45,0.61,14.7,4.83,96,1.2,IMPRIMIBLE
+modulo_D150_lisa.gcode,150,lisa,modulo,110.3,2.46,3.32,84.3,27.58,,,IMPRIMIBLE
+tapa_D150_lisa.gcode,150,lisa,tapa,102.8,2.42,3.26,83.5,27.34,,,IMPRIMIBLE
+modulo_D150_arbol.gcode,150,arbol,modulo,110.3,6.08,8.21,177.2,58.01,135,7.0,"IMPRIMIBLE* (grumo colgando: contacto 18.4 %, puente 9.7 mm)"
+tapa_D150_arbol.gcode,150,arbol,tapa,102.8,6.09,8.22,176.4,57.76,135,7.0,"IMPRIMIBLE* (grumo colgando: contacto 18.7 %, puente 9.7 mm)"
+modulo_D150_zigzag.gcode,150,zigzag,modulo,110.3,2.83,3.82,97.6,31.94,192,0.9,IMPRIMIBLE
+tapa_D150_zigzag.gcode,150,zigzag,tapa,102.8,2.79,3.76,96.8,31.69,192,0.9,IMPRIMIBLE
+modulo_D244_lisa.gcode,244,lisa,modulo,183.5,6.51,8.79,226.7,74.23,,,IMPRIMIBLE
+tapa_D244_lisa.gcode,244,lisa,tapa,171.1,6.4,8.64,224.1,73.36,,,IMPRIMIBLE
+modulo_D244_arbol.gcode,244,arbol,modulo,183.5,15.64,21.11,469.2,153.61,144,9.0,"IMPRIMIBLE* (grumo colgando: contacto 16.5 %, puente 11.6 mm)"
+tapa_D244_arbol.gcode,244,arbol,tapa,171.1,15.51,20.94,465.3,152.32,144,9.0,"IMPRIMIBLE* (grumo colgando: contacto 16.9 %, puente 11.6 mm)"
+modulo_D244_zigzag.gcode,244,zigzag,modulo,183.5,7.25,9.79,252.7,82.74,192,0.9,IMPRIMIBLE
+tapa_D244_zigzag.gcode,244,zigzag,tapa,171.1,7.13,9.63,250.2,81.89,192,0.9,IMPRIMIBLE
