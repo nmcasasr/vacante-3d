@@ -1,20 +1,22 @@
 """
-Genera el gusano UNIVERSAL en `output/gusano-universal/`: módulos de tres
-tamaños —Ø60, Ø150 y Ø244— que se apilan en cualquier orden, porque todos
+Genera el gusano UNIVERSAL en `output/gusano-universal/`: módulos de dos
+tamaños —Ø150 y Ø244— que se apilan en cualquier orden, porque todos
 comparten la MISMA boca abajo y el MISMO labio arriba. Por tamaño, un módulo y
 una tapa, con su verificación en `verif/`, y `perfiles.json`: los perfiles
 exactos que dibuja el visor 3D de Vacante.
 
-    python gen_gusano_universal.py                  # los tres tamaños
-    python gen_gusano_universal.py 60 --holgura 0.4
+    python gen_gusano_universal.py                  # los dos tamaños
+    python gen_gusano_universal.py 150 --holgura 0.4
     python gen_gusano_universal.py --solo-perfiles  # sólo perfiles.json
 
 La geometría vive en `siluetas.gusano_modulo` (`cuello` y `hombro`). Lo que
 decide este script es la familia:
 
-  - el CUELLO común es el del Ø60, que es el más chico y manda: su cuello
-    propio es `0.6405 x 30 = 19.2` (Ø38.4) y no puede ser más ancho sin
-    cambiarle la cintura al gusanito;
+  - el CUELLO común es el del módulo Ø150 original del gusano modular
+    (`gusano-modular/modulo_D150_92mm_labio6`): `0.6405 x 75 = 48.0` (Ø96.1,
+    labio Ø92.5). Mientras hubo Ø60, mandaba el suyo (Ø38.4) porque no podía
+    ser más ancho sin cambiarle la cintura; sin él, los grandes dejan de
+    tener un cuello de botella;
   - la proporción del lóbulo es la del gusanito ORIGINAL de la Kadzi (5
     lóbulos en 150 mm, Ø60, `apoyo` 0.12), así que apilados los Ø60 dan
     exactamente ese gusanito, con su mismo paso de 31.7 mm;
@@ -38,7 +40,7 @@ sys.path.insert(0, '.')
 from lamparas.bowls.siluetas import gusano_modulo
 
 # Radio del ecuador de cada tamaño, por su nombre (el diámetro).
-TAMANOS = {60: 30.0, 150: 75.0, 244: 122.0}
+TAMANOS = {150: 75.0, 244: 122.0}
 
 # El gusanito de la Kadzi (`output/gusanito/gusanito.params.json`): Ø60,
 # 5 lóbulos en 150 mm, cintura 0.6405, apoyo 0.12. Se recalcula con la misma
@@ -49,7 +51,7 @@ _MEDIO = math.sqrt(1.0 - 0.6405 ** 2)
 # recibe 0.6884 y la altura se calculó con 0.68836, el lóbulo del g-code y el
 # de `perfiles.json` difieren (poco: 5 centésimas en el Ø244, pero difieren).
 ACHATADO = round(150.0 / (0.12 + 1.0 + 2.0 * _MEDIO * 4) / 30.0, 4)   # 0.6884
-CUELLO = 0.6405 * 30.0                                                 # 19.215 mm
+CUELLO = 0.6405 * 75.0                                                 # 48.04 mm
 
 # El elipsoide se sigue hasta que su pared se tumba a 70° de la vertical; de
 # ahí al cuello, recto. Medido sobre el g-code del Ø244 (ver el LEEME):
@@ -70,7 +72,7 @@ HOMBRO = 70.0
 #     última vuelta contra el ápice—. Abierta al 20 % (Ø19) no tiene nada al
 #     aire y conserva la proporción del módulo.
 #   - Ø244: abierta al 20 % (Ø49), como las grandes del gusano modular.
-TAPAS = {60: 0.0, 150: 0.2, 244: 0.2}
+TAPAS = {150: 0.2, 244: 0.2}
 
 RECETA = [
     "--p", "mascara=ninguna", "--p", "amplitud=0", "--p", "dientes=0",
@@ -249,12 +251,15 @@ def dibujar_armado(perfiles: dict, ruta: str, pilas: list) -> None:
     # 3. el encastre en detalle: el cordón con su ancho, 12 mm a cada lado del apoyo
     x0 = W - 600 + M
     e = 14.0
-    for j, (abajo, arriba) in enumerate((("60", "244"), ("244", "60"))):
+    for j, (abajo, arriba) in enumerate((("150", "244"), ("244", "150"))):
         pa, pb = perfiles[abajo], perfiles[arriba]
         cx = x0 + j * 290 - 230
         cy = H / 2 + 120
-        ventana = lambda pts, dz: [(z + dz - pa["paso"], r) for z, r in pts
-                                   if abs(z + dz - pa["paso"]) < 14 and r < 34]
+        # El radio, corrido para que el cuello caiga donde caía el de Ø38.4
+        # (r 19.2): a x14, r 48 se sale del recuadro.
+        corr = pa["cuello"] - 19.215
+        ventana = lambda pts, dz: [(z + dz - pa["paso"], r - corr) for z, r in pts
+                                   if abs(z + dz - pa["paso"]) < 14 and r - corr < 34]
         trazo(ventana(pa["modulo"], 0.0), cx, cy, e, COLORES[abajo], grosor=int(1.2 * e), solo_derecha=True)
         trazo(ventana(pb["modulo"], pa["paso"]), cx, cy, e, COLORES[arriba], grosor=int(1.2 * e), solo_derecha=True)
         dr.text((cx + 200, cy - 230), f"Ø{arriba}", fill=COLORES[arriba], font=fuente)
@@ -351,7 +356,7 @@ def main() -> None:
 
     if set(perfiles) >= {str(d) for d in TAMANOS}:
         dibujar_armado(perfiles, os.path.join(carpeta, "armado.png"),
-                       [["244", "150", "60", "60"], ["60", "150", "244"]])
+                       [["244", "150", "244", "150"], ["150", "150", "150", "150", "150"]])
     for archivo, h, horas, gramos, v in filas:
         print(f"  {archivo:28s} {h:6.1f} mm  {horas:4.1f} h  {gramos:5.0f} g  {v}")
 
